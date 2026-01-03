@@ -345,10 +345,15 @@ Ruta alternativa disponible (+3 min)
 - Tracking GPS para validar recorrido
 
 ### Protección de Datos
-- Datos personales encriptados
+- Datos personales encriptados en tránsito y en reposo
 - Ubicación compartida solo durante viaje activo
-- Fotos almacenadas de forma segura
-- RGPD/LOPD compliant
+- Fotos almacenadas de forma segura con acceso restringido
+- Cumplimiento de normativas de protección de datos (RGPD/LOPD):
+  - Consentimiento explícito del usuario
+  - Derecho de acceso, rectificación y supresión de datos
+  - Minimización de datos recopilados
+  - Período de retención limitado
+  - Política de privacidad clara y accesible
 
 ### Seguridad del Voluntario
 - Rutas verificadas y seguras
@@ -465,5 +470,5 @@ No, es voluntariado. Solo se busca ayudar eficientemente.
 Este es un **documento vivo** que se irá mejorando y refinando conforme se desarrolle la aplicación y se reciba feedback de usuarios y coordinadores.
 
 **Versión:** 1.0  
-**Fecha:** Enero 2026  
+**Fecha:** Enero 2024  
 **Próxima Revisión:** Se actualizará según feedback y desarrollo
