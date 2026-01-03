@@ -23,11 +23,26 @@ Rol principal que permite a ciudadanos llevar productos y suministros a zonas af
 - Ciudadano Informador
 - Coordinador de Catástrofe
 
+## Documentación Técnica
+
+📄 **[Implementación Tecnológica](./IMPLEMENTACION_TECNOLOGICA.md)** - Guía completa de tecnologías y arquitectura
+
+Esta documentación explica cómo implementar la aplicación con:
+- ✅ Arquitectura offline-first para funcionar sin internet
+- ✅ Tecnologías resilientes para condiciones de catástrofe
+- ✅ Sincronización inteligente de datos
+- ✅ Geolocalización sin conexión constante
+- ✅ Sistema QR offline
+- ✅ Mapas que funcionan sin conectividad
+
 ## Tecnologías
 - Geolocalización y GPS
 - Sistema de QR
 - Mapas interactivos
 - Tracking en tiempo real
+- PWA (Progressive Web App)
+- Almacenamiento local offline
+- Sincronización automática
 
 ## Estado del Proyecto
-🚧 En desarrollo inicial - Documentación de roles
+🚧 En desarrollo inicial - Documentación de roles y arquitectura técnica
