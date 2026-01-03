@@ -1,4 +1,4 @@
-# Catastrofe-logistica
+# Catástrofe-logística
 
 Aplicación de logística para gestión de ayuda humanitaria en situaciones de catástrofe.
 
