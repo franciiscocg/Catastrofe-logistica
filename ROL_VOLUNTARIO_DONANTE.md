@@ -348,7 +348,7 @@ Ruta alternativa disponible (+3 min)
 - Datos personales encriptados en tránsito y en reposo
 - Ubicación compartida solo durante viaje activo
 - Fotos almacenadas de forma segura con acceso restringido
-- Cumplimiento de normativas de protección de datos (RGPD/LOPD):
+- Cumplimiento de normativas de protección de datos (RGPD - Reglamento General de Protección de Datos / LOPD - Ley Orgánica de Protección de Datos):
   - Consentimiento explícito del usuario
   - Derecho de acceso, rectificación y supresión de datos
   - Minimización de datos recopilados
