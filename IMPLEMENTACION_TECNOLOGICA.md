@@ -300,7 +300,8 @@ db.version(1).stores({
   routes: '++id, volunteerId, waypoints, status',
   qrCodes: '++id, volunteerId, deliveryId, used, timestamp',
   photos: '++id, entityType, entityId, blob, synced',
-  syncQueue: '++id, endpoint, method, body, timestamp, retryCount'
+  syncQueue: '++id, endpoint, method, body, timestamp, retryCount',
+  mapTiles: '++id, key, zoom, x, y, timestamp'
 });
 
 // Funciones helper
@@ -573,7 +574,7 @@ class LocationManager {
       {
         enableHighAccuracy: true,
         maximumAge: 30000, // Cache de 30 segundos
-        timeout: 27000
+        timeout: 27000 // Timeout menor que maximumAge para permitir fallback
       }
     );
   }
@@ -1692,7 +1693,7 @@ export const rateLimitMiddleware = (maxRequests, windowSecs) => {
 ### Fase 1: MVP (3-4 meses)
 
 **Mes 1: Fundamentos**
-- [x] Configuración de repositorio y CI/CD
+- [ ] Configuración de repositorio y CI/CD
 - [ ] Diseño de base de datos
 - [ ] API básica de autenticación
 - [ ] PWA básica con Service Workers
@@ -1788,17 +1789,17 @@ export const rateLimitMiddleware = (maxRequests, windowSecs) => {
 ### Desarrollo
 
 **Equipo Mínimo:**
-- 1 Full-stack Developer: Desarrollo completo
-- 1 UI/UX Designer: Diseño de interfaz
-- 1 DevOps (part-time): Infraestructura
+- 1 Desarrollador Full-stack: Desarrollo completo
+- 1 Diseñador UI/UX: Diseño de interfaz
+- 1 DevOps (tiempo parcial): Infraestructura
 
 **Equipo Ideal:**
-- 2 Frontend Developers
-- 2 Backend Developers
-- 1 Mobile Developer
-- 1 DevOps Engineer
-- 1 UI/UX Designer
-- 1 QA Engineer
+- 2 Desarrolladores Frontend
+- 2 Desarrolladores Backend
+- 1 Desarrollador Móvil
+- 1 Ingeniero DevOps
+- 1 Diseñador UI/UX
+- 1 Ingeniero QA
 - 1 Product Manager
 
 ### Servicios Externos
