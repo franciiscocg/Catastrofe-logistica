@@ -1,8 +1,8 @@
-# Rol: Voluntario/Donante - Proveedor de Productos
+# Rol: Voluntario - Donante y Mano de Obra
 
 ## Descripción General
 
-El rol de **Voluntario/Donante** es el usuario principal que aporta productos y suministros a las zonas afectadas por catástrofes. Este rol permite a los ciudadanos solidarios llevar ayuda de manera organizada y eficiente a los puntos de distribución más necesitados.
+El rol de **Voluntario** es doble: puede actuar como **Donante Logístico** (transportando bienes) o como **Mano de Obra** (realizando trabajos físicos). Este perfil permite a los ciudadanos aportar su fuerza de trabajo para tareas críticas como desescombro, limpieza o asistencia técnica.
 
 ## Tipos de Catástrofes Soportadas
 
@@ -32,7 +32,13 @@ El rol de **Voluntario/Donante** es el usuario principal que aporta productos y 
 Usuario → Busca catástrofe cercana
 Sistema → Muestra lista de catástrofes activas
 Usuario → Selecciona una catástrofe (ej: Inundación en Valencia)
+Usuario → Elige Modalidad: "¿Quieres transportar ayuda o trabajar?"
 ```
+
+---
+
+## MODALIDAD A: DONANTE Y TRANSPORTE
+*(Enfoque en llevar productos a puntos de necesidad)*
 
 ### 2. Consulta de Productos Necesitados
 
@@ -296,10 +302,36 @@ Orden de visita: Punto A → Punto B
 └─────────────────────────────────────┘
 ```
 
-3. **Feedback:**
-   - Valoración de la experiencia
-   - Comentarios sobre el proceso
-   - Sugerencias de mejora
+---
+
+## MODALIDAD B: MANO DE OBRA
+*(Enfoque en realizar tareas físicas in-situ)*
+
+### 9. Búsqueda de Tareas
+**Funcionalidad:**
+El voluntario puede filtrar necesidades no por "productos", sino por "trabajos" disponibles en los Puestos de Emergencia cercanos.
+
+**Tipos de Tareas Comunes:**
+- 🧱 **Desescombro**: Mover escombros pesados (Requiere: Guantes, Botas, Pala).
+- 🧹 **Limpieza**: Retirar lodo/agua (Requiere: Botas altas, cepillo).
+- 🚑 **Asistencia**: Ayuda a personas mayores o movilidad reducida.
+- 🔧 **Técnica**: Electricistas, fontaneros, operadores de maquinaria.
+
+### 10. Asignación y Requisitos
+Al seleccionar una tarea (ej: "Limpieza de Calle Mayor"), el sistema muestra:
+- **Ubicación exacta**: Coordenadas del Puesto de Emergencia que coordina la zona.
+- **Equipo Necesario (EPIs)**: El sistema valida que el usuario marque que posee el equipo (ej: "¿Tienes botas de seguridad?").
+- **Horario**: Turnos disponibles.
+
+### 11. Check-in en Puesto de Emergencia
+A diferencia del reparto de productos, la mano de obra se **coordina presencialmente**:
+1.  El voluntario llega al **Puesto de Emergencia** asignado.
+2.  El Coordinador del Puesto escanea su QR de voluntario.
+3.  **Briefing**: El coordinador le asigna una zona específica y le da instrucciones de seguridad.
+4.  **Trabajo**: El voluntario realiza la tarea.
+5.  **Check-out**: Al terminar, se notifica la finalización para liberar el cupo.
+
+---
 
 ## Integración con Otros Roles
 

@@ -1,48 +1,58 @@
 # Catástrofe-logística
 
-Aplicación de logística para gestión de ayuda humanitaria en situaciones de catástrofe.
+**Plataforma integral para la gestión logística de ayuda humanitaria en situaciones de emergencia.**
+Este sistema conecta a todos los actores involucrados (Ciudadanos, Voluntarios, Puestos de Ayuda y Coordinadores) para maximizar la eficiencia y transparencia de la ayuda.
 
-## Roles de la Aplicación
+---
 
-### 1. Voluntario/Donante - Proveedor de Productos
-Rol principal que permite a ciudadanos llevar productos y suministros a zonas afectadas de manera organizada.
+## 👥 Roles del Ecosistema
 
-📄 **[Documentación completa del Rol Voluntario/Donante](./ROL_VOLUNTARIO_DONANTE.md)**
+La aplicación se estructura en torno a 4 roles fundamentales, cada uno con funciones específicas documentadas en detalle:
 
-**Características principales:**
-- Búsqueda de catástrofes cercanas
-- Consulta de productos necesitados en tiempo real
-- Registro con verificación de vehículo y productos
-- Seguimiento GPS en tiempo real
-- Sistema de QR para verificación de entregas
-- Priorización inteligente de puntos de distribución
-- Navegación optimizada con alertas de calles cortadas
+### 1. [Ciudadano](./ROL_CIUDADANO.md)
+*El sensor y beneficiario del sistema.*
+- **Función:** Solicitar ayuda, ver recursos cercanos y **reportar el estado de las vías** (cortadas/accesibles) para mejorar la navegación de todos.
+- [📄 Ver documentación de Ciudadano](./ROL_CIUDADANO.md)
 
-### Próximos Roles (En Desarrollo)
-- Personal de Punto de Distribución
-- Ciudadano Informador
-- Coordinador de Catástrofe
+### 2. [Voluntario / Donante](./ROL_VOLUNTARIO_DONANTE.md)
+*El motor logístico.*
+- **Función:** Transportar ayuda de un punto a otro. Utiliza un sistema de navegación inteligente que evita calles bloqueadas y prioriza los puntos con stock crítico.
+- [📄 Ver documentación de Voluntario](./ROL_VOLUNTARIO_DONANTE.md)
 
-## Documentación Técnica
+### 3. [Puesto de Emergencia (Ring)](./ROL_PUESTO_EMERGENCIA.md)
+*El nodo de distribución.*
+- **Función:** Puntos físicos (colegios, pabellones) que reciben y entregan material. Gestionan stock en tiempo real y validan entregas mediante códigos QR.
+- [📄 Ver documentación de Puesto de Emergencia](./ROL_PUESTO_EMERGENCIA.md)
 
-📄 **[Implementación Tecnológica](./IMPLEMENTACION_TECNOLOGICA.md)** - Guía completa de tecnologías y arquitectura
+### 4. [Manager / Coordinador](./ROL_MANAGER_COORDINADOR.md)
+*La estrategia.*
+- **Función:** Define la emergencia, configura los tipos de ayuda necesarios (mano de obra vs recursos) y envía alertas globales.
+- [📄 Ver documentación de Manager](./ROL_MANAGER_COORDINADOR.md)
 
-Esta documentación explica cómo implementar la aplicación con:
-- ✅ Arquitectura offline-first para funcionar sin internet
-- ✅ Tecnologías resilientes para condiciones de catástrofe
-- ✅ Sincronización inteligente de datos
-- ✅ Geolocalización sin conexión constante
-- ✅ Sistema QR offline
-- ✅ Mapas que funcionan sin conectividad
+---
 
-## Tecnologías
-- Geolocalización y GPS
-- Sistema de QR
-- Mapas interactivos
-- Tracking en tiempo real
-- PWA (Progressive Web App)
-- Almacenamiento local offline
-- Sincronización automática
+## 🛠️ Arquitectura y Tecnología
 
-## Estado del Proyecto
-🚧 En desarrollo inicial - Documentación de roles y arquitectura técnica
+El sistema está diseñado bajo una filosofía **Offline-First** para garantizar su funcionamiento cuando las telecomunicaciones fallan.
+
+📄 **[Ver Guía de Implementación Tecnológica](./IMPLEMENTACION_TECNOLOGICA.md)**
+
+### Puntos Clave:
+- **Resiliencia:** Funcionamiento sin internet mediante *Service Workers* e *IndexedDB*.
+- **Sincronización:** Cola inteligente de datos que se suben cuando recupera la conexión.
+- **Seguridad:** Trazabilidad total de donaciones mediante QR criptográficos.
+- **Navegación:** Algoritmos de enrutamiento que consideran el estado real de las vías reportado por la comunidad.
+
+---
+
+## 📂 Estructura del Proyecto
+
+- `ROL_CIUDADANO.md`: Funcionalidades para usuarios generales.
+- `ROL_VOLUNTARIO_DONANTE.md`: Guía para conductores y donantes.
+- `ROL_PUESTO_EMERGENCIA.md`: Gestión de inventarios y validación en puntos físicos.
+- `ROL_MANAGER_COORDINADOR.md`: Panel de administración de crisis.
+- `IMPLEMENTACION_TECNOLOGICA.md`: Stack técnico, infraestructura y seguridad.
+
+---
+
+🚧 **Estado del Proyecto:** En fase de diseño y documentación técnica.

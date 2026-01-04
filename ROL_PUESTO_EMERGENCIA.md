@@ -11,6 +11,7 @@ Este rol permite:
 - Gestionar inventarios de productos disponibles y necesarios
 - Facilitar la coordinación entre voluntarios y beneficiarios
 - Mantener transparencia en la distribución de recursos
+- **Coordinar Mano de Obra**: Organizar cuadrillas de trabajo para tareas locales (limpieza, desescombro).
 - Prevenir fraudes mediante un sistema de verificación
 
 ## Flujo de Trabajo
@@ -44,6 +45,10 @@ Para crear un puesto, el usuario debe completar un formulario de registro con la
 - **Fotografías del Lugar**: Para validar la existencia del puesto
 - **Documentación**: Identificación del responsable
 - **Descripción Detallada**: Cómo llegar, accesos disponibles, etc.
+
+---
+
+## MODALIDAD A: GESTIÓN DE RECURSOS (PRODUCTOS)
 
 ### 3. Gestión de Inventario
 
@@ -184,6 +189,30 @@ Cuando los beneficiarios llegan al puesto:
    - Proceso discreto y respetuoso
    - Sin exigencias innecesarias
    - Prioridad a personas en situación más vulnerable
+
+---
+
+## MODALIDAD B: COORDINACIÓN DE VOLUNTARIOS (MANO DE OBRA)
+
+### 8. Gestión de Tareas Locales
+
+El responsable del puesto no solo gestiona cajas, sino personas. Puede publicar necesidades de trabajo físico en la app.
+
+#### Publicar Necesidad
+- **Tipo de Tarea**: Desescombro / Limpieza / Reparto a pie / Asistencia médica.
+- **Cantidad de Personas**: (Ej: "Necesito 10 personas").
+- **Equipo Requerido**: El responsable marca qué deben traer (Botas, Palas, Guantes).
+- **Punto de Encuentro**: Ubicación GPS exacta (puede ser el puesto o una calle adyacente).
+
+#### Recepción de Voluntarios (Check-in)
+1.  Los voluntarios llegan al puesto.
+2.  El responsable escanea su QR de "Voluntario de Trabajo".
+3.  El sistema registra su entrada y cobertura de seguro (si aplica).
+4.  **Briefing de Seguridad**: El responsable tiene una lista de chequeo obligatoria (ej: "¿Tienen botas? ¿Conocen el riesgo eléctrico?").
+
+#### Coordinación y Check-out
+- El responsable asigna zonas de trabajo: "Cuadrilla A a la calle Norte, Cuadrilla B al sótano".
+- Al finalizar el turno, se escanea de nuevo el QR (Check-out) para confirmar horas trabajadas y liberar el recurso.
 
 ## Beneficios del Sistema
 
