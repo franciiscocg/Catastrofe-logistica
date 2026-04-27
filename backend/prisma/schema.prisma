@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RolUsuario {
+  CIUDADANO
+  VOLUNTARIO
+  PUESTO_EMERGENCIA
+  COORDINADOR
+}
+
+enum FaseCatastrofe {
+  RESCATE
+  LIMPIEZA
+  RECONSTRUCCION
+}
+
+enum TipoInventario {
+  DISPONIBLE
+  NECESARIO
+}
+
+model Usuario {
+  id        String       @id @default(cuid())
+  email     String       @unique
+  password  String
+  nombre    String
+  apellidos String
+  telefono  String?
+  dni       String?      @unique
+  roles     RolUsuario[]
+  activo    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  voluntario  Voluntario?
+  puestosAdmin PuestoEmergencia[] @relation("AdminPuesto")
+  auditLogs   AuditLog[]
+
+  @@map("usuarios")
+}
+
+model Catastrofe {
+  id          String         @id @default(cuid())
+  nombre      String
+  descripcion String
+  tipo        String
+  latitud     Float
+  longitud    Float
+  radio       Float
+  activa      Boolean        @default(true)
+  fase        FaseCatastrofe @default(RESCATE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  puestos PuestoEmergencia[]
+
+  @@map("catastrofes")
+}
+
+model PuestoEmergencia {
+  id           String     @id @default(cuid())
+  nombre       String
+  descripcion  String?
+  direccion    String
+  latitud      Float
+  longitud     Float
+  tipo         String
+  activo       Boolean    @default(true)
+  catastrofeId String
+  adminId      String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  catastrofe Catastrofe @relation(fields: [catastrofeId], references: [id])
+  admin      Usuario    @relation("AdminPuesto", fields: [adminId], references: [id])
+  inventario Inventario[]
+
+  @@map("puestos_emergencia")
+}
+
+model Producto {
+  id        String   @id @default(cuid())
+  nombre    String
+  categoria String
+  unidad    String
+  createdAt DateTime @default(now())
+
+  inventarios Inventario[]
+
+  @@map("productos")
+}
+
+model Inventario {
+  id         String           @id @default(cuid())
+  puestoId   String
+  productoId String
+  cantidad   Float
+  tipo       TipoInventario
+  updatedAt  DateTime         @updatedAt
+
+  puesto   PuestoEmergencia @relation(fields: [puestoId], references: [id])
+  producto Producto         @relation(fields: [productoId], references: [id])
+
+  @@unique([puestoId, productoId, tipo])
+  @@map("inventario")
+}
+
+model Voluntario {
+  id        String   @id @default(cuid())
+  usuarioId String   @unique
+  modalidad String
+  vehiculo  Json?
+  verificado Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@map("voluntarios")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  usuarioId String?
+  accion    String
+  entidad   String
+  entidadId String
+  datos     Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([entidad, entidadId])
+  @@map("audit_logs")
+}

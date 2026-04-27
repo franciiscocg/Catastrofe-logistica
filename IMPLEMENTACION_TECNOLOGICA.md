@@ -3,14 +3,18 @@
 ## Índice
 
 1. [Resumen Ejecutivo](#resumen-ejecutivo)
-2. [Arquitectura del Sistema](#arquitectura-del-sistema)
-3. [Stack Tecnológico Recomendado](#stack-tecnológico-recomendado)
-4. [Diseño Offline-First](#diseño-offline-first)
-5. [Funcionalidades Específicas para Catástrofes](#funcionalidades-específicas-para-catástrofes)
-6. [Infraestructura y Despliegue](#infraestructura-y-despliegue)
-7. [Seguridad y Protección de Datos](#seguridad-y-protección-de-datos)
-8. [Roadmap de Implementación](#roadmap-de-implementación)
-9. [Consideraciones de Costos](#consideraciones-de-costos)
+2. [Decisiones de Diseño del MVP](#decisiones-de-diseño-del-mvp)
+3. [Arquitectura del Sistema](#arquitectura-del-sistema)
+4. [Stack Tecnológico del MVP](#stack-tecnológico-del-mvp)
+5. [Diseño Offline-First](#diseño-offline-first)
+6. [Limitaciones del PWA y Mitigaciones](#limitaciones-del-pwa-y-mitigaciones)
+7. [Funcionalidades Específicas para Catástrofes](#funcionalidades-específicas-para-catástrofes)
+8. [Estrategia de Testing](#estrategia-de-testing)
+9. [Infraestructura y Despliegue](#infraestructura-y-despliegue)
+10. [Seguridad y Protección de Datos](#seguridad-y-protección-de-datos)
+11. [Roadmap de Implementación](#roadmap-de-implementación)
+12. [Arquitectura Objetivo (Post-MVP)](#arquitectura-objetivo-post-mvp)
+13. [Consideraciones de Costos](#consideraciones-de-costos)
 
 ---
 
@@ -34,53 +38,127 @@ La aplicación **Catástrofe Logística** es una solución tecnológica diseñad
 
 ---
 
+## Decisiones de Diseño del MVP
+
+Esta sección documenta las decisiones clave sobre qué entra en el MVP y por qué, diferenciando explícitamente entre lo que es adecuado para el MVP del TFM y lo que pertenece a fases posteriores.
+
+### Una sola PWA con cambio de rol, no cuatro aplicaciones separadas
+
+**Decisión:** Se construye una única PWA que adapta su navegación y funcionalidades según el rol del usuario autenticado (Ciudadano, Voluntario/Donante, Puesto de Emergencia, Coordinador).
+
+**Por qué para MVP:**
+- Desarrollar y mantener cuatro aplicaciones separadas cuadruplica el esfuerzo de desarrollo, diseño y despliegue.
+- La autenticación con RBAC (control de acceso por rol) ya gestiona qué ve y hace cada usuario.
+- Facilita que un mismo usuario pueda actuar con distintos roles según el contexto (un coordinador también puede ser ciudadano).
+- Es la decisión correcta para demostrar el sistema completo en el TFM con recursos limitados.
+
+**Cómo se implementa:** Al iniciar sesión, el sistema detecta el rol del usuario y carga el módulo de navegación correspondiente. Los componentes compartidos (mapa, QR, inventario) se reutilizan entre roles.
+
+### Monolito primero, microservicios después
+
+**Decisión:** El backend del MVP es una única aplicación Node.js (monolito modular), no microservicios.
+
+**Por qué para MVP:**
+- Los microservicios introducen complejidad operacional enorme: service discovery, comunicación entre servicios, trazabilidad distribuida, despliegues coordinados. Todo esto requiere tiempo de ingeniería que no está disponible en un TFM.
+- Un monolito bien estructurado en módulos (auth, geo, inventario, notificaciones) permite separarlo en microservicios en el futuro sin reescribir la lógica de negocio.
+- El propio roadmap contempla la migración a microservicios en Fase 2, lo que confirma que no deben estar en el MVP.
+- Para el volumen de usuarios de un piloto o demostración, un único proceso Node.js es más que suficiente.
+
+**Cuándo migrar a microservicios:** Cuando el sistema esté en producción real, con equipos independientes por dominio y cuellos de botella identificados por métricas.
+
+### Sin API Gateway externo en MVP
+
+**Decisión:** No se usa Kong ni AWS API Gateway en el MVP. Las responsabilidades del gateway (autenticación JWT, rate limiting, compresión) las asume middleware del propio servidor Node.js.
+
+**Por qué para MVP:**
+- Kong requiere su propio proceso, base de datos (PostgreSQL o Cassandra), configuración declarativa y conocimiento específico. Es un producto completo, no una librería.
+- Las mismas funcionalidades se consiguen con librerías estándar de Node.js: `express-rate-limit`, `helmet`, `compression`, `jsonwebtoken`. Son una línea de código cada una.
+- Añadir un API Gateway externo en MVP añade un punto de fallo sin aportar valor diferencial a escala pequeña.
+
+**Cuándo añadir API Gateway:** En Fase 2, cuando haya múltiples servicios que enrutar, o cuando el volumen de tráfico justifique capacidades avanzadas de balanceo y caching a nivel de gateway.
+
+### Sin broker de mensajes externo en MVP
+
+**Decisión:** No se usa RabbitMQ en el MVP. Si se necesitan colas de trabajo (procesamiento de imágenes, notificaciones asíncronas), se usa BullMQ, que funciona sobre Redis ya incluido en el stack.
+
+**Por qué para MVP:**
+- RabbitMQ es un broker independiente con su propio protocolo (AMQP), panel de administración y configuración de exchanges/queues. Añadirlo al stack del MVP añade complejidad de despliegue y operación sin justificación a esta escala.
+- BullMQ es una librería Node.js que usa Redis (que ya está en el stack para caché y sesiones) como backend de colas. No requiere infraestructura adicional.
+- Para el MVP, muchas operaciones que en producción serían asíncronas pueden hacerse síncronas o diferirse de forma más simple.
+
+**Cuándo añadir RabbitMQ:** En Fase 2/3, si la arquitectura de microservicios requiere comunicación entre servicios desacoplada mediante eventos.
+
+### Sin base de datos de logs separada en MVP
+
+**Decisión:** No se usa MongoDB para logs en el MVP. Los logs de aplicación van a la salida estándar (gestionados por Docker) y los logs de auditoría críticos (accesos, transacciones) van a PostgreSQL.
+
+**Por qué para MVP:**
+- MongoDB como base de datos exclusiva para logs implica mantener una tercera base de datos sin aportar funcionalidad de negocio.
+- PostgreSQL con una tabla de auditoría es perfectamente capaz de gestionar los logs necesarios para el MVP, con la ventaja de poder relacionarlos con los datos del negocio mediante JOINs.
+- Para agregación y análisis de logs a escala, herramientas como Loki o Elastic tienen sentido. Para MVP, no.
+
+**Cuándo añadir un sistema de logs dedicado:** En Fase 2, cuando el volumen de eventos y la necesidad de análisis en tiempo real lo justifiquen.
+
+### Sin ElasticSearch en MVP
+
+**Decisión:** No se usa ElasticSearch en el MVP. La búsqueda de texto completo se implementa con `tsvector` y `tsquery` de PostgreSQL.
+
+**Por qué para MVP:**
+- ElasticSearch es un servicio independiente con su propio proceso, configuración de índices, y modelo de datos diferente al relacional. Sincronizar datos entre PostgreSQL y ElasticSearch añade complejidad (doble escritura, consistencia eventual).
+- PostgreSQL tiene búsqueda de texto completo nativa con soporte para español, indexación GIN, y rendimiento más que suficiente para los volúmenes del MVP.
+- Las búsquedas del sistema (puestos de emergencia, productos, voluntarios) son sobre dominios pequeños y bien definidos, no sobre terabytes de texto libre.
+
+**Cuándo añadir ElasticSearch:** Si en producción aparecen búsquedas complejas (facetas, relevancia personalizada, autocompletado avanzado) que PostgreSQL FTS no cubra satisfactoriamente.
+
+### Docker Compose en lugar de Kubernetes para el MVP
+
+**Decisión:** El despliegue del MVP usa Docker Compose, no Kubernetes.
+
+**Por qué para MVP:**
+- Kubernetes es una plataforma de orquestación diseñada para gestionar decenas de servicios a escala, con autoescalado, self-healing, rolling updates, etc. Configurarlo correctamente (manifests YAML, Ingress, ConfigMaps, Secrets, PersistentVolumes, RBAC) requiere conocimiento especializado y días de trabajo.
+- Docker Compose permite levantar todo el stack (Node.js + PostgreSQL + Redis) con un único archivo de configuración y un solo comando. Es suficiente para desarrollo, demos y pilotos.
+- Para un TFM, la complejidad de Kubernetes no añade valor académico al trabajo en sí; es infraestructura que distrae del problema central.
+
+**Cuándo migrar a Kubernetes:** En Fase 2, si el sistema pasa a producción real con múltiples servicios y necesidad de alta disponibilidad horizontal.
+
+---
+
 ## Arquitectura del Sistema
 
-### Arquitectura General
+### Arquitectura MVP
+
+La arquitectura del MVP es intencionalmente simple: tres capas con responsabilidades claras.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    CAPA DE CLIENTE                       │
 ├─────────────────────────────────────────────────────────┤
-│  PWA (Progressive Web App)  │  Aplicación Móvil Nativa  │
-│  - React + TypeScript       │  - React Native / Flutter │
-│  - Service Workers          │  - SQLite local           │
-│  - IndexedDB                │  - Geolocalización nativa │
-│  - Cache API                │  - QR Scanner nativo      │
+│                PWA (Progressive Web App)                 │
+│  React 18 + TypeScript + Vite                           │
+│  Service Workers (Workbox)  │  IndexedDB (Dexie.js)     │
+│  Leaflet + OpenStreetMap    │  QR (html5-qrcode)        │
+│  Una sola app, navegación por rol (RBAC)                │
 └─────────────────────────────────────────────────────────┘
                             ↕
-            (Sincronización cuando hay conexión)
+                  HTTPS + WebSocket
                             ↕
 ┌─────────────────────────────────────────────────────────┐
-│                   CAPA DE GATEWAY                        │
+│               CAPA DE BACKEND (Monolito)                 │
 ├─────────────────────────────────────────────────────────┤
-│  API Gateway (Kong / AWS API Gateway)                   │
-│  - Rate limiting                                         │
-│  - Autenticación JWT                                     │
-│  - Compresión de respuestas                             │
-│  - Cache de consultas frecuentes                        │
-└─────────────────────────────────────────────────────────┘
-                            ↕
-┌─────────────────────────────────────────────────────────┐
-│                  CAPA DE SERVICIOS                       │
-├─────────────────────────────────────────────────────────┤
-│  Microservicios (Node.js / Go / Python)                 │
-│  ┌──────────────┐ ┌──────────────┐ ┌─────────────────┐ │
-│  │ Auth Service │ │ Geo Service  │ │ Inventory Svc   │ │
-│  └──────────────┘ └──────────────┘ └─────────────────┘ │
-│  ┌──────────────┐ ┌──────────────┐ ┌─────────────────┐ │
-│  │ User Service │ │ Route Service│ │ Notification Svc│ │
-│  └──────────────┘ └──────────────┘ └─────────────────┘ │
+│  Node.js + Express/Fastify + TypeScript                 │
+│  Módulos: Auth | Geo | Inventario | Notificaciones      │
+│  Prisma ORM  │  JWT + RBAC  │  BullMQ (colas opcionales)│
+│  Rate limiting + Helmet + Compresión (middleware local) │
 └─────────────────────────────────────────────────────────┘
                             ↕
 ┌─────────────────────────────────────────────────────────┐
 │                    CAPA DE DATOS                         │
 ├─────────────────────────────────────────────────────────┤
-│  PostgreSQL + PostGIS  │  Redis Cache  │  MongoDB       │
-│  (Datos estructurados) │  (Sesiones)   │  (Logs)        │
-│                        │               │                 │
-│  MinIO / S3            │  RabbitMQ     │  ElasticSearch │
-│  (Imágenes/Fotos)      │  (Cola msg)   │  (Búsquedas)   │
+│  PostgreSQL 15+ con PostGIS  │  Redis                   │
+│  (Datos + Auditoría + FTS)   │  (Sesiones + Caché       │
+│                              │   + Colas BullMQ)        │
+│  MinIO / S3                                             │
+│  (Imágenes: vehículos, productos, puestos)              │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -89,7 +167,7 @@ La aplicación **Catástrofe Logística** es una solución tecnológica diseñad
 ```
 1. Usuario interactúa con la app
    ↓
-2. Datos se guardan PRIMERO en almacenamiento local
+2. Datos se guardan PRIMERO en almacenamiento local (IndexedDB)
    ↓
 3. App intenta sincronizar con servidor
    ↓
@@ -97,161 +175,177 @@ La aplicación **Catástrofe Logística** es una solución tecnológica diseñad
    │
    ├─ SÍ → Sincroniza y marca como enviado
    │
-   └─ NO → Queda en cola de pendientes
+   └─ NO → Queda en cola de pendientes persistente
               ↓
-              Se reintenta periódicamente
+              Se reintenta al detectar reconexión (evento 'online')
               ↓
-              Cuando hay conexión: sincroniza
+              Cuando hay conexión: sincroniza con resolución de conflictos
 ```
 
 ---
 
-## Stack Tecnológico Recomendado
+## Stack Tecnológico del MVP
 
-### Opción 1: PWA (Progressive Web App) - RECOMENDADO PARA MVP
+### Frontend (PWA)
 
-**Ventajas:**
-- ✅ Un solo código para web y móvil
-- ✅ No requiere aprobación de tiendas de apps
-- ✅ Actualizaciones instantáneas
-- ✅ Menor costo de desarrollo
-- ✅ Funciona offline con Service Workers
-
-**Stack:**
-
-**Frontend:**
+**Núcleo:**
 - React 18+ con TypeScript
-- Vite (build tool rápido)
-- TailwindCSS (estilos)
-- React Router (navegación)
-- Zustand (gestión de estado ligera)
-- React Query (gestión de servidor state)
+- Vite (build tool rápido, HMR eficiente)
+- TailwindCSS (estilos utilitarios, bundle pequeño)
+- React Router v6 (navegación con rutas protegidas por rol)
+- Zustand (estado global ligero, sin boilerplate de Redux)
+- React Query / TanStack Query (caché de servidor, sincronización de estado remoto)
 
-**PWA & Offline:**
-- Workbox (Service Workers)
-- IndexedDB vía Dexie.js (almacenamiento local)
-- LocalForage (fallback para almacenamiento)
+**PWA y Offline:**
+- Workbox (abstracción sobre Service Workers; estrategias Network-First y Cache-First preconstruidas)
+- Dexie.js (wrapper ergonómico sobre IndexedDB; soporta transacciones, índices, migraciones de schema)
+- LocalForage (fallback de almacenamiento para entornos con IndexedDB limitado)
 
-**Geolocalización:**
+**Mapas y Geolocalización:**
+- Leaflet (librería de mapas ligera, ~40KB)
+- OpenStreetMap (tiles gratuitos, descargables para uso offline)
 - Geolocation API nativa del navegador
-- Leaflet o Mapbox GL (mapas)
-- OpenStreetMap (mapas sin costo)
 
 **QR:**
-- html5-qrcode (scanner)
-- qrcode.react (generación)
+- html5-qrcode (scanner usando cámara)
+- qrcode.react (generación de QR)
 
 **Comunicación:**
-- Axios (HTTP cliente)
-- Socket.io (WebSockets para actualizaciones en tiempo real)
+- Axios (cliente HTTP con interceptores para retry y manejo de errores)
+- Socket.io-client (WebSockets para actualizaciones en tiempo real cuando hay conexión)
 
-### Opción 2: Aplicación Móvil Nativa
+### Backend (Monolito Node.js)
 
-**Ventajas:**
-- ✅ Mejor rendimiento
-- ✅ Acceso completo a APIs nativas
-- ✅ Mejor integración con GPS
-- ✅ Mayor control sobre almacenamiento
+**Framework y lenguaje:**
+- Node.js 20 LTS + TypeScript
+- Express.js o Fastify (Fastify preferido por su rendimiento y tipado nativo)
+- Prisma ORM (migraciones, type-safety, soporte PostGIS vía extensión)
 
-**Stack:**
+**Validación y seguridad:**
+- Zod (validación de schemas con inferencia de tipos TypeScript)
+- jsonwebtoken (emisión y verificación de JWT)
+- bcrypt o argon2 (hashing de contraseñas)
+- helmet (cabeceras de seguridad HTTP)
+- express-rate-limit (rate limiting por IP, sin infraestructura externa)
+- compression (compresión gzip/brotli de respuestas)
 
-**React Native:**
-- React Native 0.72+
-- TypeScript
-- React Navigation
-- Redux Toolkit o Zustand
-- React Native Maps
-- React Native Camera (para QR y fotos)
-- AsyncStorage o SQLite (almacenamiento)
-- NetInfo (detectar conectividad)
-
-**Flutter (alternativa):**
-- Flutter 3.x
-- Dart
-- Hive o SQLite (almacenamiento)
-- google_maps_flutter
-- qr_code_scanner
-
-### Backend
-
-**Opción A - Node.js (Recomendado para equipos JavaScript):**
-- Express.js o Fastify
-- TypeScript
-- Prisma ORM
-- Joi o Zod (validación)
-- JWT para autenticación
-- Bull (colas de trabajo)
-
-**Opción B - Go (Recomendado para alto rendimiento):**
-- Gin o Fiber framework
-- GORM (ORM)
-- JWT-go
-- Mejor rendimiento y menor consumo de recursos
-
-**Opción C - Python (Recomendado para IA/ML futuro):**
-- FastAPI
-- SQLAlchemy
-- Celery (tareas asíncronas)
-- Útil si se planea añadir predicciones con ML
+**Colas (opcional en MVP):**
+- BullMQ (colas de trabajo sobre Redis; para procesamiento asíncrono de imágenes y notificaciones)
 
 ### Base de Datos
 
 **Principal:**
 - PostgreSQL 15+ con extensión PostGIS
-  * Datos relacionales
-  * Capacidades geoespaciales (búsquedas por proximidad)
+  * Datos relacionales de negocio
+  * Capacidades geoespaciales (búsquedas por proximidad con PostGIS)
   * JSONB para datos flexibles
-  * Replicación y backup
+  * `tsvector` / `tsquery` para búsqueda de texto completo en español
+  * Tabla de auditoría para logs críticos (accesos, transacciones de inventario)
 
-**Cache:**
+**Caché y sesiones:**
 - Redis
-  * Sesiones de usuario
-  * Cache de consultas frecuentes
-  * Rate limiting
-  * Lista de puestos activos
+  * Sesiones y refresh tokens
+  * Caché de consultas frecuentes (puestos activos, inventarios)
+  * Rate limiting distribuido
+  * Backend de colas BullMQ (si se usa)
 
-**Almacenamiento de Objetos:**
+**Almacenamiento de objetos:**
 - MinIO (self-hosted) o AWS S3
-  * Fotos de vehículos
+  * Fotos de vehículos de voluntarios
   * Fotos de productos
-  * Imágenes de puestos
+  * Imágenes de puestos de emergencia
 
 ---
 
 ## Diseño Offline-First
 
-### 1. Service Workers (PWA)
+### 1. Service Workers con Workbox
 
-Se implementarán Service Workers para gestionar la caché y las peticiones de red. Esto permitirá:
-- **Pre-caching**: Descarga inicial de la interfaz de usuario (HTML, CSS, JS) para carga instantánea.
-- **Estrategias de Caché**: 
-    - *Network First*: Para datos dinámicos críticos (intenta obtener lo más reciente, si falla usa caché).
-    - *Cache First*: Para recursos estáticos e imágenes.
-    - *Background Sync*: Para enviar formularios cuando recupere la conexión.
+Se implementarán Service Workers gestionados con Workbox para caché y peticiones de red:
 
-### 2. Almacenamiento Local (IndexedDB)
+- **Pre-caching**: Descarga inicial del shell de la aplicación (HTML, CSS, JS) para carga instantánea en visitas posteriores.
+- **Estrategia Network-First**: Para datos dinámicos críticos (inventarios, alertas). Intenta obtener datos frescos del servidor; si falla, sirve la última versión cacheada.
+- **Estrategia Cache-First**: Para recursos estáticos e imágenes de interfaz.
+- **Background Sync**: Para enviar acciones realizadas offline cuando se recupere la conexión. *Nota: tiene limitaciones en iOS/Safari (ver sección de limitaciones).*
 
-Se utilizará **IndexedDB** como base de datos completa en el navegador del cliente. No se dependerá de `localStorage` por sus límites de tamaño. 
+### 2. Almacenamiento Local con IndexedDB (Dexie.js)
+
+IndexedDB actúa como base de datos completa en el cliente. No se usa `localStorage` por su límite de ~5MB y su API síncrona.
 
 **Esquema de datos local:**
-- **Catástrofes y Alertas**: Datos de solo lectura sincronizados.
-- **Inventarios**: Copia local de productos disponibles y necesarios.
-- **Cola de Sincronización**: Almacena todas las acciones (POST/PUT/DELETE) realizadas mientras se estaba offline.
-- **Mapas**: Teselas (tiles) de mapas guardadas para visualización sin conexión.
+- **Catástrofes y Alertas**: Solo lectura, sincronizadas al arranque y periódicamente.
+- **Inventarios**: Copia local de productos disponibles y necesarios en puestos cercanos.
+- **Cola de Sincronización**: Almacena todas las acciones (creación de donaciones, escaneos QR, reportes) realizadas offline, pendientes de envío.
+- **Tiles de Mapa**: Teselas descargadas de la zona afectada para visualización sin conexión.
+
+**Gestión de cuota de almacenamiento:**
+
+Los navegadores imponen límites al almacenamiento de IndexedDB (típicamente entre 50MB y el 60% del espacio libre en disco, dependiendo del navegador y dispositivo). Para los tiles de mapa, que pueden ocupar varios cientos de MB, se debe:
+
+1. Consultar la cuota disponible antes de descargar: `navigator.storage.estimate()`
+2. Mostrar al usuario cuánto espacio ocupará la descarga y cuánto hay disponible.
+3. Implementar una estrategia de evicción (eliminar tiles de zonas antiguas) si el almacenamiento se acerca al límite.
+4. Manejar el error `QuotaExceededError` de IndexedDB con degradación controlada (informar al usuario, no crashear).
 
 ### 3. Sincronización Inteligente
 
-El motor de sincronización gestionará el intercambio de datos entre el cliente (offline) y el servidor:
-
-1.  **Priorización**: Sincroniza datos críticos (alertas de vida o muerte) antes que datos secundarios (fotos de inventario).
-2.  **Cola Persistente**: Si la app se cierra antes de sincronizar, los datos permanecen guardados en disco hasta la próxima apertura.
-3.  **Resolución de Conflictos**: Reglas claras (e.g., "última escritura gana" o "fusión inteligente") para datos modificados en múltiples dispositivos.
+1. **Priorización**: Alertas críticas y cambios de inventario se sincronizan antes que fotos de alta resolución.
+2. **Cola Persistente**: Si la app se cierra antes de sincronizar, los datos permanecen en IndexedDB hasta la próxima apertura.
+3. **Resolución de Conflictos**: Reglas claras por tipo de dato:
+   - Inventario: fusión por campo con timestamp (el valor más reciente por campo gana)
+   - Alertas: append-only (no hay conflicto posible)
+   - Rutas de voluntarios: merge por segmento temporal
 
 ### 4. Detección de Conectividad
 
-El sistema no solo detectará estados binarios (Online/Offline), sino también la **calidad de la red**:
-- **Modo Ahorro de Datos**: Si la conexión es lenta (2G) o intermitente, se evitará la descarga automática de imágenes y videos.
-- **Indicadores Visuales**: Informar al usuario claramente si está trabajando con datos en tiempo real o con una versión en caché.
+El sistema distingue entre estados de conectividad, no solo online/offline:
+
+- **Modo Normal**: API REST + WebSocket activos.
+- **Modo Ahorro de Datos**: Conexión lenta detectada (via Network Information API o latencia medida). Se desactiva la descarga automática de imágenes y actualizaciones en tiempo real.
+- **Modo Offline**: Sin conexión. Solo operación local con cola de sincronización pendiente.
+- **Indicador Visual**: Banner persistente informando al usuario si trabaja con datos en tiempo real o con caché local.
+
+---
+
+## Limitaciones del PWA y Mitigaciones
+
+Esta sección documenta las limitaciones técnicas del enfoque PWA, especialmente en iOS/Safari, que deben conocerse y gestionarse.
+
+### Limitaciones en iOS / Safari
+
+**1. Background Sync no disponible en Safari**
+
+La API de Background Sync (para enviar datos en segundo plano cuando se recupera la conexión) no está soportada en Safari/iOS a la fecha del desarrollo de este MVP.
+
+*Mitigación:* Se implementa un mecanismo propio: cuando la app detecta el evento `online` (al recuperar conexión mientras la app está abierta), lanza automáticamente la sincronización de la cola pendiente. Para el caso de app cerrada, la sincronización ocurre al reabrir la app.
+
+**2. Web Push Notifications limitadas en iOS**
+
+Las notificaciones push web solo están disponibles en iOS 16.4+ y únicamente si el usuario ha instalado la PWA en la pantalla de inicio (no funciona desde Safari sin instalar).
+
+*Mitigación:* El flujo de notificaciones se diseña para ser funcional sin push: el estado relevante se muestra al abrir la app (pull, no push). Las notificaciones push son una mejora progresiva, no una dependencia.
+
+**3. Instalación de PWA en iOS requiere acción manual**
+
+En iOS, el usuario debe usar manualmente "Añadir a pantalla de inicio" desde el menú compartir de Safari. No existe el banner automático de instalación que sí aparece en Android/Chrome.
+
+*Mitigación:* La app detecta si está ejecutándose en Safari móvil fuera de modo standalone y muestra un banner de instrucciones de instalación específico para iOS.
+
+**4. Cuota de almacenamiento más restrictiva en Safari**
+
+Safari puede limitar el almacenamiento de origen a 1GB en algunos contextos, y puede purgar el almacenamiento si el dispositivo tiene poco espacio libre.
+
+*Mitigación:* Ver gestión de cuota de almacenamiento en la sección Offline-First.
+
+**5. Service Workers en Safari tienen restricciones de ciclo de vida**
+
+Safari puede terminar Service Workers más agresivamente que Chrome, lo que puede interrumpir sincronizaciones largas.
+
+*Mitigación:* Las operaciones de sincronización se dividen en transacciones pequeñas y atómicas, de forma que una interrupción no deje datos en estado inconsistente.
+
+### Cuándo considerar app nativa
+
+Si en el piloto se detecta que las limitaciones de iOS afectan significativamente a usuarios en situación de emergencia, se evaluará una versión React Native que comparte la mayor parte de la lógica de negocio con la PWA.
 
 ---
 
@@ -259,60 +353,119 @@ El sistema no solo detectará estados binarios (Online/Offline), sino también l
 
 ### 1. Geolocalización sin Conexión
 
-- **Rastreo Continuo**: Uso de la API de geolocalización del dispositivo para guardar la ruta del voluntario localmente.
-- **Cálculo de Distancias Offline**: Funciones matemáticas ("Fórmula del Haversine") integradas en el cliente para calcular distancias a puntos de ayuda sin consultar al servidor.
-- **Historial de Ruta**: Se guarda el trayecto para validación posterior o análisis de cobertura.
+- **Rastreo Continuo**: API de Geolocalización del dispositivo guardando ruta localmente en IndexedDB.
+- **Cálculo de Distancias Offline**: Fórmula de Haversine implementada en cliente para calcular distancias a puestos sin consultar al servidor.
+- **Historial de Ruta**: Trayecto guardado para validación posterior.
 
 ### 2. Sistema QR Offline
 
-- **Generación Local**: Los códigos QR se generan mediante librerías JavaScript en el dispositivo, sin necesidad de llamar a una API.
-- **Firma Criptográfica**: Cada QR incluye una firma digital generada localmente para evitar falsificaciones, verificable por otros dispositivos con la clave pública compartida (o simétrica rotativa).
-- **Validación Asíncrona**: El escaneo se valida contra reglas lógicas locales y se marca para sincronización posterior.
+- **Generación Local**: QR generados con `qrcode.react` directamente en el dispositivo, sin llamar a ninguna API.
+- **Firma Criptográfica**: Cada QR incluye una firma digital generada localmente para evitar falsificaciones, verificable por otros dispositivos con la clave pública compartida.
+- **Validación Asíncrona**: El escaneo se valida contra reglas locales y se marca para sincronización posterior con el servidor.
 
 ### 3. Mapas Offline
 
-- **Descarga de Zonas**: Permite al usuario designar un área (e.g., "Zona de Desastre Valencia") y descargar todos los mapas de esa región.
-- **Renderizado Vectorial**: Uso de mapas vectoriales o teselas ligeras almacenadas en IndexedDB para navegación fluida sin uso de datos.
+- **Descarga de Zonas**: El usuario selecciona el área afectada y descarga los tiles de OpenStreetMap para esa región.
+- **Almacenamiento en IndexedDB**: Tiles guardados localmente con gestión de cuota (ver sección Offline-First).
+- **Renderizado con Leaflet**: Navegación fluida sin datos usando tiles locales.
 
 ### 4. Fallbacks de Comunicación
 
-Jerarquía de intentos de comunicación ante el fallo de internet:
-1.  **API REST/WebSocket** (Normal)
-2.  **SMS Gateway**: Envío de coordenadas y estados críticos vía mensajes de texto codificados.
-3.  **Redes Mesh / Bluetooth**: (Futuro) Comunicación dispositivo a dispositivo para pasar mensajes en cadena hasta un nodo con conexión.
+Jerarquía de comunicación según disponibilidad de infraestructura:
+
+1. **API REST + WebSocket** — Modo normal
+2. **Solo API REST (sin WebSocket)** — Conexión degradada, sin tiempo real
+3. **Modo Offline completo** — Solo local, cola de sincronización pendiente
+4. **SMS Gateway** *(Fase 3)* — Envío de coordenadas y estados críticos por SMS codificados
+5. **Mesh / Bluetooth P2P** *(Fase 3)* — Comunicación dispositivo a dispositivo
 
 ### 5. Compresión de Imágenes
 
-- **Pre-procesamiento en Cliente**: Las fotos se redimensionan y comprimen en el navegador (usando Canvas API o librerías específicas) antes de intentar subirlas.
-- **Subida Diferida**: Las imágenes de alta resolución solo se suben cuando hay conexión WiFi estable, enviando primero miniaturas de baja calidad si es urgente.
+- **Pre-procesamiento en Cliente**: Fotos redimensionadas y comprimidas en el navegador usando Canvas API antes de intentar subirlas.
+- **Subida Diferida**: Imágenes en alta resolución solo se suben con WiFi estable; se envían miniaturas primero si es urgente.
+
+---
+
+## Estrategia de Testing
+
+El testing es parte integral del MVP, no una fase separada. Sin una estrategia de testing documentada y ejecutada, no es posible validar que el comportamiento offline funciona correctamente ni demostrar calidad en el TFM.
+
+### Niveles de Testing
+
+**Tests Unitarios — Vitest**
+
+Cobertura de la lógica de negocio pura:
+- Fórmula de Haversine (cálculo de distancias)
+- Algoritmo de priorización de puestos de distribución
+- Resolución de conflictos de sincronización
+- Generación y validación de QR
+- Transformaciones de datos (serialización/deserialización para IndexedDB)
+
+**Tests de Integración — Vitest + Testing Library**
+
+Cobertura de componentes React con sus interacciones:
+- Flujos de formulario (registro de voluntario, declaración de productos)
+- Comportamiento de componentes según rol (RBAC)
+- Integración con Dexie.js (lectura/escritura en IndexedDB)
+
+**Tests End-to-End — Playwright**
+
+Cobertura de flujos completos críticos:
+- Flujo offline: realizar una donación sin conexión → reconectar → verificar sincronización
+- Flujo de escaneo QR en un puesto de emergencia
+- Flujo ciudadano: buscar puestos cercanos con GPS desactivado
+- Flujo coordinador: crear catástrofe y asignar puestos
+
+**Testing del Comportamiento Offline**
+
+El testing offline requiere técnicas específicas:
+- Playwright puede interceptar y bloquear peticiones de red para simular modo offline.
+- Los Service Workers se pueden testear usando `workbox-window` con fakes de red.
+- Se crean fixtures de IndexedDB con datos precargados para tests reproducibles.
+
+### Cobertura Objetivo para MVP
+
+| Capa | Objetivo |
+|---|---|
+| Lógica de negocio pura | >80% |
+| Componentes críticos | >70% |
+| Flujos E2E principales | 5 flujos cubiertos |
+| Comportamiento offline | Al menos sincronización y QR |
 
 ---
 
 ## Infraestructura y Despliegue
 
-### 1. Arquitectura Cloud
+### MVP: Docker Compose
 
-El despliegue se basará en contenedores para garantizar consistencia:
-- **API Gateway**: Punto de entrada único que maneja rate-limiting y autenticación.
-- **Microservicios**: Servicios independientes para Auth, Geo, Inventario y Notificaciones.
-- **Colas de Mensajes**: RabbitMQ o Redis para desacoplar procesos pesados (procesamiento de imágenes, notificaciones masivas).
+El MVP se despliega con Docker Compose. Un único archivo `docker-compose.yml` levanta todos los servicios necesarios:
 
-### 2. Kubernetes (Producción)
+```
+- app (Node.js backend)
+- postgres (PostgreSQL + PostGIS)
+- redis
+- minio (almacenamiento de objetos, self-hosted)
+```
 
-Para alta disponibilidad y escalado automático:
-- **Autoscaling Horizontal (HPA)**: Aumenta automáticamente el número de réplicas de la API cuando sube la carga de CPU/Memoria durante una crisis.
-- **Self-healing**: Reinicia contenedores fallidos automáticamente.
-- **Despliegues Rollout**: Actualizaciones sin tiempo de inactividad.
+**Ventajas para el TFM:**
+- Un solo comando para levantar todo el entorno: `docker compose up`
+- Reproducible en cualquier máquina (demos, evaluación del tribunal)
+- Configuración completa en ~50 líneas de YAML
+- Sin conocimiento especializado de Kubernetes
 
-### 3. CDN y Distribución
+### Distribución del Frontend PWA
 
-- **Cloudflare / CDN**: Caché agresiva de todo el contenido estático y del frontend PWA más cerca de los usuarios.
-- **Reglas de Página**: Configuración para servir la aplicación incluso si el servidor de origen tiene problemas temporales ("Always Online").
+El frontend compilado (HTML/CSS/JS estáticos) se sirve:
+- En desarrollo: servidor Vite con HMR
+- En producción MVP: servido por el propio proceso Node.js (Express sirve la carpeta `dist`) o por Nginx en el mismo Compose
 
-### 4. Backup y Recuperación
+### CDN (Opcional en MVP)
 
-- **Backups Automatizados**: Volcados periódicos de PostgreSQL a almacenamiento en frío (S3/Glacier).
-- **Plan de Recuperación ante Desastres (DRP)**: Scripts probados para restaurar toda la infraestructura en una región de nube diferente en menos de 1 hora.
+Cloudflare en plan gratuito puede ponerse delante del servidor para:
+- Caché agresiva de los assets estáticos del PWA
+- HTTPS automático
+- Protección DDoS básica
+- "Always Online": sirve la app incluso si el servidor tiene problemas temporales
 
 ---
 
@@ -320,27 +473,27 @@ Para alta disponibilidad y escalado automático:
 
 ### 1. Autenticación y Autorización
 
-- **JWT (JSON Web Tokens)**: Tokens firmados para mantener la sesión sin estado en el servidor.
-- **Refresh Tokens**: Manejo seguro de sesiones largas sin comprometer la seguridad.
-- **RBAC (Role-Based Access Control)**: Control estricto de qué puede hacer cada usuario (Voluntario, Coordinador, Admin).
+- **JWT (JSON Web Tokens)**: Tokens firmados para sesiones sin estado en el servidor.
+- **Refresh Tokens**: Tokens de larga duración almacenados en cookies `HttpOnly` + `Secure`. El access token tiene vida corta (15 min).
+- **RBAC (Role-Based Access Control)**: Middleware que verifica el rol del usuario antes de cada endpoint protegido.
 
 ### 2. Encriptación de Datos
 
-- **En Tránsito**: TLS 1.3 obligatorio para todas las comunicaciones.
-- **En Reposo**: Bases de datos encriptadas en disco.
-- **Datos Sensibles**: Hashing de contraseñas (bcrypt/argon2) y encriptación de campos PII (Información Personal Identificable) antes de guardar.
+- **En Tránsito**: TLS 1.3 obligatorio.
+- **En Reposo**: Bases de datos con cifrado a nivel de disco.
+- **Contraseñas**: Hashing con bcrypt (factor de coste ≥12) o argon2id.
 
 ### 3. Protección RGPD/LOPD
 
-- **Consentimiento Granular**: Registro explícito de qué datos acepta compartir el usuario.
-- **Derecho al Olvido / Anonimización**: Herramientas automáticas para eliminar o disociar datos personales de los registros históricos tras un periodo de tiempo.
-- **Auditoría**: Logs inmutables de quién accedió a qué dato.
+- **Consentimiento Explícito**: Registro de qué datos acepta compartir el usuario en el momento del registro.
+- **Derecho al Olvido**: Endpoint de anonimización que desvincula datos personales de registros históricos.
+- **Auditoría**: Tabla de auditoría en PostgreSQL con logs inmutables de accesos y modificaciones de datos sensibles.
 
-### 4. Rate Limiting y Protección DDoS
+### 4. Rate Limiting y Protección
 
-- **Limitación por IP**: Restricción de número de peticiones por minuto para evitar abusos.
-- **Protección de Login**: Bloqueo temporal tras múltiples intentos fallidos para prevenir fuerza bruta.
-- **WAF (Web Application Firewall)**: Filtrado de tráfico malicioso antes de que llegue a los servicios.
+- **Limitación por IP**: `express-rate-limit` con ventana deslizante. Sin infraestructura externa.
+- **Protección de Login**: Bloqueo temporal progresivo tras múltiples intentos fallidos (implementado en lógica de aplicación + Redis para contador distribuido).
+- **Cabeceras de Seguridad**: `helmet` configura automáticamente Content-Security-Policy, HSTS, X-Frame-Options, etc.
 
 ---
 
@@ -349,149 +502,170 @@ Para alta disponibilidad y escalado automático:
 ### Fase 1: MVP (3-4 meses)
 
 **Mes 1: Fundamentos**
-- [ ] Configuración de repositorio y CI/CD
-- [ ] Diseño de base de datos
-- [ ] API básica de autenticación
-- [ ] PWA básica con Service Workers
-- [ ] Almacenamiento local (IndexedDB)
-- [ ] Diseño de UI/UX
+- [ ] Configuración de repositorio y CI/CD básico (GitHub Actions)
+- [ ] Diseño de base de datos PostgreSQL + PostGIS
+- [ ] API básica de autenticación (registro, login, JWT, refresh tokens)
+- [ ] PWA shell con Service Workers (Workbox) y estructura de rutas por rol
+- [ ] Almacenamiento local (IndexedDB con Dexie.js, schema inicial)
+- [ ] Diseño de UI/UX (al menos wireframes de flujos principales)
 
 **Mes 2: Funcionalidades Core**
-- [ ] Registro de voluntarios
-- [ ] Lista de catástrofes activas
-- [ ] Sistema de productos y necesidades
-- [ ] Geolocalización básica
+- [ ] Registro y perfil de voluntarios (transporte y laboral)
+- [ ] Lista de catástrofes activas y puestos de emergencia
+- [ ] Sistema de productos: inventario disponible y necesidades
+- [ ] Geolocalización básica y cálculo de distancias (Haversine)
 - [ ] Generación de QR
 - [ ] Escaneo de QR
 
 **Mes 3: Características Offline**
-- [ ] Sincronización offline
-- [ ] Cache de datos críticos
-- [ ] Compresión de imágenes
-- [ ] Mapas offline básicos
-- [ ] Cola de sincronización
+- [ ] Cola de sincronización persistente en IndexedDB
+- [ ] Resolución de conflictos de inventario
+- [ ] Detección de conectividad y modos (normal / ahorro / offline)
+- [ ] Compresión de imágenes en cliente (Canvas API)
+- [ ] Tiles de mapa offline (Leaflet + descarga de zona)
+- [ ] Gestión de cuota de almacenamiento
+- [ ] Banner de instalación de PWA para iOS
 
 **Mes 4: Testing y Lanzamiento**
-- [ ] Testing integral
-- [ ] Optimización de performance
-- [ ] Documentación
-- [ ] Deploy en producción
-- [ ] Piloto con usuarios reales
+- [ ] Tests unitarios (Vitest) — lógica de negocio crítica
+- [ ] Tests E2E (Playwright) — 5 flujos principales
+- [ ] Tests de comportamiento offline
+- [ ] Optimización de rendimiento (Lighthouse PWA score)
+- [ ] Documentación de API (OpenAPI/Swagger)
+- [ ] Deploy en producción (Docker Compose en VPS)
+- [ ] Piloto con usuarios reales en escenario simulado
 
 ### Fase 2: Mejoras (2-3 meses)
 
 **Mes 5: Optimización**
-- [ ] Algoritmo de priorización de puntos
-- [ ] Rutas optimizadas
-- [ ] Notificaciones push
-- [ ] Mejoras de UI/UX basadas en feedback
-- [ ] Panel de administración
+- [ ] Algoritmo de priorización de puntos de distribución
+- [ ] Rutas optimizadas evitando calles cortadas
+- [ ] Notificaciones push (Android/Chrome y iOS 16.4+)
+- [ ] Mejoras de UI/UX basadas en feedback del piloto
+- [ ] Panel de administración para coordinadores
+- [ ] API Gateway (Kong o similar) si el tráfico lo justifica
 
 **Mes 6: Escalabilidad**
-- [ ] Microservicios
-- [ ] Caché distribuido
-- [ ] CDN para assets
+- [ ] Extracción de microservicios (Auth y Geo como primer candidatos)
+- [ ] Caché distribuido con Redis Cluster
+- [ ] CDN para assets estáticos
 - [ ] Balanceo de carga
-- [ ] Monitoreo y alertas
+- [ ] Monitoreo y alertas (Prometheus + Grafana)
+- [ ] Migración de Docker Compose a Kubernetes
 
 **Mes 7: Funcionalidades Avanzadas**
-- [ ] Chat entre voluntarios
-- [ ] Reportes de calles cortadas
-- [ ] Integración con redes sociales
-- [ ] Gamificación básica
-- [ ] Sistema de reputación
+- [ ] Chat entre voluntarios y coordinadores
+- [ ] Reportes de calles cortadas integrados en el mapa
+- [ ] Sistema de reputación y gamificación básica
+- [ ] Logs centralizados (Loki o ElasticSearch)
 
 ### Fase 3: Avanzadas (3-4 meses)
 
 **Mes 8-9: IA y Predicciones**
 - [ ] Predicción de necesidades con ML
-- [ ] Optimización multi-voluntario
-- [ ] Análisis de patrones
-- [ ] Recomendaciones inteligentes
+- [ ] Optimización multi-voluntario (asignación óptima)
+- [ ] Análisis de patrones de demanda
 
-**Mes 10-11: Resilencia Extrema**
-- [ ] Mesh networking
-- [ ] Fallback a SMS
-- [ ] Comunicación por Bluetooth
-- [ ] Sincronización P2P
-- [ ] Modo supervivencia extrema
+**Mes 10-11: Resiliencia Extrema**
+- [ ] Fallback a SMS Gateway (Twilio)
+- [ ] Mesh networking / Bluetooth P2P
+- [ ] Sincronización P2P entre dispositivos cercanos
+- [ ] Modo supervivencia extrema (sin ningún servidor)
+
+---
+
+## Arquitectura Objetivo (Post-MVP)
+
+Esta sección documenta la arquitectura a la que evolucionará el sistema cuando esté en producción real, con equipos y volúmenes que lo justifiquen. No es parte del MVP.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    CAPA DE CLIENTE                       │
+├─────────────────────────────────────────────────────────┤
+│  PWA (React)  │  App Nativa (React Native, si necesario)│
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│         API GATEWAY (Kong / AWS API Gateway)            │
+│  Rate limiting │ Auth JWT │ Compresión │ Enrutamiento   │
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│                  MICROSERVICIOS                          │
+│  Auth  │  Geo  │  Inventario  │  Notificaciones         │
+│  Rutas │  Usuarios │  Reportes │  Analytics             │
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│                    CAPA DE DATOS                         │
+├─────────────────────────────────────────────────────────┤
+│  PostgreSQL + PostGIS  │  Redis Cluster  │  RabbitMQ    │
+│  MinIO / S3            │  MongoDB (logs) │  ElasticSearch│
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│              ORQUESTACIÓN (Kubernetes)                   │
+│  HPA (autoescalado) │ Self-healing │ Rolling updates    │
+│  CDN (Cloudflare)   │ DRP en región secundaria          │
+└─────────────────────────────────────────────────────────┘
+```
+
+La diferencia entre MVP y arquitectura objetivo no es una elección de calidad, sino de escala y equipo. El MVP está diseñado para que la migración incremental a esta arquitectura sea posible sin reescrituras.
 
 ---
 
 ## Consideraciones de Costos
 
-### Infraestructura (Estimación mensual)
+### Infraestructura MVP (Estimación mensual)
 
-**Opción 1: Cloud Completo (AWS/GCP/Azure)**
-- Servidores (3 instancias t3.medium): ~$150/mes
-- Base de datos (RDS PostgreSQL): ~$100/mes
-- CDN (CloudFront): ~$50/mes
-- Almacenamiento S3: ~$20/mes
-- Cache (ElastiCache Redis): ~$50/mes
-- **Total: ~$370/mes**
+**Opción recomendada: Híbrido (VPS + Cloudflare)**
+- VPS Hetzner/DigitalOcean (2 vCPU, 4GB RAM): ~$20-40/mes
+- Cloudflare CDN: Gratis (plan gratuito)
+- Backups S3 o Hetzner Storage Box: ~$5-10/mes
+- **Total: ~$30-50/mes**
 
-**Opción 2: Híbrido (VPS + Cloud)**
-- VPS Hetzner/DigitalOcean: ~$40/mes
-- CloudFlare CDN: Gratis (plan gratuito)
-- Backups S3: ~$10/mes
-- **Total: ~$50/mes**
-
-**Opción 3: Autohosted (Mínimo)**
-- Servidor dedicado: ~$30/mes
-- Domain + SSL: ~$15/año
-- Backups: ~$5/mes
+**Opción mínima: VPS self-contained**
+- Servidor dedicado con Docker Compose: ~$30/mes
+- Domain + SSL (Let's Encrypt gratuito): ~$15/año
 - **Total: ~$36/mes**
 
-### Desarrollo
-
-**Equipo Mínimo:**
-- 1 Desarrollador Full-stack: Desarrollo completo
-- 1 Diseñador UI/UX: Diseño de interfaz
-- 1 DevOps (tiempo parcial): Infraestructura
-
-**Equipo Ideal:**
-- 2 Desarrolladores Frontend
-- 2 Desarrolladores Backend
-- 1 Desarrollador Móvil
-- 1 Ingeniero DevOps
-- 1 Diseñador UI/UX
-- 1 Ingeniero QA
-- 1 Product Manager
+**Opción full cloud (innecesaria para MVP):**
+- AWS/GCP con RDS, ElastiCache, ECS: ~$370/mes
+- Justificada solo cuando el sistema esté en producción real con miles de usuarios concurrentes.
 
 ### Servicios Externos
 
-- Twilio (SMS): Pay-as-you-go (~$0.01/SMS)
+- Twilio (SMS, Fase 3): Pay-as-you-go (~$0.01/SMS)
 - SendGrid (Emails): Gratis hasta 100/día
-- Maps: OpenStreetMap (gratis) o Mapbox ($0 - $5/mes)
-- Storage: MinIO (self-hosted) o S3 (~$0.02/GB)
+- OpenStreetMap: Gratuito (sin límite de tiles para uso razonable; self-hosted con tile server para producción)
+- Mapbox: $0-5/mes (alternativa comercial si OSM no cubre necesidades)
+- MinIO: Self-hosted en el mismo VPS (sin coste adicional para MVP)
 
 ---
 
 ## Conclusión
 
-La implementación de **Catástrofe Logística** requiere un enfoque **offline-first** que priorice:
+La implementación del MVP de **Catástrofe Logística** está construida sobre un stack deliberadamente simple y probado, que prioriza la funcionalidad offline-first sobre la complejidad arquitectural.
 
-1. **Funcionalidad sin conexión** como caso principal
-2. **Sincronización inteligente** cuando hay conectividad
-3. **Compresión y optimización** de datos
-4. **Múltiples fallbacks** de comunicación
-5. **Seguridad y privacidad** como pilares fundamentales
+### Stack MVP Definitivo
 
-### Tecnologías Clave Recomendadas
+✅ **PWA con React + TypeScript + Vite** — frontend moderno, una sola app con roles
+✅ **Workbox + Dexie.js (IndexedDB)** — offline-first real con gestión de cuota
+✅ **Node.js + Express/Fastify + Prisma** — monolito modular, sin microservicios
+✅ **PostgreSQL + PostGIS** — datos + geoespacial + FTS (sin ElasticSearch)
+✅ **Redis** — sesiones + caché + colas BullMQ
+✅ **Docker Compose** — despliegue simple y reproducible
+✅ **OpenStreetMap + Leaflet** — mapas sin costes
+✅ **Vitest + Playwright** — testing unitario y E2E incluyendo comportamiento offline
 
-✅ **PWA con React + TypeScript** para el frontend
-✅ **Service Workers + IndexedDB** para funcionalidad offline
-✅ **Node.js + PostgreSQL + PostGIS** para el backend
-✅ **Redis** para caché
-✅ **Docker + Kubernetes** para despliegue escalable
-✅ **OpenStreetMap + Leaflet** para mapas sin costos
+### Lo que NO está en el MVP (y por qué)
 
-### Próximos Pasos
+❌ **Microservicios** — complejidad operacional no justificada a esta escala
+❌ **Kong / API Gateway externo** — sustituido por middleware Express estándar
+❌ **RabbitMQ** — sustituido por BullMQ sobre Redis si se necesitan colas
+❌ **MongoDB** — los logs van a PostgreSQL; suficiente para MVP
+❌ **ElasticSearch** — sustituido por `tsvector` de PostgreSQL
+❌ **Kubernetes** — sustituido por Docker Compose
+❌ **SMS / Bluetooth Mesh** — Fase 3; no bloquea ninguna funcionalidad del MVP
 
-1. Validar requisitos con stakeholders
-2. Crear prototipos de UI/UX
-3. Iniciar desarrollo del MVP
-4. Pruebas piloto en catástrofe simulada
-5. Iteración basada en feedback real
-
-Esta arquitectura garantiza que la aplicación funcione de manera óptima incluso en las peores condiciones de una catástrofe real, cumpliendo con la misión de **salvar vidas a través de logística organizada y tecnología resiliente**.
+Esta arquitectura garantiza que la aplicación funcione en las peores condiciones de una catástrofe real, puede desarrollarse en 3-4 meses, y tiene un camino de migración claro hacia la arquitectura objetivo sin reescrituras.
