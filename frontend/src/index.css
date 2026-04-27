@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet — sobreescribe z-index para que no quede por encima del AppShell */
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 400 !important;
+}
+.leaflet-pane {
+  z-index: 300 !important;
+}
+/* Quita el foco visible en el contenedor del mapa (accesibilidad vía teclado se mantiene en botones internos) */
+.leaflet-container:focus {
+  outline: none;
+}
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;

@@ -23,7 +23,7 @@ export default function AppShell() {
   const roleLabel = selectedRole ? ROLE_LABELS[selectedRole] : ''
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col h-screen overflow-hidden">
       <ConnectivityBanner />
 
       <header className={`${roleColor} text-white safe-top`}>
@@ -49,7 +49,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <Outlet />
       </main>
     </div>
