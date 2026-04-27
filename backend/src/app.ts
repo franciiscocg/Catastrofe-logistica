@@ -9,6 +9,7 @@ import { catastrofesRouter } from './modules/catastrofes/catastrofes.router.js'
 import { puestosRouter } from './modules/puestos/puestos.router.js'
 import { inventarioRouter } from './modules/inventario/inventario.router.js'
 import { voluntariosRouter } from './modules/voluntarios/voluntarios.router.js'
+import { incidenciasRouter } from './modules/incidencias/incidencias.router.js'
 import { errorHandler } from './middleware/error.middleware.js'
 
 export async function buildApp() {
@@ -39,6 +40,7 @@ export async function buildApp() {
   await app.register(puestosRouter, { prefix: '/api/puestos' })
   await app.register(inventarioRouter, { prefix: '/api/inventario' })
   await app.register(voluntariosRouter, { prefix: '/api/voluntarios' })
+  await app.register(incidenciasRouter, { prefix: '/api/incidencias' })
 
   // Healthcheck
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
