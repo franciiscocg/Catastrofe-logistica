@@ -1,8 +1,6 @@
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 
-type Modalidad = 'transporte' | 'laboral'
-
 export default function VoluntarioDashboard() {
   return (
     <div className="pb-6">

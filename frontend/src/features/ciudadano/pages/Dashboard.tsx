@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
-import Map, { type PuestoMarker } from '@/components/shared/Map'
+import { useCallback, useEffect, useState } from 'react'
+import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { useGeolocation } from '@/hooks/useGeolocation'
-import { sortByDistance } from '@/utils/haversine'
+import { haversineKm, sortByDistance } from '@/utils/haversine'
+import { apiClient } from '@/lib/api/client'
+import { useSyncStore } from '@/store/sync.store'
 
 // ── Datos de ejemplo (sustituir por API en Mes 2) ─────────────────────────────
 
@@ -82,29 +84,44 @@ const CATEGORIA_EMOJI: Record<string, string> = {
   Herramientas: '🔧', Calzado: '👟', Movilidad: '♿',
 }
 
+const ROUTE_BLOCK_RADIUS_KM = 0.025
+
 // ── Routing via OSRM (demo público) ──────────────────────────────────────────
 
-async function fetchRuta(
+export async function fetchRuta(
   desde: [number, number],
   hasta: [number, number],
-): Promise<{ points: [number, number][]; distanciaKm: number; duracionMin: number }> {
+  incidencias: IncidenciaMarker[] = [],
+): Promise<{ points: [number, number][]; distanciaKm: number; duracionMin: number; incidenciasCercanas: number; incidenciasEvitadas: number }> {
   // OSRM espera longitud,latitud (orden inverso a Leaflet)
   const url =
     `https://router.project-osrm.org/route/v1/driving/` +
     `${desde[1]},${desde[0]};${hasta[1]},${hasta[0]}` +
-    `?overview=full&geometries=geojson`
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    `?overview=full&geometries=geojson&alternatives=true`
+  const res = await fetch(url, { signal: AbortSignal.timeout(9000) })
   if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
   const data = await res.json()
   if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
   // OSRM devuelve [lng, lat] → convertir a [lat, lng] para Leaflet
-  const points: [number, number][] = data.routes[0].geometry.coordinates.map(
-    ([lng, lat]: [number, number]) => [lat, lng],
-  )
+  const candidates = data.routes.map((route: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }) => {
+    const points: [number, number][] = route.geometry.coordinates.map(
+      ([lng, lat]: [number, number]) => [lat, lng],
+    )
+    return {
+      points,
+      distanciaKm: route.distance / 1000,
+      duracionMin: Math.round(route.duration / 60),
+      incidenciasCercanas: countBlockedIncidenciasNearRoute(points, incidencias),
+    }
+  }).sort((a: { incidenciasCercanas: number; duracionMin: number }, b: { incidenciasCercanas: number; duracionMin: number }) => (
+    a.incidenciasCercanas - b.incidenciasCercanas || a.duracionMin - b.duracionMin
+  ))
+
+  const best = candidates[0]
+  if (!best) throw new Error('No se encontrÃ³ ruta disponible')
   return {
-    points,
-    distanciaKm: data.routes[0].distance / 1000,
-    duracionMin: Math.round(data.routes[0].duration / 60),
+    ...best,
+    incidenciasEvitadas: Math.max(0, candidates[candidates.length - 1].incidenciasCercanas - best.incidenciasCercanas),
   }
 }
 
@@ -112,6 +129,172 @@ async function fetchRuta(
 
 
 // ── Componente de panel de inventario ─────────────────────────────────────────
+
+function pointToSegmentDistanceKm(point: [number, number], a: [number, number], b: [number, number]) {
+  const latScale = 111
+  const lngScale = 111 * Math.cos((point[0] * Math.PI) / 180)
+  const px = point[1] * lngScale
+  const py = point[0] * latScale
+  const ax = a[1] * lngScale
+  const ay = a[0] * latScale
+  const bx = b[1] * lngScale
+  const by = b[0] * latScale
+  const dx = bx - ax
+  const dy = by - ay
+
+  if (dx === 0 && dy === 0) return haversineKm(point[0], point[1], a[0], a[1])
+
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+function countBlockedIncidenciasNearRoute(points: [number, number][], incidencias: IncidenciaMarker[]) {
+  const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
+  return cortadas.filter((inc) => {
+    const point: [number, number] = [inc.latitud, inc.longitud]
+    for (let i = 0; i < points.length - 1; i += 1) {
+      if (pointToSegmentDistanceKm(point, points[i], points[i + 1]) <= ROUTE_BLOCK_RADIUS_KM) return true
+    }
+    return false
+  }).length
+}
+
+type RouteCandidate = {
+  points: [number, number][]
+  distanciaKm: number
+  duracionMin: number
+  incidenciasCercanas: number
+}
+
+function blockedIncidenciasNearRoute(points: [number, number][], incidencias: IncidenciaMarker[]) {
+  const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
+  return cortadas.filter((inc) => {
+    const point: [number, number] = [inc.latitud, inc.longitud]
+    for (let i = 0; i < points.length - 1; i += 1) {
+      if (pointToSegmentDistanceKm(point, points[i], points[i + 1]) <= ROUTE_BLOCK_RADIUS_KM) return true
+    }
+    return false
+  })
+}
+
+async function fetchRouteCandidates(
+  coordinates: [number, number][],
+  incidencias: IncidenciaMarker[],
+): Promise<RouteCandidate[]> {
+  const path = coordinates.map(([lat, lng]) => `${lng},${lat}`).join(';')
+  const url =
+    `https://router.project-osrm.org/route/v1/driving/${path}` +
+    `?overview=full&geometries=geojson&alternatives=true&continue_straight=false`
+  const res = await fetch(url, { signal: AbortSignal.timeout(9000) })
+  if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
+  const data = await res.json()
+  if (data.code !== 'Ok') throw new Error('No se encontro ruta disponible')
+
+  return data.routes.map((route: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }) => {
+    const points: [number, number][] = route.geometry.coordinates.map(
+      ([lng, lat]: [number, number]) => [lat, lng],
+    )
+    return {
+      points,
+      distanciaKm: route.distance / 1000,
+      duracionMin: Math.round(route.duration / 60),
+      incidenciasCercanas: blockedIncidenciasNearRoute(points, incidencias).length,
+    }
+  })
+}
+
+function sortRouteCandidates(candidates: RouteCandidate[]) {
+  return candidates.sort((a, b) => (
+    a.incidenciasCercanas - b.incidenciasCercanas ||
+    a.duracionMin - b.duracionMin ||
+    a.distanciaKm - b.distanciaKm
+  ))
+}
+
+function detourPointsAroundIncidencia(
+  incidencia: IncidenciaMarker,
+): [number, number][] {
+  const mid: [number, number] = [incidencia.latitud, incidencia.longitud]
+  const offset = 0.004
+
+  return [
+    [mid[0] + offset, mid[1]],
+    [mid[0] - offset, mid[1]],
+    [mid[0], mid[1] + offset],
+    [mid[0], mid[1] - offset],
+    [mid[0] + offset, mid[1] + offset],
+    [mid[0] + offset, mid[1] - offset],
+    [mid[0] - offset, mid[1] + offset],
+    [mid[0] - offset, mid[1] - offset],
+  ]
+}
+
+function buildDetourWaypointSets(
+  desde: [number, number],
+  hasta: [number, number],
+  blocked: IncidenciaMarker[],
+) {
+  const waypointSets: [number, number][][] = []
+  const detoursByBlock = blocked.slice(0, 4).map((inc) => detourPointsAroundIncidencia(inc))
+
+  detoursByBlock.forEach((detours) => {
+    detours.forEach((detour) => waypointSets.push([desde, detour, hasta]))
+  })
+
+  if (detoursByBlock.length > 1) {
+    const combinations: [number, number][][] = [[]]
+    detoursByBlock.forEach((detours) => {
+      const next: [number, number][][] = []
+      combinations.forEach((combo) => {
+        detours.forEach((detour) => next.push([...combo, detour]))
+      })
+      combinations.splice(0, combinations.length, ...next)
+    })
+
+    combinations.forEach((combo) => waypointSets.push([desde, ...combo, hasta]))
+  }
+
+  return waypointSets
+}
+
+async function fetchRutaEvitandoIncidencias(
+  desde: [number, number],
+  hasta: [number, number],
+  incidencias: IncidenciaMarker[],
+) {
+  const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias)
+  const directBest = sortRouteCandidates([...directCandidates])[0]
+  if (!directBest) throw new Error('No se encontro ruta disponible')
+
+  const candidates: RouteCandidate[] = [...directCandidates]
+  const requestedWaypointSets = new Set<string>()
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const best = sortRouteCandidates([...candidates])[0]
+    if (!best) break
+    if (best.incidenciasCercanas === 0) {
+      return {
+        ...best,
+        incidenciasEvitadas: Math.max(0, directBest.incidenciasCercanas - best.incidenciasCercanas),
+      }
+    }
+
+    const blocked = blockedIncidenciasNearRoute(best.points, incidencias)
+    for (const waypointSet of buildDetourWaypointSets(desde, hasta, blocked)) {
+      const key = waypointSet.map(([lat, lng]) => `${lat.toFixed(5)},${lng.toFixed(5)}`).join(';')
+      if (requestedWaypointSets.has(key)) continue
+      requestedWaypointSets.add(key)
+
+      try {
+        candidates.push(...await fetchRouteCandidates(waypointSet, incidencias))
+      } catch {
+        // Probamos otros desvios si un waypoint cae en zona no enrutable.
+      }
+    }
+  }
+
+  throw new Error('No hay una ruta segura que evite todas las incidencias cortadas reportadas.')
+}
 
 function InventarioSheet({
   puesto,
@@ -205,21 +388,98 @@ function InventarioSheet({
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
 type Vista = 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar'
+type EstadoVia = 'CORTADA' | 'TRANSITABLE'
+
+type DuplicateIncidencia = {
+  id: string
+  latitud: number
+  longitud: number
+  estado: EstadoVia
+  descripcion: string | null
+  createdAt: string
+}
+
+const CATASTROFE_ID = import.meta.env.VITE_CATASTROFE_ID ?? ''
 
 export default function CiudadanoDashboard() {
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null)
   const [vista, setVista]             = useState<Vista>('default')
   const [route, setRoute]             = useState<[number, number][] | null>(null)
-  const [routeInfo, setRouteInfo]     = useState<{ distanciaKm: number; duracionMin: number } | null>(null)
+  const [routeInfo, setRouteInfo]     = useState<{
+    distanciaKm: number
+    duracionMin: number
+    incidenciasCercanas: number
+    incidenciasEvitadas: number
+  } | null>(null)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError]   = useState<string | null>(null)
+  const [reportDescripcion, setReportDescripcion] = useState('')
+  const [reportPosition, setReportPosition] = useState<[number, number] | null>(null)
+  const [isPickingLocation, setIsPickingLocation] = useState(false)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
+  const [reportSuccess, setReportSuccess] = useState<string | null>(null)
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
+  const [pendingDuplicate, setPendingDuplicate] = useState<DuplicateIncidencia | null>(null)
+  const [incidencias, setIncidencias] = useState<IncidenciaMarker[]>([])
+  const [incidenciasLoading, setIncidenciasLoading] = useState(false)
+  const [incidenciasError, setIncidenciasError] = useState<string | null>(null)
+  const [comentarioIncidencia, setComentarioIncidencia] = useState<IncidenciaMarker | null>(null)
+  const [comentarioEstado, setComentarioEstado] = useState<EstadoVia>('CORTADA')
+  const [comentarioTexto, setComentarioTexto] = useState('')
+  const [comentarioLoading, setComentarioLoading] = useState(false)
+  const [comentarioError, setComentarioError] = useState<string | null>(null)
+  const [historialComentariosIncidencia, setHistorialComentariosIncidencia] = useState<IncidenciaMarker | null>(null)
 
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
+  const enqueueSync = useSyncStore((s) => s.enqueue)
+  const loadPendingSyncCount = useSyncStore((s) => s.loadPendingCount)
 
   useEffect(() => {
     if (position) setUserPosition([position.lat, position.lng])
   }, [position])
+
+  useEffect(() => {
+    if (!feedbackMessage) return
+    const timeout = setTimeout(() => setFeedbackMessage(null), 3000)
+    return () => clearTimeout(timeout)
+  }, [feedbackMessage])
+
+  useEffect(() => {
+    void loadPendingSyncCount()
+  }, [loadPendingSyncCount])
+
+  const refreshIncidencias = useCallback(async () => {
+    setIncidenciasLoading(true)
+    setIncidenciasError(null)
+    try {
+      const params = CATASTROFE_ID ? { catastrofeId: CATASTROFE_ID } : undefined
+      const { data } = await apiClient.get('/api/incidencias', { params })
+      setIncidencias((prev) => {
+        const pendientes = prev.filter((inc) => inc.pendingSync)
+        return [...pendientes, ...(data.incidencias ?? [])]
+      })
+    } catch {
+      setIncidenciasError('No se pudieron actualizar las incidencias. Se muestran las disponibles en este dispositivo.')
+    } finally {
+      setIncidenciasLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const loadIncidencias = async () => {
+      try {
+        const params = CATASTROFE_ID ? { catastrofeId: CATASTROFE_ID } : undefined
+        const { data } = await apiClient.get('/api/incidencias', { params })
+        setIncidencias(data.incidencias ?? [])
+      } catch {
+        // Si falla, mantenemos estado local vacío sin bloquear la UI.
+      }
+    }
+
+    void loadIncidencias()
+  }, [])
 
   // Limpiar ruta/inventario al cambiar de puesto
   const handleSelectPuesto = (id: string) => {
@@ -249,9 +509,14 @@ export default function CiudadanoDashboard() {
     setRouteLoading(true)
     setRouteError(null)
     try {
-      const resultado = await fetchRuta(userPosition, [puesto.latitud, puesto.longitud])
+      const resultado = await fetchRutaEvitandoIncidencias(userPosition, [puesto.latitud, puesto.longitud], incidencias)
       setRoute(resultado.points)
-      setRouteInfo({ distanciaKm: resultado.distanciaKm, duracionMin: resultado.duracionMin })
+      setRouteInfo({
+        distanciaKm: resultado.distanciaKm,
+        duracionMin: resultado.duracionMin,
+        incidenciasCercanas: resultado.incidenciasCercanas,
+        incidenciasEvitadas: resultado.incidenciasEvitadas,
+      })
       setVista('ruta')
     } catch (e) {
       setRouteError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
@@ -267,11 +532,201 @@ export default function CiudadanoDashboard() {
     setRouteError(null)
   }
 
+  const submitIncidencia = async (force: boolean) => {
+    if (!reportPosition) {
+      setReportError('Selecciona un punto en el mapa para reportar la incidencia.')
+      return
+    }
+
+    const body = {
+      catastrofeId: CATASTROFE_ID || undefined,
+      latitud: reportPosition[0],
+      longitud: reportPosition[1],
+      estado: 'CORTADA' as const,
+      descripcion: reportDescripcion.trim() || undefined,
+      force,
+    }
+
+    const queueOfflineReport = async () => {
+      await enqueueSync({
+        entity: 'incidencia-via',
+        method: 'POST',
+        url: '/api/incidencias',
+        body,
+        priority: 'high',
+      })
+
+      const pendingIncidencia: IncidenciaMarker = {
+        id: `offline-${crypto.randomUUID()}`,
+        latitud: body.latitud,
+        longitud: body.longitud,
+        estado: body.estado,
+        descripcion: body.descripcion ?? null,
+        createdAt: new Date().toISOString(),
+        pendingSync: true,
+      }
+
+      setIncidencias((prev) => [pendingIncidencia, ...prev])
+      setReportSuccess('Reporte guardado offline. Se enviara cuando vuelva la conexion.')
+      setPendingDuplicate(null)
+      setReportDescripcion('')
+      setReportPosition(null)
+      setIsPickingLocation(false)
+      setVista('default')
+      setFeedbackMessage('Reporte guardado offline y pendiente de sincronizar.')
+    }
+
+    setReportLoading(true)
+    setReportError(null)
+    setReportSuccess(null)
+
+    try {
+      if (!navigator.onLine) {
+        await queueOfflineReport()
+        return
+      }
+
+      const { data } = await apiClient.post('/api/incidencias', body)
+      if (data?.incidencia) {
+        setIncidencias((prev) => [data.incidencia, ...prev])
+      }
+      setReportSuccess('Incidencia enviada correctamente.')
+      setPendingDuplicate(null)
+      setReportDescripcion('')
+      setReportPosition(null)
+      setIsPickingLocation(false)
+      setVista('default')
+      setFeedbackMessage('Incidencia creada correctamente.')
+    } catch (error: unknown) {
+      const response = (error as {
+        response?: {
+          status?: number
+          data?: { error?: string; message?: string; code?: string; duplicateIncidencia?: DuplicateIncidencia }
+        }
+      })?.response
+      if (response?.status === 409 && response.data?.code === 'INCIDENCIA_DUPLICADA_CERCANA') {
+        setPendingDuplicate(response.data.duplicateIncidencia ?? null)
+        setReportError('Ya existe una incidencia muy cerca. Puedes confirmarla o enviarla de todas formas.')
+      } else if (!response) {
+        await queueOfflineReport()
+      } else {
+        setPendingDuplicate(null)
+        const apiError = response?.data?.error ?? response?.data?.message
+        setReportError(apiError ?? 'No se pudo enviar el reporte. Inténtalo de nuevo.')
+      }
+    } finally {
+      setReportLoading(false)
+    }
+  }
+
+  const handleReportarCalle = async () => {
+    await submitIncidencia(false)
+  }
+
+  const handleConfirmarDuplicada = async () => {
+    await submitIncidencia(true)
+  }
+
+  const abrirReporte = (position: [number, number] | null = null) => {
+    setVista('reportar')
+    setReportDescripcion('')
+    setReportError(null)
+    setReportSuccess(null)
+    setPendingDuplicate(null)
+    setReportPosition(position)
+    setIsPickingLocation(!position)
+  }
+
+  const abrirComentarioIncidencia = (
+    incidencia: IncidenciaMarker,
+    estado: EstadoVia,
+    comentario = '',
+  ) => {
+    setComentarioIncidencia(incidencia)
+    setComentarioEstado(estado)
+    setComentarioTexto(comentario)
+    setComentarioError(null)
+  }
+
+  const handleIncidenciaAction = (incidencia: IncidenciaMarker, action: IncidenciaAction) => {
+    if (action !== 'comentar') return
+
+    abrirComentarioIncidencia(
+      incidencia,
+      incidencia.estado,
+      '',
+    )
+  }
+
+  const handleSubmitComentarioIncidencia = async () => {
+    if (!comentarioIncidencia) return
+
+    const comentario = comentarioTexto.trim()
+    if (!comentario) {
+      setComentarioError('Escribe un comentario para guardar la actualizacion.')
+      return
+    }
+
+    setComentarioLoading(true)
+    setComentarioError(null)
+
+    try {
+      const { data } = await apiClient.post(`/api/incidencias/${comentarioIncidencia.id}/comentarios`, {
+        estado: comentarioEstado,
+        comentario,
+      })
+
+      if (data?.comentario) {
+        const nuevoEstado = data.incidencia?.estado ?? comentarioEstado
+        setIncidencias((prev) => prev.map((inc) => {
+          if (inc.id !== comentarioIncidencia.id) return inc
+          return {
+            ...inc,
+            estado: nuevoEstado,
+            comentarios: [data.comentario, ...(inc.comentarios ?? [])].slice(0, 3),
+            _count: {
+              ...inc._count,
+              comentarios: (inc._count?.comentarios ?? 0) + 1,
+            },
+          }
+        }))
+        setHistorialComentariosIncidencia((prev) => {
+          if (!prev || prev.id !== comentarioIncidencia.id) return prev
+          return {
+            ...prev,
+            estado: nuevoEstado,
+            comentarios: [data.comentario, ...(prev.comentarios ?? [])],
+            _count: {
+              ...prev._count,
+              comentarios: (prev._count?.comentarios ?? 0) + 1,
+            },
+          }
+        })
+      }
+
+      setComentarioIncidencia(null)
+      setComentarioTexto('')
+      setFeedbackMessage(
+        comentarioEstado === 'TRANSITABLE'
+          ? 'Incidencia marcada como resuelta.'
+          : 'Comentario añadido a la incidencia.',
+      )
+    } catch (error: unknown) {
+      const response = (error as { response?: { data?: { error?: string; message?: string } } })?.response
+      setComentarioError(response?.data?.error ?? response?.data?.message ?? 'No se pudo guardar el comentario.')
+    } finally {
+      setComentarioLoading(false)
+    }
+  }
+
   const puestos: PuestoMarker[] = userPosition
     ? sortByDistance(PUESTOS_BASE, userPosition[0], userPosition[1])
     : PUESTOS_BASE.map((p) => ({ ...p }))
 
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
+  const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
+  const totalTransitables = incidencias.filter((inc) => inc.estado === 'TRANSITABLE').length
+  const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
 
   return (
     <div className="flex flex-col h-full">
@@ -289,6 +744,8 @@ export default function CiudadanoDashboard() {
             🚗 <strong>{routeInfo.distanciaKm.toFixed(1)} km</strong>
             {' · ~'}<strong>{routeInfo.duracionMin} min</strong>
             {selectedPuesto && ` · ${selectedPuesto.nombre}`}
+            {routeInfo.incidenciasEvitadas > 0 && ` · evita ${routeInfo.incidenciasEvitadas} corte${routeInfo.incidenciasEvitadas === 1 ? '' : 's'}`}
+            {routeInfo.incidenciasCercanas > 0 && ` · ${routeInfo.incidenciasCercanas} corte${routeInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
           </span>
           <button
             onClick={handleCancelarRuta}
@@ -299,20 +756,91 @@ export default function CiudadanoDashboard() {
         </div>
       )}
 
+      {feedbackMessage && (
+        <div className="px-4 pt-2 flex-shrink-0">
+          <div className="bg-green-50 border border-green-200 text-green-800 text-sm rounded-lg px-3 py-2">
+            {feedbackMessage}
+          </div>
+        </div>
+      )}
+
       {/* Mapa */}
       <div className="relative flex-shrink-0" style={{ height: '50vh' }}>
         <Map
           center={[39.4250, -0.4000]}
           zoom={13}
           userPosition={userPosition}
+          reportPoint={reportPosition}
+          selectingReportPoint={vista === 'reportar'}
           puestos={puestos}
+          incidencias={incidencias}
           selectedPuestoId={selectedId}
           onPuestoSelect={handleSelectPuesto}
           onUserLocated={setUserPosition}
+          onReportPointSelect={(pos) => {
+            setReportPosition(pos)
+            setIsPickingLocation(false)
+            setReportError(null)
+            setReportSuccess(null)
+          }}
+          onIncidenciaAction={handleIncidenciaAction}
+          onIncidenciaCommentsOpen={setHistorialComentariosIncidencia}
           route={route}
           markerVariant="neutral"
           className="h-full w-full"
         />
+
+        {vista === 'reportar' && (
+          <div className="absolute top-3 left-3 right-20 z-[1000] bg-red-600/90 text-white rounded-xl px-3 py-2 text-xs shadow-lg">
+            {isPickingLocation
+              ? 'Toca el mapa para marcar la calle de la incidencia.'
+              : 'Punto marcado. Puedes cambiarlo pulsando "Cambiar punto".'}
+          </div>
+        )}
+
+        {routeLoading && (
+          <div className="absolute inset-0 z-[1100] flex items-center justify-center bg-slate-900/20 backdrop-blur-[1px]">
+            <div className="bg-white rounded-xl shadow-xl border border-gray-200 px-4 py-3 flex items-center gap-3 max-w-[280px]">
+              <span className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-gray-900">Calculando ruta segura</p>
+                <p className="text-xs text-gray-500 mt-0.5">Evitando calles con incidencias reportadas...</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="absolute bottom-3 left-3 z-[1000] bg-white/95 backdrop-blur rounded-xl shadow-md border border-gray-200 px-3 py-2">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Incidencias</p>
+            <button
+              type="button"
+              onClick={() => void refreshIncidencias()}
+              disabled={incidenciasLoading}
+              className="text-[11px] font-medium text-blue-700 disabled:text-gray-400"
+            >
+              {incidenciasLoading ? '...' : 'Actualizar'}
+            </button>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-gray-600">
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+              {totalCortadas} cortada{totalCortadas === 1 ? '' : 's'}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-600" />
+              {totalTransitables} resuelta{totalTransitables === 1 ? '' : 's'}
+            </span>
+          </div>
+          {totalPendientes > 0 && (
+            <p className="text-[11px] text-amber-700 mt-1">
+              {totalPendientes} pendiente{totalPendientes === 1 ? '' : 's'} de sincronizar
+            </p>
+          )}
+          {incidenciasError && (
+            <p className="text-[11px] text-amber-700 mt-1 max-w-56">{incidenciasError}</p>
+          )}
+        </div>
 
         {/* Botón localizarme */}
         <button
@@ -327,7 +855,12 @@ export default function CiudadanoDashboard() {
 
       {/* Acciones rápidas */}
       <div className="px-4 py-2.5 grid grid-cols-2 gap-2 border-b border-gray-100 bg-white flex-shrink-0">
-        <Button variant="secondary" size="sm" fullWidth onClick={() => setVista('reportar')}>
+        <Button
+          variant="secondary"
+          size="sm"
+          fullWidth
+          onClick={() => abrirReporte()}
+        >
           📍 Reportar calle
         </Button>
         <Button variant="secondary" size="sm" fullWidth onClick={() => setVista('buscar')}>
@@ -419,6 +952,276 @@ export default function CiudadanoDashboard() {
       {/* Panel de inventario (bottom sheet) */}
       {vista === 'inventario' && selectedPuesto && (
         <InventarioSheet puesto={selectedPuesto} onClose={() => setVista('default')} />
+      )}
+
+      {historialComentariosIncidencia && (
+        <div className="fixed inset-x-0 bottom-0 z-[2100] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[72vh]">
+          <div className="flex justify-center pt-3 pb-1">
+            <div className="w-10 h-1 bg-gray-300 rounded-full" />
+          </div>
+
+          <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Historial</p>
+              <p className="font-semibold text-gray-900">Comentarios de la incidencia</p>
+            </div>
+            <button
+              onClick={() => setHistorialComentariosIncidencia(null)}
+              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-3">
+            {(historialComentariosIncidencia.comentarios ?? []).length === 0 ? (
+              <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-3">
+                Todavia no hay comentarios en esta incidencia.
+              </p>
+            ) : (
+              historialComentariosIncidencia.comentarios?.map((comentario) => (
+                <article key={comentario.id} className="border border-gray-200 rounded-xl p-3 bg-white">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
+                      comentario.estado === 'CORTADA'
+                        ? 'bg-red-50 text-red-700 border border-red-200'
+                        : 'bg-green-50 text-green-700 border border-green-200'
+                    }`}
+                    >
+                      {comentario.estado === 'CORTADA' ? 'Sigue cortada' : 'Resuelta'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(comentario.createdAt).toLocaleString('es-ES')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-800">{comentario.comentario}</p>
+                  {comentario.autor && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      {comentario.autor.nombre} {comentario.autor.apellidos}
+                    </p>
+                  )}
+                </article>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {comentarioIncidencia && (
+        <div className="fixed inset-x-0 bottom-0 z-[2100] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[70vh]">
+          <div className="flex justify-center pt-3 pb-1">
+            <div className="w-10 h-1 bg-gray-300 rounded-full" />
+          </div>
+
+          <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Actualizar incidencia</p>
+              <p className="font-semibold text-gray-900">Comentario o resolución</p>
+            </div>
+            <button
+              onClick={() => {
+                setComentarioIncidencia(null)
+                setComentarioTexto('')
+                setComentarioError(null)
+              }}
+              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Actualización</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setComentarioEstado('CORTADA')}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                    comentarioEstado === 'CORTADA'
+                      ? 'border-red-300 bg-red-50 text-red-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide">Sigue cortada</p>
+                  <p className="text-xs mt-1">La incidencia continúa</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComentarioEstado('TRANSITABLE')}
+                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                    comentarioEstado === 'TRANSITABLE'
+                      ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide">Resuelta</p>
+                  <p className="text-xs mt-1">La calle ya es transitable</p>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Comentario</label>
+              <textarea
+                rows={3}
+                value={comentarioTexto}
+                onChange={(e) => setComentarioTexto(e.target.value)}
+                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
+                placeholder="Ejemplo: Han retirado los escombros y ya pasan coches"
+              />
+            </div>
+
+            {comentarioError && (
+              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {comentarioError}
+              </p>
+            )}
+
+            <Button fullWidth loading={comentarioLoading} onClick={handleSubmitComentarioIncidencia} className="h-11">
+              Guardar actualización
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Panel de reporte de calles */}
+      {vista === 'reportar' && (
+        <div className="fixed inset-x-0 bottom-0 z-[2000] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[70vh]">
+          <div className="flex justify-center pt-3 pb-1">
+            <div className="w-10 h-1 bg-gray-300 rounded-full" />
+          </div>
+
+          <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
+            <div>
+              <p className="text-xs text-gray-400 uppercase tracking-wide">Nueva incidencia</p>
+              <p className="font-semibold text-gray-900">Reportar calle cortada</p>
+            </div>
+            <button
+              onClick={() => {
+                setVista('default')
+                setIsPickingLocation(false)
+                setReportError(null)
+                setReportSuccess(null)
+                setPendingDuplicate(null)
+                setReportPosition(null)
+              }}
+              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
+            {isPickingLocation ? (
+              <div className="space-y-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Seleccionar ubicación</p>
+                  <p className="text-sm text-slate-700">
+                    Toca directamente sobre el mapa para colocar el punto exacto de la incidencia.
+                  </p>
+                </div>
+
+                {userPosition && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    onClick={() => {
+                      setReportPosition(userPosition)
+                      setIsPickingLocation(false)
+                      setReportError(null)
+                    }}
+                  >
+                    Usar mi ubicación actual
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Paso 1 · Ubicación</p>
+              {reportPosition ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-slate-700">Punto seleccionado correctamente.</p>
+                  <p className="text-xs text-slate-500">
+                    {reportPosition[0].toFixed(5)}, {reportPosition[1].toFixed(5)}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Toca el mapa para elegir la calle exacta.
+                </p>
+              )}
+
+              {userPosition && (
+                <div className="mt-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    onClick={() => {
+                      setIsPickingLocation(true)
+                      setReportError(null)
+                    }}
+                  >
+                    Cambiar punto en el mapa
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Información del problema (opcional)</label>
+              <textarea
+                rows={3}
+                value={reportDescripcion}
+                onChange={(e) => setReportDescripcion(e.target.value)}
+                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
+                placeholder="Ejemplo: Hay agua acumulada y coches bloqueando el paso"
+              />
+            </div>
+
+            {reportError && (
+              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {reportError}
+              </p>
+            )}
+
+            {pendingDuplicate && (
+              <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-2">
+                <p className="text-amber-800 font-medium">Incidencia cercana detectada</p>
+                <p className="text-amber-700">
+                  Estado: {pendingDuplicate.estado} · {new Date(pendingDuplicate.createdAt).toLocaleString('es-ES')}
+                </p>
+                {pendingDuplicate.descripcion && (
+                  <p className="text-amber-700">{pendingDuplicate.descripcion}</p>
+                )}
+                <Button
+                  variant="danger"
+                  size="sm"
+                  fullWidth
+                  loading={reportLoading}
+                  onClick={handleConfirmarDuplicada}
+                >
+                  Enviar de todas formas
+                </Button>
+              </div>
+            )}
+
+            {reportSuccess && (
+              <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                {reportSuccess}
+              </p>
+            )}
+
+            <Button fullWidth loading={reportLoading} onClick={handleReportarCalle} className="h-11">
+              Enviar reporte
+            </Button>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -1,10 +1,12 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import {
+  createComentarioIncidenciaSchema,
   createIncidenciaSchema,
   listIncidenciasQuerySchema,
   updateEstadoSchema,
 } from './incidencias.schema.js'
 import {
+  createComentarioIncidencia,
   createIncidencia,
   listIncidencias,
   updateIncidenciaEstado,
@@ -21,8 +23,32 @@ export async function postIncidencia(request: FastifyRequest, reply: FastifyRepl
   const user = request.user as { sub?: string; id?: string } | undefined
   const reportanteId = user?.sub ?? user?.id
 
-  const incidencia = await createIncidencia(input, reportanteId)
-  return reply.status(201).send({ incidencia })
+  try {
+    const incidencia = await createIncidencia(input, reportanteId)
+    return reply.status(201).send({ incidencia })
+  } catch (error) {
+    const duplicateError = error as Error & {
+      statusCode?: number
+      duplicateIncidencia?: {
+        id: string
+        latitud: number
+        longitud: number
+        estado: 'CORTADA' | 'TRANSITABLE'
+        descripcion: string | null
+        createdAt: Date
+      }
+    }
+
+    if (duplicateError.statusCode === 409 && duplicateError.duplicateIncidencia) {
+      return reply.status(409).send({
+        error: duplicateError.message,
+        code: 'INCIDENCIA_DUPLICADA_CERCANA',
+        duplicateIncidencia: duplicateError.duplicateIncidencia,
+      })
+    }
+
+    throw error
+  }
 }
 
 export async function patchIncidenciaEstado(request: FastifyRequest, reply: FastifyReply) {
@@ -31,4 +57,14 @@ export async function patchIncidenciaEstado(request: FastifyRequest, reply: Fast
 
   const incidencia = await updateIncidenciaEstado(id, input)
   return reply.send({ incidencia })
+}
+
+export async function postComentarioIncidencia(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string }
+  const input = createComentarioIncidenciaSchema.parse(request.body)
+  const user = request.user as { sub?: string; id?: string } | undefined
+  const autorId = user?.sub ?? user?.id
+
+  const result = await createComentarioIncidencia(id, input, autorId)
+  return reply.status(201).send(result)
 }

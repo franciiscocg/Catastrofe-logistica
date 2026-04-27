@@ -9,7 +9,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5,
-      retry: (failureCount, error) => {
+      retry: (failureCount) => {
         // No reintentar si estamos offline
         if (!navigator.onLine) return false
         return failureCount < 2

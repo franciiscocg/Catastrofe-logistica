@@ -3,6 +3,7 @@ export type SyncPriority = 'critical' | 'high' | 'normal' | 'low'
 
 export interface SyncOperation {
   id: string
+  entity?: string
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   url: string
   body?: unknown
