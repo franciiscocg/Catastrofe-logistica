@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -84,7 +84,16 @@ const CATEGORIA_EMOJI: Record<string, string> = {
   Herramientas: '🔧', Calzado: '👟', Movilidad: '♿',
 }
 
+type ProductoDisponible = ItemInventario & { puesto: PuestoMarker }
+type ProductoOption = {
+  nombre: string
+  categoria: string
+  unidad: string
+  total: number
+}
+
 const ROUTE_BLOCK_RADIUS_KM = 0.025
+const ROUTE_SEARCH_TIMEOUT_MS = 90000
 
 // ── Routing via OSRM (demo público) ──────────────────────────────────────────
 
@@ -180,12 +189,13 @@ function blockedIncidenciasNearRoute(points: [number, number][], incidencias: In
 async function fetchRouteCandidates(
   coordinates: [number, number][],
   incidencias: IncidenciaMarker[],
+  signal?: AbortSignal,
 ): Promise<RouteCandidate[]> {
   const path = coordinates.map(([lat, lng]) => `${lng},${lat}`).join(';')
   const url =
     `https://router.project-osrm.org/route/v1/driving/${path}` +
     `?overview=full&geometries=geojson&alternatives=true&continue_straight=false`
-  const res = await fetch(url, { signal: AbortSignal.timeout(9000) })
+  const res = await fetch(url, { signal })
   if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
   const data = await res.json()
   if (data.code !== 'Ok') throw new Error('No se encontro ruta disponible')
@@ -261,8 +271,9 @@ async function fetchRutaEvitandoIncidencias(
   desde: [number, number],
   hasta: [number, number],
   incidencias: IncidenciaMarker[],
+  signal?: AbortSignal,
 ) {
-  const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias)
+  const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias, signal)
   const directBest = sortRouteCandidates([...directCandidates])[0]
   if (!directBest) throw new Error('No se encontro ruta disponible')
 
@@ -270,6 +281,7 @@ async function fetchRutaEvitandoIncidencias(
   const requestedWaypointSets = new Set<string>()
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
     const best = sortRouteCandidates([...candidates])[0]
     if (!best) break
     if (best.incidenciasCercanas === 0) {
@@ -286,8 +298,9 @@ async function fetchRutaEvitandoIncidencias(
       requestedWaypointSets.add(key)
 
       try {
-        candidates.push(...await fetchRouteCandidates(waypointSet, incidencias))
+        candidates.push(...await fetchRouteCandidates(waypointSet, incidencias, signal))
       } catch {
+        if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
         // Probamos otros desvios si un waypoint cae en zona no enrutable.
       }
     }
@@ -387,6 +400,291 @@ function InventarioSheet({
 
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
+function getProductosDisponibles(puestos: PuestoMarker[]) {
+  return puestos.flatMap((puesto) => (
+    (INVENTARIO[puesto.id]?.disponible ?? []).map((item) => ({ ...item, puesto }))
+  ))
+}
+
+function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[] {
+  const options = new globalThis.Map<string, ProductoOption>()
+
+  disponibles.forEach((item) => {
+    const current = options.get(item.nombre)
+    if (current) {
+      current.total += item.cantidad
+      return
+    }
+
+    options.set(item.nombre, {
+      nombre: item.nombre,
+      categoria: item.categoria,
+      unidad: item.unidad,
+      total: item.cantidad,
+    })
+  })
+
+  return [...options.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+}
+
+function BuscarProductoSheet({
+  producto,
+  textoBusqueda,
+  productos,
+  resultados,
+  selectedPuesto,
+  userPosition,
+  routeLoading,
+  routeError,
+  onTextoBusquedaChange,
+  onPreviewPuesto,
+  onComoLlegar,
+  onCancelRuta,
+  onBackToResults,
+  onClose,
+}: {
+  producto: string
+  textoBusqueda: string
+  productos: ProductoOption[]
+  resultados: ProductoDisponible[]
+  selectedPuesto: PuestoMarker | null
+  userPosition: [number, number] | null
+  routeLoading: boolean
+  routeError: string | null
+  onTextoBusquedaChange: (texto: string) => void
+  onPreviewPuesto: (puestoId: string) => void
+  onComoLlegar: (puestoId: string) => void
+  onCancelRuta: () => void
+  onBackToResults: () => void
+  onClose: () => void
+}) {
+  const recomendado = resultados[0]
+  const [inputFocused, setInputFocused] = useState(false)
+  const inventarioSeleccionado = selectedPuesto
+    ? INVENTARIO[selectedPuesto.id] ?? { disponible: [], necesario: [] }
+    : null
+  const showSugerencias = inputFocused
+  const hasTextoBusqueda = textoBusqueda.trim().length > 0
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-[2000] flex max-h-[84vh] flex-col bg-white rounded-t-2xl shadow-2xl">
+      <div className="flex justify-center pt-3 pb-1">
+        <div className="w-10 h-1 bg-gray-300 rounded-full" />
+      </div>
+
+      <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Buscar producto</p>
+          <p className="font-semibold text-gray-900">Disponibilidad por puesto</p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+        >
+          x
+        </button>
+      </div>
+
+      <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
+        <div>
+          <label htmlFor="texto-producto-busqueda" className="block text-sm font-medium text-gray-700 mb-1">
+            Producto
+          </label>
+          <div>
+            <input
+              id="texto-producto-busqueda"
+              type="search"
+              value={textoBusqueda}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+              onChange={(e) => {
+                onTextoBusquedaChange(e.target.value)
+                onBackToResults()
+              }}
+              className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
+              placeholder="Escribe o elige un producto"
+              autoComplete="off"
+            />
+
+            {showSugerencias && productos.length > 0 && (
+              <div className="mt-2 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+                {productos.map((item) => (
+                  <button
+                    key={item.nombre}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      onTextoBusquedaChange(item.nombre)
+                      onBackToResults()
+                      setInputFocused(false)
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
+                      item.nombre === producto ? 'bg-blue-50 text-blue-800' : 'text-gray-800'
+                    }`}
+                  >
+                    <span className="font-medium">{item.nombre}</span>
+                    <span className="ml-2 text-xs text-gray-500">
+                      {item.total} {item.unidad}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {productos.length === 0 && hasTextoBusqueda && (
+            <p className="text-xs text-gray-500 mt-1">No hay productos que coincidan con la busqueda.</p>
+          )}
+          {productos.length > 0 && producto && (
+            <p className="text-xs text-gray-500 mt-1">
+              Seleccionado: {producto}
+            </p>
+          )}
+          {!producto && (
+            <p className="text-xs text-gray-500 mt-1">Selecciona un producto para ver los puestos con stock.</p>
+          )}
+        </div>
+
+        {!userPosition && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Comparte tu ubicacion para que la recomendacion use el puesto mas cercano.
+          </p>
+        )}
+
+        {selectedPuesto && inventarioSeleccionado ? (
+          <section className="space-y-4">
+            <button
+              type="button"
+              onClick={onBackToResults}
+              className="text-xs font-medium text-blue-700 hover:text-blue-800"
+            >
+              Volver a puestos
+            </button>
+
+            <div className="border-2 border-blue-400 bg-blue-50 rounded-xl p-3.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm">{selectedPuesto.nombre}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{selectedPuesto.direccion}</p>
+                </div>
+                {selectedPuesto.distanciaKm !== undefined && (
+                  <span className="text-xs font-medium text-blue-700 flex-shrink-0">{selectedPuesto.distanciaKm.toFixed(1)} km</span>
+                )}
+              </div>
+              <div className="mt-3">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  fullWidth
+                  loading={routeLoading}
+                  onClick={() => onComoLlegar(selectedPuesto.id)}
+                >
+                  🚗 Cómo llegar
+                </Button>
+                {routeLoading && (
+                  <div className="mt-2 text-xs text-blue-800 bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="animate-spin h-3.5 w-3.5 border-2 border-blue-700 border-t-transparent rounded-full flex-shrink-0" />
+                      <span>Calculando ruta segura...</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onCancelRuta}
+                      className="w-full rounded-md border border-blue-300 bg-white/70 px-2 py-1 font-medium text-blue-800 hover:bg-white"
+                    >
+                      Cancelar busqueda de ruta
+                    </button>
+                  </div>
+                )}
+                {routeError && (
+                  <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {routeError}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <section>
+              <h3 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                Productos disponibles ({inventarioSeleccionado.disponible.length})
+              </h3>
+              {inventarioSeleccionado.disponible.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">Sin productos disponibles</p>
+              ) : (
+                <div className="space-y-1">
+                  {inventarioSeleccionado.disponible.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-lg flex-shrink-0">{CATEGORIA_EMOJI[item.categoria] ?? '📦'}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{item.nombre}</p>
+                          <p className="text-xs text-gray-400">{item.categoria}</p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold text-green-700 flex-shrink-0">
+                        {item.cantidad} {item.unidad}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </section>
+        ) : recomendado && (
+          <button
+            type="button"
+            onClick={() => onPreviewPuesto(recomendado.puesto.id)}
+            className="w-full text-left border-2 border-blue-400 bg-blue-50 rounded-xl p-3.5 transition-colors hover:bg-blue-100"
+          >
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Recomendado</span>
+              {recomendado.puesto.distanciaKm !== undefined && (
+                <span className="text-xs font-medium text-blue-700">{recomendado.puesto.distanciaKm.toFixed(1)} km</span>
+              )}
+            </div>
+            <p className="font-semibold text-gray-900 text-sm">{recomendado.puesto.nombre}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{recomendado.puesto.direccion}</p>
+            <p className="text-sm text-blue-800 mt-2">
+              {CATEGORIA_EMOJI[recomendado.categoria] ?? '📦'} {recomendado.cantidad} {recomendado.unidad} disponibles
+            </p>
+          </button>
+        )}
+
+        {!selectedPuesto && (
+          <section>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Otros puestos con stock
+            </h3>
+            <div className="space-y-2">
+              {resultados.slice(1).map((item) => (
+                <button
+                  key={`${item.puesto.id}-${item.nombre}`}
+                  type="button"
+                  onClick={() => onPreviewPuesto(item.puesto.id)}
+                  className="w-full text-left border border-gray-200 bg-white rounded-xl p-3 transition-colors hover:border-blue-200 hover:bg-gray-50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 text-sm truncate">{item.puesto.nombre}</p>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{item.puesto.direccion}</p>
+                    </div>
+                    {item.puesto.distanciaKm !== undefined && (
+                      <span className="text-xs text-gray-400 flex-shrink-0">{item.puesto.distanciaKm.toFixed(1)} km</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    {item.cantidad} {item.unidad} disponibles
+                  </p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  )
+}
+
 type Vista = 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar'
 type EstadoVia = 'CORTADA' | 'TRANSITABLE'
 
@@ -431,10 +729,16 @@ export default function CiudadanoDashboard() {
   const [comentarioLoading, setComentarioLoading] = useState(false)
   const [comentarioError, setComentarioError] = useState<string | null>(null)
   const [historialComentariosIncidencia, setHistorialComentariosIncidencia] = useState<IncidenciaMarker | null>(null)
+  const [productoBusqueda, setProductoBusqueda] = useState('')
+  const [textoProductoBusqueda, setTextoProductoBusqueda] = useState('')
+  const [busquedaPuestoId, setBusquedaPuestoId] = useState<string | null>(null)
 
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
   const enqueueSync = useSyncStore((s) => s.enqueue)
   const loadPendingSyncCount = useSyncStore((s) => s.loadPendingCount)
+  const routeAbortControllerRef = useRef<AbortController | null>(null)
+  const routeTimeoutRef = useRef<number | null>(null)
+  const routeAbortReasonRef = useRef<'cancel' | 'timeout' | null>(null)
 
   useEffect(() => {
     if (position) setUserPosition([position.lat, position.lng])
@@ -449,6 +753,11 @@ export default function CiudadanoDashboard() {
   useEffect(() => {
     void loadPendingSyncCount()
   }, [loadPendingSyncCount])
+
+  useEffect(() => () => {
+    routeAbortControllerRef.current?.abort()
+    if (routeTimeoutRef.current !== null) window.clearTimeout(routeTimeoutRef.current)
+  }, [])
 
   const refreshIncidencias = useCallback(async () => {
     setIncidenciasLoading(true)
@@ -497,19 +806,27 @@ export default function CiudadanoDashboard() {
     }
   }
 
-  const handleComoLlegar = async () => {
-    const puesto = puestos.find((p) => p.id === selectedId)
-    if (!puesto) return
-
+  const calcularRutaPuesto = async (puesto: PuestoMarker) => {
     if (!userPosition) {
       setRouteError('Comparte tu ubicación primero para calcular la ruta')
       return
     }
 
+    routeAbortControllerRef.current?.abort()
+    if (routeTimeoutRef.current !== null) window.clearTimeout(routeTimeoutRef.current)
+
+    const controller = new AbortController()
+    routeAbortControllerRef.current = controller
+    routeAbortReasonRef.current = null
+    routeTimeoutRef.current = window.setTimeout(() => {
+      routeAbortReasonRef.current = 'timeout'
+      controller.abort()
+    }, ROUTE_SEARCH_TIMEOUT_MS)
+
     setRouteLoading(true)
     setRouteError(null)
     try {
-      const resultado = await fetchRutaEvitandoIncidencias(userPosition, [puesto.latitud, puesto.longitud], incidencias)
+      const resultado = await fetchRutaEvitandoIncidencias(userPosition, [puesto.latitud, puesto.longitud], incidencias, controller.signal)
       setRoute(resultado.points)
       setRouteInfo({
         distanciaKm: resultado.distanciaKm,
@@ -519,10 +836,35 @@ export default function CiudadanoDashboard() {
       })
       setVista('ruta')
     } catch (e) {
-      setRouteError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
+      const aborted = e instanceof DOMException && e.name === 'AbortError'
+      if (aborted && routeAbortReasonRef.current === 'cancel') {
+        setRouteError('Busqueda de ruta cancelada.')
+      } else if (aborted && routeAbortReasonRef.current === 'timeout') {
+        setRouteError('La busqueda de ruta ha tardado demasiado. Intentalo de nuevo.')
+      } else {
+        setRouteError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
+      }
     } finally {
+      if (routeAbortControllerRef.current === controller) routeAbortControllerRef.current = null
+      if (routeTimeoutRef.current !== null) {
+        window.clearTimeout(routeTimeoutRef.current)
+        routeTimeoutRef.current = null
+      }
+      routeAbortReasonRef.current = null
       setRouteLoading(false)
     }
+  }
+
+  const handleCancelarBusquedaRuta = () => {
+    routeAbortReasonRef.current = 'cancel'
+    routeAbortControllerRef.current?.abort()
+  }
+
+  const handleComoLlegar = async () => {
+    const puesto = puestos.find((p) => p.id === selectedId)
+    if (!puesto) return
+
+    await calcularRutaPuesto(puesto)
   }
 
   const handleCancelarRuta = () => {
@@ -637,6 +979,45 @@ export default function CiudadanoDashboard() {
     setIsPickingLocation(!position)
   }
 
+  const abrirBusquedaProducto = () => {
+    setProductoBusqueda('')
+    setTextoProductoBusqueda('')
+    setBusquedaPuestoId(null)
+    setVista('buscar')
+  }
+
+  const handleTextoProductoBusqueda = (texto: string) => {
+    setTextoProductoBusqueda(texto)
+    setBusquedaPuestoId(null)
+
+    const normalizado = texto.trim().toLocaleLowerCase('es')
+    if (!normalizado) {
+      setProductoBusqueda('')
+      return
+    }
+
+    const match = productoOptions.find((item) => (
+      item.nombre.toLocaleLowerCase('es') === normalizado
+    ))
+    setProductoBusqueda(match?.nombre ?? '')
+  }
+
+  const handlePreviewPuestoBusqueda = (puestoId: string) => {
+    setSelectedId(puestoId)
+    setBusquedaPuestoId(puestoId)
+    setRoute(null)
+    setRouteInfo(null)
+    setRouteError(null)
+  }
+
+  const handleComoLlegarBusqueda = async (puestoId: string) => {
+    const puesto = puestos.find((p) => p.id === puestoId)
+    if (!puesto) return
+
+    setSelectedId(puestoId)
+    await calcularRutaPuesto(puesto)
+  }
+
   const abrirComentarioIncidencia = (
     incidencia: IncidenciaMarker,
     estado: EstadoVia,
@@ -723,7 +1104,21 @@ export default function CiudadanoDashboard() {
     ? sortByDistance(PUESTOS_BASE, userPosition[0], userPosition[1])
     : PUESTOS_BASE.map((p) => ({ ...p }))
 
+  const productosDisponibles = getProductosDisponibles(puestos)
+  const productoOptions = getProductoOptions(productosDisponibles)
+  const textoProductoNormalizado = textoProductoBusqueda.trim().toLocaleLowerCase('es')
+  const productoOptionsFiltradas = textoProductoNormalizado
+    ? productoOptions.filter((item) => (
+      item.nombre.toLocaleLowerCase('es').includes(textoProductoNormalizado) ||
+      item.categoria.toLocaleLowerCase('es').includes(textoProductoNormalizado)
+    ))
+    : productoOptions
+  const productoSeleccionado = productoOptions.some((item) => item.nombre === productoBusqueda)
+    ? productoBusqueda
+    : ''
+  const resultadosProducto = productosDisponibles.filter((item) => item.nombre === productoSeleccionado)
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
+  const selectedPuestoBusqueda = busquedaPuestoId ? puestos.find((p) => p.id === busquedaPuestoId) ?? null : null
   const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
   const totalTransitables = incidencias.filter((inc) => inc.estado === 'TRANSITABLE').length
   const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
@@ -765,7 +1160,10 @@ export default function CiudadanoDashboard() {
       )}
 
       {/* Mapa */}
-      <div className="relative flex-shrink-0" style={{ height: '50vh' }}>
+      <div
+        className={`relative ${vista === 'buscar' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}
+        style={vista === 'buscar' ? undefined : { height: '50vh' }}
+      >
         <Map
           center={[39.4250, -0.4000]}
           zoom={13}
@@ -854,7 +1252,7 @@ export default function CiudadanoDashboard() {
       </div>
 
       {/* Acciones rápidas */}
-      <div className="px-4 py-2.5 grid grid-cols-2 gap-2 border-b border-gray-100 bg-white flex-shrink-0">
+      <div className={`px-4 py-2.5 grid-cols-2 gap-2 border-b border-gray-100 bg-white flex-shrink-0 ${vista === 'buscar' ? 'hidden' : 'grid'}`}>
         <Button
           variant="secondary"
           size="sm"
@@ -863,13 +1261,13 @@ export default function CiudadanoDashboard() {
         >
           📍 Reportar calle
         </Button>
-        <Button variant="secondary" size="sm" fullWidth onClick={() => setVista('buscar')}>
+        <Button variant="secondary" size="sm" fullWidth onClick={abrirBusquedaProducto}>
           🔍 Buscar producto
         </Button>
       </div>
 
       {/* Lista de puestos */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className={`flex-1 min-h-0 overflow-y-auto ${vista === 'buscar' ? 'hidden' : ''}`}>
         <div className="px-4 pt-3 pb-2 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900 text-sm">
             Puestos de emergencia
@@ -933,6 +1331,25 @@ export default function CiudadanoDashboard() {
                     </div>
                   )}
 
+                  {isSelected && routeLoading && (
+                    <div
+                      className="mt-2 text-xs text-blue-800 bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 space-y-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="animate-spin h-3.5 w-3.5 border-2 border-blue-700 border-t-transparent rounded-full flex-shrink-0" />
+                        <span>Calculando ruta segura...</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCancelarBusquedaRuta}
+                        className="w-full rounded-md border border-blue-300 bg-white/70 px-2 py-1 font-medium text-blue-800 hover:bg-white"
+                      >
+                        Cancelar busqueda de ruta
+                      </button>
+                    </div>
+                  )}
+
                   {/* Error de ruta */}
                   {isSelected && routeError && (
                     <p
@@ -952,6 +1369,25 @@ export default function CiudadanoDashboard() {
       {/* Panel de inventario (bottom sheet) */}
       {vista === 'inventario' && selectedPuesto && (
         <InventarioSheet puesto={selectedPuesto} onClose={() => setVista('default')} />
+      )}
+
+      {vista === 'buscar' && (
+        <BuscarProductoSheet
+          producto={productoSeleccionado}
+          textoBusqueda={textoProductoBusqueda}
+          productos={productoOptionsFiltradas}
+          resultados={resultadosProducto}
+          selectedPuesto={selectedPuestoBusqueda}
+          userPosition={userPosition}
+          routeLoading={routeLoading}
+          routeError={routeError}
+          onTextoBusquedaChange={handleTextoProductoBusqueda}
+          onPreviewPuesto={handlePreviewPuestoBusqueda}
+          onComoLlegar={(puestoId) => void handleComoLlegarBusqueda(puestoId)}
+          onCancelRuta={handleCancelarBusquedaRuta}
+          onBackToResults={() => setBusquedaPuestoId(null)}
+          onClose={() => setVista('default')}
+        />
       )}
 
       {historialComentariosIncidencia && (
