@@ -1,11 +1,27 @@
 import type { FastifyInstance } from 'fastify'
+import { prisma } from '../../lib/prisma.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
 
-// TODO: Implementar en Mes 2
 export async function puestosRouter(app: FastifyInstance) {
   app.get('/', async (_req, reply) => {
-    reply.send({ puestos: [] })
+    const puestos = await prisma.puestoEmergencia.findMany({
+      where: { activo: true },
+      orderBy: { nombre: 'asc' },
+      select: {
+        id: true,
+        nombre: true,
+        descripcion: true,
+        direccion: true,
+        latitud: true,
+        longitud: true,
+        tipo: true,
+        activo: true,
+        catastrofeId: true,
+      },
+    })
+
+    reply.send({ puestos })
   })
 
   app.post('/', {

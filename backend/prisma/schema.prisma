@@ -30,6 +30,13 @@ enum EstadoVia {
   TRANSITABLE
 }
 
+enum EstadoDonacion {
+  PENDIENTE
+  EN_CAMINO
+  ENTREGADA
+  CANCELADA
+}
+
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
@@ -123,6 +130,7 @@ model PuestoEmergencia {
   catastrofe Catastrofe @relation(fields: [catastrofeId], references: [id])
   admin      Usuario    @relation("AdminPuesto", fields: [adminId], references: [id])
   inventario Inventario[]
+  donaciones Donacion[]
 
   @@map("puestos_emergencia")
 }
@@ -135,6 +143,7 @@ model Producto {
   createdAt DateTime @default(now())
 
   inventarios Inventario[]
+  donaciones Donacion[]
 
   @@map("productos")
 }
@@ -157,15 +166,39 @@ model Inventario {
 model Voluntario {
   id        String   @id @default(cuid())
   usuarioId String   @unique
-  modalidad String
+  modalidad String?
   vehiculo  Json?
   verificado Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   usuario Usuario @relation(fields: [usuarioId], references: [id])
+  donaciones Donacion[]
 
   @@map("voluntarios")
+}
+
+model Donacion {
+  id           String         @id @default(cuid())
+  voluntarioId String
+  puestoId     String
+  productoId   String
+  cantidad     Float
+  unidad       String
+  estado       EstadoDonacion @default(PENDIENTE)
+  comentario   String?
+  eta          DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  voluntario Voluntario        @relation(fields: [voluntarioId], references: [id])
+  puesto     PuestoEmergencia  @relation(fields: [puestoId], references: [id])
+  producto   Producto          @relation(fields: [productoId], references: [id])
+
+  @@index([voluntarioId, estado])
+  @@index([puestoId, estado])
+  @@index([productoId])
+  @@map("donaciones")
 }
 
 model AuditLog {

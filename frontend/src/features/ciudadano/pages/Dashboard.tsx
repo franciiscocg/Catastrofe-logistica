@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -6,6 +7,7 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import { haversineKm, sortByDistance } from '@/utils/haversine'
 import { apiClient } from '@/lib/api/client'
 import { useSyncStore } from '@/store/sync.store'
+import { fetchRutaEvitandoIncidencias as fetchRutaSegura } from '@/utils/routing'
 
 // ── Datos de ejemplo (sustituir por API en Mes 2) ─────────────────────────────
 
@@ -267,7 +269,7 @@ function buildDetourWaypointSets(
   return waypointSets
 }
 
-async function fetchRutaEvitandoIncidencias(
+export async function fetchRutaEvitandoIncidencias(
   desde: [number, number],
   hasta: [number, number],
   incidencias: IncidenciaMarker[],
@@ -700,6 +702,7 @@ type DuplicateIncidencia = {
 const CATASTROFE_ID = import.meta.env.VITE_CATASTROFE_ID ?? ''
 
 export default function CiudadanoDashboard() {
+  const [searchParams] = useSearchParams()
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null)
   const [vista, setVista]             = useState<Vista>('default')
@@ -739,6 +742,24 @@ export default function CiudadanoDashboard() {
   const routeAbortControllerRef = useRef<AbortController | null>(null)
   const routeTimeoutRef = useRef<number | null>(null)
   const routeAbortReasonRef = useRef<'cancel' | 'timeout' | null>(null)
+  const autoRouteTargetRef = useRef<string | null>(null)
+
+  const destinoPuesto = useMemo<Omit<PuestoMarker, 'distanciaKm'> | null>(() => {
+    const id = searchParams.get('destinoId')
+    const latitud = Number(searchParams.get('lat'))
+    const longitud = Number(searchParams.get('lng'))
+
+    if (!id || !Number.isFinite(latitud) || !Number.isFinite(longitud)) return null
+
+    return {
+      id,
+      nombre: searchParams.get('nombre') ?? 'Destino',
+      direccion: searchParams.get('direccion') ?? 'Destino seleccionado',
+      latitud,
+      longitud,
+      necesidades: 0,
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (position) setUserPosition([position.lat, position.lng])
@@ -826,7 +847,7 @@ export default function CiudadanoDashboard() {
     setRouteLoading(true)
     setRouteError(null)
     try {
-      const resultado = await fetchRutaEvitandoIncidencias(userPosition, [puesto.latitud, puesto.longitud], incidencias, controller.signal)
+      const resultado = await fetchRutaSegura(userPosition, [puesto.latitud, puesto.longitud], incidencias, controller.signal)
       setRoute(resultado.points)
       setRouteInfo({
         distanciaKm: resultado.distanciaKm,
@@ -1100,9 +1121,13 @@ export default function CiudadanoDashboard() {
     }
   }
 
+  const puestosBase = destinoPuesto
+    ? [destinoPuesto, ...PUESTOS_BASE.filter((puesto) => puesto.id !== destinoPuesto.id)]
+    : PUESTOS_BASE
+
   const puestos: PuestoMarker[] = userPosition
-    ? sortByDistance(PUESTOS_BASE, userPosition[0], userPosition[1])
-    : PUESTOS_BASE.map((p) => ({ ...p }))
+    ? sortByDistance(puestosBase, userPosition[0], userPosition[1])
+    : puestosBase.map((p) => ({ ...p }))
 
   const productosDisponibles = getProductosDisponibles(puestos)
   const productoOptions = getProductoOptions(productosDisponibles)
@@ -1122,6 +1147,18 @@ export default function CiudadanoDashboard() {
   const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
   const totalTransitables = incidencias.filter((inc) => inc.estado === 'TRANSITABLE').length
   const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
+
+  useEffect(() => {
+    if (!destinoPuesto || !userPosition || routeLoading) return
+    if (autoRouteTargetRef.current === destinoPuesto.id) return
+
+    const puesto = puestos.find((item) => item.id === destinoPuesto.id)
+    if (!puesto) return
+
+    autoRouteTargetRef.current = destinoPuesto.id
+    setSelectedId(puesto.id)
+    void calcularRutaPuesto(puesto)
+  }, [destinoPuesto, puestos, routeLoading, userPosition])
 
   return (
     <div className="flex flex-col h-full">
