@@ -8,6 +8,7 @@ import { Role } from '@/types/auth.types'
 const RoleSelection = lazy(() => import('@/features/auth/pages/RoleSelection'))
 const Login = lazy(() => import('@/features/auth/pages/Login'))
 const Register = lazy(() => import('@/features/auth/pages/Register'))
+const RegisterSuccess = lazy(() => import('@/features/auth/pages/RegisterSuccess'))
 
 const CiudadanoDashboard = lazy(() => import('@/features/ciudadano/pages/Dashboard'))
 const VoluntarioDashboard = lazy(() => import('@/features/voluntario/pages/Dashboard'))
@@ -45,6 +46,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Register />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'registro-exitoso',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <RegisterSuccess />
           </Suspense>
         ),
       },

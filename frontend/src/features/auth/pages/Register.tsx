@@ -1,14 +1,18 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ROLE_LABELS, Role } from '@/types/auth.types'
 import Button from '@/components/ui/Button'
+import RegisterPuesto from './RegisterPuesto'
 
-// TODO: Implementar en Mes 2 con formularios específicos por rol
 export default function Register() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const roleParam = params.get('role') as Role | null
   const roleLabel = roleParam ? ROLE_LABELS[roleParam] : null
 
+  // Formularios específicos por rol
+  if (roleParam === Role.PUESTO) return <RegisterPuesto />
+
+  // Stub genérico para los demás roles (a implementar en Mes 2)
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center px-4">
       <div className="max-w-sm mx-auto w-full text-center">
