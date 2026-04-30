@@ -1,7 +1,14 @@
 import { create } from 'zustand'
-import { SyncOperation, SyncStatus } from '@/types/sync.types'
+import type { SyncOperation, SyncPriority } from '@/types/sync.types'
 import { db } from '@/lib/db'
 import { apiClient } from '@/lib/api/client'
+
+const priorityRank: Record<SyncPriority, number> = {
+  critical: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+}
 
 interface SyncStore {
   isSyncing: boolean
@@ -20,8 +27,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
   syncError: null,
 
   loadPendingCount: async () => {
-    const count = await db.syncQueue.where('status').equals('pending').count()
-    set({ pendingCount: count })
+    const pending = await db.syncQueue.where('status').equals('pending').count()
+    const syncing = await db.syncQueue.where('status').equals('syncing').count()
+    set({ pendingCount: pending + syncing })
   },
 
   enqueue: async (op) => {
@@ -41,21 +49,23 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
     set({ isSyncing: true, syncError: null })
 
     try {
-      const pending = await db.syncQueue
-        .where('status')
-        .equals('pending')
-        .sortBy('priority')
+      const staleSyncing = await db.syncQueue.where('status').equals('syncing').toArray()
+      await Promise.all(staleSyncing.map((op) => db.syncQueue.update(op.id, { status: 'pending' })))
+
+      const pending = (await db.syncQueue.where('status').equals('pending').toArray())
+        .sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || a.createdAt - b.createdAt)
 
       for (const op of pending) {
         try {
           await db.syncQueue.update(op.id, { status: 'syncing' })
           await apiClient.request({ method: op.method, url: op.url, data: op.body })
           await db.syncQueue.update(op.id, { status: 'synced' })
-        } catch {
+        } catch (error) {
           const retries = op.retries + 1
           await db.syncQueue.update(op.id, {
             status: retries >= 3 ? 'error' : 'pending',
             retries,
+            error: error instanceof Error ? error.message : 'Error de sincronizacion',
           })
         }
       }

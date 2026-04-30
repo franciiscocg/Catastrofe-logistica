@@ -167,6 +167,35 @@ Catastrofe-logistica/
 |---|---|---|
 | Frontend (PWA) | 5173 | http://localhost:5173 |
 | Backend (API) | 3000 | http://localhost:3000 |
-| PostgreSQL | 5432 | — |
+| PostgreSQL (Docker) | **5433** | — |
 | Redis | 6379 | — |
 | MinIO (objetos) | 9000 | http://localhost:9001 (consola) |
+
+> **¿Por qué 5433 y no 5432?** El puerto estándar de PostgreSQL (5432) suele estar ocupado por una instalación local del sistema operativo (especialmente en Windows con PostgreSQL instalado globalmente). Usar 5433 evita ese conflicto sin tocar nada del sistema.
+
+---
+
+## Solución de problemas frecuentes
+
+### Error: `Authentication failed` al conectar con la base de datos
+
+**Causa más probable:** Hay un PostgreSQL local en tu sistema ocupando el puerto 5432. El contenedor Docker usa el puerto **5433**, así que verifica que el `DATABASE_URL` en `backend/.env` apunte a `127.0.0.1:5433`.
+
+**Diagnóstico:**
+```bash
+# Windows — ver qué procesos escuchan en 5432
+netstat -ano | findstr ":5432"
+
+# Ver si hay un servicio PostgreSQL local
+Get-Service -Name "postgresql*"
+```
+
+Si aparece un servicio local, el puerto 5433 ya lo soluciona. No toques el servicio local.
+
+### Error: `prisma migrate dev` falla con `Authentication failed`
+
+Este es un bug conocido del migration engine de Prisma en Windows con Docker. Usa el workaround documentado en la sección "Cuando cambias el schema de Prisma" — genera el SQL con `prisma migrate diff` y aplícalo directamente con `docker exec psql`.
+
+### Error: `Cannot find module 'dotenv/config'` al arrancar el backend
+
+El `node_modules` no está instalado. Ejecuta `npm install` en la carpeta `backend/`.

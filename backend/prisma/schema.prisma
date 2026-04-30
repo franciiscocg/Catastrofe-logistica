@@ -25,6 +25,11 @@ enum TipoInventario {
   NECESARIO
 }
 
+enum EstadoVia {
+  CORTADA
+  TRANSITABLE
+}
+
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
@@ -41,6 +46,8 @@ model Usuario {
   voluntario  Voluntario?
   puestosAdmin PuestoEmergencia[] @relation("AdminPuesto")
   auditLogs   AuditLog[]
+  incidenciasReportadas IncidenciaVia[] @relation("ReportanteIncidencia")
+  comentariosIncidencias ComentarioIncidenciaVia[] @relation("AutorComentarioIncidencia")
 
   @@map("usuarios")
 }
@@ -59,8 +66,44 @@ model Catastrofe {
   updatedAt   DateTime       @updatedAt
 
   puestos PuestoEmergencia[]
+  incidencias IncidenciaVia[]
 
   @@map("catastrofes")
+}
+
+model IncidenciaVia {
+  id           String    @id @default(cuid())
+  catastrofeId String
+  reportanteId String?
+  latitud      Float
+  longitud     Float
+  estado       EstadoVia
+  descripcion  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  catastrofe Catastrofe @relation(fields: [catastrofeId], references: [id])
+  reportante Usuario?   @relation("ReportanteIncidencia", fields: [reportanteId], references: [id])
+  comentarios ComentarioIncidenciaVia[]
+
+  @@index([catastrofeId, createdAt])
+  @@index([estado])
+  @@map("incidencias_via")
+}
+
+model ComentarioIncidenciaVia {
+  id           String    @id @default(cuid())
+  incidenciaId String
+  autorId      String?
+  estado       EstadoVia
+  comentario   String
+  createdAt    DateTime  @default(now())
+
+  incidencia IncidenciaVia @relation(fields: [incidenciaId], references: [id])
+  autor      Usuario?      @relation("AutorComentarioIncidencia", fields: [autorId], references: [id])
+
+  @@index([incidenciaId, createdAt])
+  @@map("comentarios_incidencias_via")
 }
 
 model PuestoEmergencia {
