@@ -44,11 +44,16 @@ services:
       - POSTGRES_DB=catlogistica
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_HOST_AUTH_METHOD=md5
-    ports:
-      - "5432:5432"
+      # trust: sin verificación de contraseña para conexiones externas.
+      # Apropiado para desarrollo local. En producción usar scram-sha-256
+      # y configurar pg_hba.conf manualmente.
+      - POSTGRES_HOST_AUTH_METHOD=trust
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Puerto 5433 en lugar del estándar 5432 para evitar conflicto con
+      # instalaciones locales de PostgreSQL en Windows/Mac/Linux.
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
