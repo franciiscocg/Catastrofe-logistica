@@ -10,6 +10,10 @@ import {
   countBlockedIncidenciasNearRoute,
   blockedIncidenciasNearRoute,
 } from '@/utils/routing'
+import {
+  getProductosDisponibles as _getProductosDisponibles,
+  getProductoOptions as _getProductoOptions,
+} from '@/utils/productos'
 import { apiClient } from '@/lib/api/client'
 import { useSyncStore } from '@/store/sync.store'
 
@@ -24,6 +28,7 @@ const PUESTOS_BASE: Omit<PuestoMarker, 'distanciaKm'>[] = [
 ]
 
 type ItemInventario = { nombre: string; categoria: string; cantidad: number; unidad: string }
+// Re-export alias para compatibilidad con el resto del fichero
 
 const INVENTARIO: Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }> = {
   '1': {
@@ -98,7 +103,6 @@ type ProductoOption = {
   total: number
 }
 
-const ROUTE_BLOCK_RADIUS_KM = 0.025
 const ROUTE_SEARCH_TIMEOUT_MS = 90000
 
 
@@ -365,30 +369,11 @@ function InventarioSheet({
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
 function getProductosDisponibles(puestos: PuestoMarker[]) {
-  return puestos.flatMap((puesto) => (
-    (INVENTARIO[puesto.id]?.disponible ?? []).map((item) => ({ ...item, puesto }))
-  ))
+  return _getProductosDisponibles(puestos, INVENTARIO)
 }
 
 function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[] {
-  const options = new globalThis.Map<string, ProductoOption>()
-
-  disponibles.forEach((item) => {
-    const current = options.get(item.nombre)
-    if (current) {
-      current.total += item.cantidad
-      return
-    }
-
-    options.set(item.nombre, {
-      nombre: item.nombre,
-      categoria: item.categoria,
-      unidad: item.unidad,
-      total: item.cantidad,
-    })
-  })
-
-  return [...options.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  return _getProductoOptions(disponibles)
 }
 
 function BuscarProductoSheet({
