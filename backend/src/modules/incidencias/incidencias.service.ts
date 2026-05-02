@@ -21,6 +21,24 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   return 6371 * c
 }
 
+function badRequest(message: string) {
+  return Object.assign(new Error(message), { statusCode: 400 })
+}
+
+function notFound(message: string) {
+  return Object.assign(new Error(message), { statusCode: 404 })
+}
+
+async function getVoluntarioByUsuario(usuarioId: string) {
+  const voluntario = await prisma.voluntario.findUnique({
+    where: { usuarioId },
+    select: { id: true },
+  })
+
+  if (!voluntario) throw badRequest('El usuario no tiene perfil de voluntario')
+  return voluntario
+}
+
 async function resolveCatastrofeId(input: CreateIncidenciaInput) {
   if (input.catastrofeId) {
     const catastrofe = await prisma.catastrofe.findUnique({
@@ -125,7 +143,10 @@ export async function listIncidencias(query: ListIncidenciasQuery) {
         },
       },
       _count: {
-        select: { comentarios: true },
+        select: {
+          comentarios: true,
+          asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
+        },
       },
     },
   })
@@ -164,6 +185,87 @@ export async function updateIncidenciaEstado(id: string, input: UpdateEstadoInpu
   return prisma.incidenciaVia.update({
     where: { id },
     data: { estado: input.estado },
+  })
+}
+
+export async function getAsignacionIncidenciaActiva(usuarioId: string) {
+  const voluntario = await getVoluntarioByUsuario(usuarioId)
+
+  return prisma.asignacionIncidencia.findFirst({
+    where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
+    orderBy: { startedAt: 'desc' },
+    include: { incidencia: true },
+  })
+}
+
+export async function createAsignacionIncidencia(usuarioId: string, incidenciaId: string) {
+  const voluntario = await getVoluntarioByUsuario(usuarioId)
+
+  return prisma.$transaction(async (tx) => {
+    const donacionActiva = await tx.donacion.findFirst({
+      where: {
+        voluntarioId: voluntario.id,
+        estado: { in: ['PENDIENTE', 'EN_CAMINO'] },
+      },
+      select: { id: true },
+    })
+
+    if (donacionActiva) {
+      throw badRequest('Ya tienes una donacion activa. Finalizala o cancelala antes de ayudar en una incidencia.')
+    }
+
+    const puestoActivo = await tx.asignacionPuesto.findFirst({
+      where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
+      include: { puesto: true },
+    })
+
+    if (puestoActivo) {
+      throw badRequest(`Ya estas ayudando en ${puestoActivo.puesto.nombre}. Termina esa tarea antes de elegir una incidencia.`)
+    }
+
+    const asignacionActiva = await tx.asignacionIncidencia.findFirst({
+      where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
+      include: { incidencia: true },
+    })
+
+    if (asignacionActiva) {
+      if (asignacionActiva.incidenciaId === incidenciaId) return asignacionActiva
+      throw badRequest('Ya estas ayudando en otra incidencia. Terminala antes de elegir otra.')
+    }
+
+    const incidencia = await tx.incidenciaVia.findFirst({
+      where: { id: incidenciaId, estado: 'CORTADA' },
+      select: { id: true },
+    })
+    if (!incidencia) throw notFound('Incidencia no encontrada o ya transitable')
+
+    return tx.asignacionIncidencia.create({
+      data: {
+        voluntarioId: voluntario.id,
+        incidenciaId,
+      },
+      include: { incidencia: true },
+    })
+  })
+}
+
+export async function finalizarAsignacionIncidencia(usuarioId: string, incidenciaId: string) {
+  const voluntario = await getVoluntarioByUsuario(usuarioId)
+
+  const asignacion = await prisma.asignacionIncidencia.findFirst({
+    where: { voluntarioId: voluntario.id, incidenciaId, estado: 'ACTIVA' },
+    select: { id: true },
+  })
+
+  if (!asignacion) throw notFound('No tienes una asignacion activa en esta incidencia')
+
+  return prisma.asignacionIncidencia.update({
+    where: { id: asignacion.id },
+    data: {
+      estado: 'FINALIZADA',
+      endedAt: new Date(),
+    },
+    include: { incidencia: true },
   })
 }
 

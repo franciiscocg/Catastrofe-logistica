@@ -1,4 +1,5 @@
 import type { EstadoDonacion } from '@prisma/client'
+import { randomUUID } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
 import type { CreateDonacionInput } from './donaciones.schema.js'
 
@@ -171,6 +172,39 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
   return prisma.donacion.update({
     where: { id: donacionId },
     data: { estado },
+    include: {
+      producto: true,
+      puesto: true,
+    },
+  })
+}
+
+export async function generarCodigoEntrega(usuarioId: string, donacionId: string) {
+  const voluntario = await getVoluntarioByUsuario(usuarioId)
+
+  const donacion = await prisma.donacion.findFirst({
+    where: { id: donacionId, voluntarioId: voluntario.id },
+    include: {
+      producto: true,
+      puesto: true,
+    },
+  })
+
+  if (!donacion) throw notFound('Donacion no encontrada')
+  if (donacion.estado !== 'EN_CAMINO') {
+    throw badRequest('Solo puedes generar el codigo cuando la donacion esta en camino')
+  }
+
+  if (donacion.entregaCodigo) {
+    return donacion
+  }
+
+  return prisma.donacion.update({
+    where: { id: donacionId },
+    data: {
+      entregaCodigo: `DEL-${randomUUID()}`,
+      entregaCodigoGeneradoAt: new Date(),
+    },
     include: {
       producto: true,
       puesto: true,

@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/rbac.middleware.js'
 import { createDonacionSchema, updateDonacionEstadoSchema } from './donaciones.schema.js'
 import {
   createDonacion,
+  generarCodigoEntrega,
   listMisDonaciones,
   listNecesidadesDonacion,
   updateDonacionEstado,
@@ -52,6 +53,17 @@ export async function donacionesRouter(app: FastifyInstance) {
     const { id } = request.params as { id: string }
     const input = updateDonacionEstadoSchema.parse(request.body)
     const donacion = await updateDonacionEstado(usuarioId, id, input.estado)
+    return reply.send({ donacion })
+  })
+
+  app.post('/:id/codigo-entrega', {
+    preHandler: [requireAuth, requireRole('VOLUNTARIO')],
+  }, async (request, reply) => {
+    const usuarioId = getUsuarioId(request.user)
+    if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+    const { id } = request.params as { id: string }
+    const donacion = await generarCodigoEntrega(usuarioId, id)
     return reply.send({ donacion })
   })
 }

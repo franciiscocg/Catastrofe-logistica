@@ -43,6 +43,12 @@ enum EstadoAsignacionPuesto {
   CANCELADA
 }
 
+enum EstadoAsignacionIncidencia {
+  ACTIVA
+  FINALIZADA
+  CANCELADA
+}
+
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
@@ -98,6 +104,7 @@ model IncidenciaVia {
   catastrofe Catastrofe @relation(fields: [catastrofeId], references: [id])
   reportante Usuario?   @relation("ReportanteIncidencia", fields: [reportanteId], references: [id])
   comentarios ComentarioIncidenciaVia[]
+  asignacionesVoluntarios AsignacionIncidencia[]
 
   @@index([catastrofeId, createdAt])
   @@index([estado])
@@ -183,6 +190,7 @@ model Voluntario {
   usuario Usuario @relation(fields: [usuarioId], references: [id])
   donaciones Donacion[]
   asignacionesPuestos AsignacionPuesto[]
+  asignacionesIncidencias AsignacionIncidencia[]
 
   @@map("voluntarios")
 }
@@ -205,6 +213,24 @@ model AsignacionPuesto {
   @@map("asignaciones_puestos")
 }
 
+model AsignacionIncidencia {
+  id           String                    @id @default(cuid())
+  voluntarioId String
+  incidenciaId String
+  estado       EstadoAsignacionIncidencia @default(ACTIVA)
+  startedAt    DateTime                  @default(now())
+  endedAt      DateTime?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  voluntario Voluntario   @relation(fields: [voluntarioId], references: [id])
+  incidencia IncidenciaVia @relation(fields: [incidenciaId], references: [id])
+
+  @@index([voluntarioId, estado])
+  @@index([incidenciaId, estado])
+  @@map("asignaciones_incidencias")
+}
+
 model Donacion {
   id           String         @id @default(cuid())
   voluntarioId String
@@ -215,6 +241,8 @@ model Donacion {
   estado       EstadoDonacion @default(PENDIENTE)
   comentario   String?
   eta          DateTime?
+  entregaCodigo String?       @unique
+  entregaCodigoGeneradoAt DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 

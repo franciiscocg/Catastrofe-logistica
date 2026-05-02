@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { apiClient } from '@/lib/api/client'
@@ -6,6 +7,8 @@ import type { PuestoEmergencia } from '@/types/catastrofe.types'
 import type { ItemInventario } from '@/types/inventario.types'
 import Map, { type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useConnectivity } from '@/hooks/useConnectivity'
+import { useSyncStore } from '@/store/sync.store'
 import { fetchRutaEvitandoIncidencias } from '@/utils/routing'
 
 type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
@@ -28,7 +31,7 @@ type Incidencia = {
   estado: 'CORTADA' | 'TRANSITABLE'
   descripcion?: string | null
   createdAt: string
-  _count?: { comentarios: number }
+  _count?: { comentarios: number; asignacionesVoluntarios?: number }
 }
 
 type Necesidad = {
@@ -59,6 +62,8 @@ type Donacion = {
   estado: 'PENDIENTE' | 'EN_CAMINO' | 'ENTREGADA' | 'CANCELADA'
   comentario?: string | null
   eta?: string | null
+  entregaCodigo?: string | null
+  entregaCodigoGeneradoAt?: string | null
   producto: ItemInventario['producto']
   puesto: PuestoEmergencia
 }
@@ -68,6 +73,13 @@ type AsignacionPuestoActiva = {
   puestoId: string
   estado: 'ACTIVA' | 'FINALIZADA' | 'CANCELADA'
   puesto: PuestoEmergencia
+}
+
+type AsignacionIncidenciaActiva = {
+  id: string
+  incidenciaId: string
+  estado: 'ACTIVA' | 'FINALIZADA' | 'CANCELADA'
+  incidencia: Incidencia
 }
 
 const PUESTOS_FALLBACK: PuestoEmergencia[] = [
@@ -139,59 +151,91 @@ function necesidadDemo(
 
 function EmptyState({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-white/80 px-5 py-10 text-center text-sm text-slate-500 shadow-sm">
       {children}
     </div>
   )
 }
 
+const actionMeta = {
+  donacion: {
+    label: 'Donacion',
+    title: 'Hacer una donacion',
+    short: 'Donar',
+    mark: 'D',
+    accent: 'cyan',
+    classes: {
+      wrapper: 'border-cyan-200 bg-white hover:border-cyan-400 hover:shadow-cyan-950/10',
+      mark: 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200',
+      line: 'bg-cyan-500',
+    },
+  },
+  incidencia: {
+    label: 'Incidencia',
+    title: 'Ayudar en incidencia',
+    short: 'Incidencia',
+    mark: '!',
+    accent: 'amber',
+    classes: {
+      wrapper: 'border-amber-200 bg-white hover:border-amber-400 hover:shadow-amber-950/10',
+      mark: 'bg-amber-500 text-white',
+      line: 'bg-amber-500',
+    },
+  },
+  puesto: {
+    label: 'Puesto',
+    title: 'Ayudar en puesto',
+    short: 'Puesto',
+    mark: 'P',
+    accent: 'indigo',
+    classes: {
+      wrapper: 'border-indigo-200 bg-white hover:border-indigo-400 hover:shadow-indigo-950/10',
+      mark: 'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200',
+      line: 'bg-indigo-500',
+    },
+  },
+} satisfies Record<AccionVoluntario, {
+  label: string
+  title: string
+  short: string
+  mark: string
+  accent: string
+  classes: { wrapper: string; mark: string; line: string }
+}>
+
 function ActionCard({
+  type,
   title,
+  icon: _icon,
   subtitle,
-  icon,
   onClick,
 }: {
-  title: string
+  type?: AccionVoluntario
+  title?: string
+  icon?: string
   subtitle: string
-  icon: string
   onClick: () => void
 }) {
-  const iconLabel = icon.length <= 2
-    ? icon
-    : title.includes('donacion')
-      ? 'D'
-      : title.includes('incidencia')
-        ? '!'
-        : '+'
-  const accent = title.includes('donacion')
-    ? {
-        wrapper: 'border-emerald-100 bg-gradient-to-br from-white to-emerald-50/70 hover:border-emerald-300',
-        icon: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200 group-hover:bg-emerald-600 group-hover:text-white',
-        glow: 'bg-emerald-400/10',
-      }
-    : title.includes('incidencia')
-      ? {
-          wrapper: 'border-amber-100 bg-gradient-to-br from-white to-amber-50/80 hover:border-amber-300',
-          icon: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200 group-hover:bg-amber-500 group-hover:text-white',
-          glow: 'bg-amber-400/10',
-        }
-      : {
-          wrapper: 'border-sky-100 bg-gradient-to-br from-white to-sky-50/80 hover:border-sky-300',
-          icon: 'bg-sky-100 text-sky-700 ring-1 ring-sky-200 group-hover:bg-sky-600 group-hover:text-white',
-          glow: 'bg-sky-400/10',
-        }
+  const inferredType: AccionVoluntario = type ?? (
+    title?.includes('incidencia') ? 'incidencia' : title?.includes('puesto') ? 'puesto' : 'donacion'
+  )
+  const meta = actionMeta[inferredType]
 
   return (
     <button
       onClick={onClick}
-      className={`group relative min-h-40 overflow-hidden rounded-lg border p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${accent.wrapper}`}
+      className={`group relative min-h-44 overflow-hidden rounded-lg border p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${meta.classes.wrapper}`}
     >
-      <span className={`absolute -right-8 -top-8 h-24 w-24 rounded-full ${accent.glow}`} />
-      <span className={`relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-sm font-semibold shadow-sm transition-colors ${accent.icon}`}>
-        {iconLabel}
+      <span className={`absolute inset-x-0 top-0 h-1 ${meta.classes.line}`} />
+      <span className={`inline-flex h-11 w-11 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${meta.classes.mark}`}>
+        {meta.mark}
       </span>
-      <p className="relative mt-5 text-base font-semibold text-slate-800">{title}</p>
-      <p className="mt-1 text-sm leading-5 text-slate-500">{subtitle}</p>
+      <p className="mt-5 text-base font-semibold text-slate-950">{meta.title}</p>
+      <p className="mt-2 text-sm leading-5 text-slate-500">{subtitle}</p>
+      <span className="mt-5 inline-flex items-center text-sm font-semibold text-slate-700 transition-colors group-hover:text-slate-950">
+        Abrir
+        <span className="ml-2 transition-transform group-hover:translate-x-1">-&gt;</span>
+      </span>
     </button>
   )
 }
@@ -204,14 +248,14 @@ function Notice({
   children: React.ReactNode
 }) {
   const classes = {
-    info: 'border-blue-200 bg-blue-50 text-blue-800',
-    success: 'border-green-200 bg-green-50 text-green-800',
-    warning: 'border-amber-200 bg-amber-50 text-amber-800',
-    danger: 'border-red-200 bg-red-50 text-red-700',
+    info: 'border-cyan-200 bg-cyan-50 text-cyan-900',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900',
+    danger: 'border-red-200 bg-red-50 text-red-800',
   }
 
   return (
-    <div className={`rounded-lg border px-3 py-2 text-sm ${classes[tone]}`}>
+    <div className={`rounded-lg border px-4 py-3 text-sm shadow-sm ${classes[tone]}`}>
       {children}
     </div>
   )
@@ -219,25 +263,94 @@ function Notice({
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div>
-      <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p className="text-[11px] font-semibold uppercase text-slate-400">Modulo operativo</p>
+        <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
+      </div>
+      <p className="max-w-xl text-sm leading-5 text-slate-500 sm:text-right">{subtitle}</p>
     </div>
   )
 }
 
 function cardClass(selected: boolean, disabled = false) {
-  return `rounded-lg border bg-white shadow-sm transition-all ${
+  return `rounded-lg border bg-white shadow-sm transition-all duration-200 ${
     selected
-      ? 'border-green-500 ring-2 ring-green-100'
+      ? 'border-cyan-500 ring-2 ring-cyan-100'
       : disabled
         ? 'border-slate-200 opacity-60'
-        : 'border-slate-200 hover:border-green-300 hover:shadow-md'
+        : 'border-slate-200 hover:border-slate-400 hover:shadow-lg'
   }`
 }
 
 function isDonacionActiva(donacion: Donacion) {
   return donacion.estado === 'PENDIENTE' || donacion.estado === 'EN_CAMINO'
+}
+
+function createCodigoEntregaPayload(donacion: Donacion, entregaCodigo: string) {
+  return JSON.stringify({
+    type: 'DONACION_ENTREGA',
+    version: 1,
+    entregaCodigo,
+    donacionId: donacion.id,
+    puestoId: donacion.puesto.id,
+    productoId: donacion.producto.id,
+    cantidad: donacion.cantidad,
+    unidad: donacion.unidad,
+    generatedAt: new Date().toISOString(),
+  })
+}
+
+function createOfflineEntregaCodigo(donacionId: string) {
+  return `OFFLINE-${donacionId}-${Date.now()}`
+}
+
+function RouteSafetyPanel({
+  distanciaKm,
+  duracionMin,
+  incidenciasEvitadas,
+  incidenciasCercanas,
+  destino,
+}: {
+  distanciaKm: number
+  duracionMin: number
+  incidenciasEvitadas: number
+  incidenciasCercanas: number
+  destino: string
+}) {
+  const riesgo = incidenciasCercanas > 0 || incidenciasEvitadas > 0
+
+  return (
+    <div className="border-t border-slate-200 bg-slate-50 px-3 py-3">
+      <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+        <div className="rounded-md bg-slate-50 px-2 py-2">
+          <p className="font-medium text-slate-500">Distancia</p>
+          <p className="mt-1 font-semibold text-slate-800">{distanciaKm.toFixed(1)} km</p>
+        </div>
+        <div className="rounded-md bg-slate-50 px-2 py-2">
+          <p className="font-medium text-slate-500">Tiempo</p>
+          <p className="mt-1 font-semibold text-slate-800">~{duracionMin} min</p>
+        </div>
+        <div className={`rounded-md px-2 py-2 ${riesgo ? 'bg-amber-50' : 'bg-emerald-50'}`}>
+          <p className={`font-medium ${riesgo ? 'text-amber-700' : 'text-emerald-700'}`}>Seguridad</p>
+          <p className={`mt-1 font-semibold ${riesgo ? 'text-amber-900' : 'text-emerald-900'}`}>
+            {riesgo ? `${incidenciasCercanas} aviso${incidenciasCercanas === 1 ? '' : 's'} cerca` : 'Ruta sin avisos'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { window.location.href = 'tel:112' }}
+          className="rounded-md bg-red-50 px-2 py-2 text-left transition-colors hover:bg-red-100"
+        >
+          <p className="font-medium text-red-700">Emergencia</p>
+          <p className="mt-1 font-semibold text-red-900">Llamar 112</p>
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Destino: {destino}. Si la ruta cambia o detectas peligro, avisa al puesto al llegar.
+      </p>
+    </div>
+  )
 }
 
 function ocupacionInicialPuesto(puesto: PuestoEmergencia, index: number): OcupacionPuesto {
@@ -274,6 +387,7 @@ export default function VoluntarioDashboard() {
   const [mensajeDonacion, setMensajeDonacion] = useState('')
   const [errorDonacion, setErrorDonacion] = useState('')
   const [cantidadError, setCantidadError] = useState('')
+  const [codigosEntrega, setCodigosEntrega] = useState<Record<string, string>>({})
   const [actividadManualActiva, setActividadManualActiva] = useState<ActividadManualActiva | null>(null)
   const [ocupacionPorPuesto, setOcupacionPorPuesto] = useState<Record<string, OcupacionPuesto>>({})
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null)
@@ -296,6 +410,9 @@ export default function VoluntarioDashboard() {
     excluirIncidenciaId?: string
   } | null>(null)
   const { position, request: requestGeo } = useGeolocation()
+  const { mode, isOnline } = useConnectivity()
+  const enqueueSync = useSyncStore((store) => store.enqueue)
+  const pendingSync = useSyncStore((store) => store.pendingCount)
 
   useEffect(() => {
     if (position) setUserPosition([position.lat, position.lng])
@@ -315,12 +432,13 @@ export default function VoluntarioDashboard() {
     async function load() {
       setLoading(true)
       try {
-        const [{ data: puestosData }, { data: incidenciasData }, necesidadesResult, misDonacionesResult, asignacionPuestoResult] = await Promise.all([
+        const [{ data: puestosData }, { data: incidenciasData }, necesidadesResult, misDonacionesResult, asignacionPuestoResult, asignacionIncidenciaResult] = await Promise.all([
           apiClient.get('/api/puestos'),
           apiClient.get('/api/incidencias'),
           apiClient.get('/api/donaciones/necesidades').catch(() => ({ data: { necesidades: [] } })),
           apiClient.get('/api/donaciones/mis-donaciones').catch(() => ({ data: { donaciones: [] } })),
           apiClient.get('/api/puestos/mis-asignaciones/activa').catch(() => ({ data: { asignacion: null } })),
+          apiClient.get('/api/incidencias/mis-asignaciones/activa').catch(() => ({ data: { asignacion: null } })),
         ])
 
         const apiNecesidades: NecesidadDonacionApi[] = necesidadesResult.data.necesidades ?? []
@@ -349,6 +467,14 @@ export default function VoluntarioDashboard() {
               tipo: 'puesto',
               id: asignacionActiva.puestoId,
               nombre: asignacionActiva.puesto.nombre,
+            })
+          }
+          const asignacionIncidenciaActiva = asignacionIncidenciaResult.data.asignacion as AsignacionIncidenciaActiva | null
+          if (asignacionIncidenciaActiva?.incidencia) {
+            setActividadManualActiva({
+              tipo: 'incidencia',
+              id: asignacionIncidenciaActiva.incidenciaId,
+              nombre: asignacionIncidenciaActiva.incidencia.descripcion || 'Incidencia sin descripcion',
             })
           }
           setInventarioPorPuesto(Object.fromEntries(inventarios))
@@ -399,8 +525,8 @@ export default function VoluntarioDashboard() {
   ), [inventarioPorPuesto, necesidadesApi, puestos])
 
   const selectedNeed = necesidades.find((necesidad) => necesidad.item.id === seleccion)
-  const selectedIncidencia = incidencias.find((incidencia) => incidencia.id === seleccion)
   const donacionesActivas = misDonaciones.filter(isDonacionActiva)
+  const donacionesHistorial = misDonaciones.filter((donacion) => !isDonacionActiva(donacion))
   const donacionActiva = donacionesActivas[0]
   const actividadActiva = donacionActiva
     ? {
@@ -409,6 +535,8 @@ export default function VoluntarioDashboard() {
         nombre: `${donacionActiva.producto.nombre} para ${donacionActiva.puesto.nombre}`,
       }
     : actividadManualActiva
+  const estadoOperativo = actividadActiva ? 'En servicio' : 'Disponible'
+  const connectionLabel = mode === 'offline' ? 'Offline' : mode === 'slow' ? 'Conexion lenta' : 'Online'
 
   const resetSelection = (next: AccionVoluntario) => {
     if (actividadActiva && actividadActiva.tipo !== next) return
@@ -446,8 +574,17 @@ export default function VoluntarioDashboard() {
 
     setErrorDonacion('')
     try {
+      if (!isOnline && !puesto.id.startsWith('demo-')) {
+        await enqueueSync({
+          entity: 'asignacion-puesto',
+          method: 'POST',
+          url: `/api/puestos/${puesto.id}/asignaciones`,
+          priority: 'high',
+        })
+      }
+
       if (!puesto.id.startsWith('demo-')) {
-        await apiClient.post(`/api/puestos/${puesto.id}/asignaciones`)
+        if (isOnline) await apiClient.post(`/api/puestos/${puesto.id}/asignaciones`)
       }
 
       setOcupacionPorPuesto((current) => ({
@@ -462,6 +599,7 @@ export default function VoluntarioDashboard() {
         id: puesto.id,
         nombre: puesto.nombre,
       })
+      if (!isOnline) setMensajeDonacion('Sin conexion: asignacion al puesto guardada para sincronizar.')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
@@ -475,7 +613,17 @@ export default function VoluntarioDashboard() {
     if (actividadManualActiva?.tipo === 'puesto') {
       if (!actividadManualActiva.id.startsWith('demo-')) {
         try {
-          await apiClient.post(`/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`)
+          if (isOnline) {
+            await apiClient.post(`/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`)
+          } else {
+            await enqueueSync({
+              entity: 'asignacion-puesto',
+              method: 'POST',
+              url: `/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`,
+              priority: 'high',
+            })
+            setMensajeDonacion('Sin conexion: finalizacion guardada para sincronizar.')
+          }
         } catch (err: unknown) {
           const message = err && typeof err === 'object' && 'response' in err
             ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
@@ -497,8 +645,60 @@ export default function VoluntarioDashboard() {
           },
         }
       })
+    } else if (actividadManualActiva?.tipo === 'incidencia') {
+      if (!actividadManualActiva.id.startsWith('demo-')) {
+        try {
+          if (isOnline) {
+            await apiClient.post(`/api/incidencias/${actividadManualActiva.id}/asignaciones/finalizar`)
+          } else {
+            await enqueueSync({
+              entity: 'asignacion-incidencia',
+              method: 'POST',
+              url: `/api/incidencias/${actividadManualActiva.id}/asignaciones/finalizar`,
+              priority: 'high',
+            })
+            setMensajeDonacion('Sin conexion: finalizacion de incidencia guardada para sincronizar.')
+          }
+        } catch (err: unknown) {
+          const message = err && typeof err === 'object' && 'response' in err
+            ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+            : undefined
+          setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo finalizar la ayuda en la incidencia.')
+          return
+        }
+      }
     }
     setActividadManualActiva(null)
+  }
+
+  const iniciarAyudaIncidencia = async (incidencia: Incidencia) => {
+    if (actividadActiva) return
+
+    setErrorDonacion('')
+    try {
+      if (!isOnline) {
+        await enqueueSync({
+          entity: 'asignacion-incidencia',
+          method: 'POST',
+          url: `/api/incidencias/${incidencia.id}/asignaciones`,
+          priority: 'high',
+        })
+      } else {
+        await apiClient.post(`/api/incidencias/${incidencia.id}/asignaciones`)
+      }
+
+      setActividadManualActiva({
+        tipo: 'incidencia',
+        id: incidencia.id,
+        nombre: incidencia.descripcion || 'Incidencia sin descripcion',
+      })
+      if (!isOnline) setMensajeDonacion('Sin conexion: asignacion a incidencia guardada para sincronizar.')
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+        : undefined
+      setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo reservar la ayuda en la incidencia.')
+    }
   }
 
   const handleComoLlegar = async (puesto: PuestoEmergencia, donacionId?: string, excluirIncidenciaId?: string) => {
@@ -597,6 +797,40 @@ export default function VoluntarioDashboard() {
     setMensajeDonacion('')
 
     try {
+      if (!isOnline) {
+        const donacionOffline: Donacion = {
+          id: `offline-${crypto.randomUUID()}`,
+          cantidad: parsedCantidad,
+          unidad: selectedNeed.item.producto.unidad,
+          estado: 'PENDIENTE',
+          comentario: comentarioDonacion || undefined,
+          producto: selectedNeed.item.producto,
+          puesto: selectedNeed.puesto,
+        }
+
+        await enqueueSync({
+          entity: 'donacion',
+          method: 'POST',
+          url: '/api/donaciones',
+          body: {
+            puestoId: selectedNeed.puesto.id,
+            productoId: selectedNeed.item.producto.id,
+            cantidad: parsedCantidad,
+            unidad: selectedNeed.item.producto.unidad,
+            comentario: comentarioDonacion || undefined,
+          },
+          priority: 'high',
+        })
+
+        setMisDonaciones((current) => [donacionOffline, ...current])
+        setMensajeDonacion('Sin conexion: donacion guardada y pendiente de sincronizar.')
+        setVistaDonacion('mis-donaciones')
+        setCantidad('')
+        setComentarioDonacion('')
+        setSeleccion('')
+        return
+      }
+
       if (selectedNeed.puesto.id.startsWith('demo-')) {
         setErrorDonacion('Estas viendo datos demo. Recarga cuando haya necesidades reales para registrar una donacion.')
         return
@@ -653,6 +887,24 @@ export default function VoluntarioDashboard() {
       return
     }
 
+    if (!isOnline) {
+      if (!donacion.id.startsWith('offline-')) {
+        await enqueueSync({
+          entity: 'donacion',
+          method: 'PATCH',
+          url: `/api/donaciones/${donacion.id}/estado`,
+          body: { estado },
+          priority: estado === 'CANCELADA' ? 'normal' : 'high',
+        })
+      }
+
+      setMisDonaciones((current) => current.map((item) => (
+        item.id === donacion.id ? { ...item, estado } : item
+      )))
+      setMensajeDonacion('Sin conexion: cambio guardado y pendiente de sincronizar.')
+      return
+    }
+
     setEstadoLoadingId(donacion.id)
     try {
       const { data } = await apiClient.patch(`/api/donaciones/${donacion.id}/estado`, { estado })
@@ -694,43 +946,117 @@ export default function VoluntarioDashboard() {
     }
   }
 
+  const handleGenerarCodigoEntrega = async (donacion: Donacion) => {
+    setErrorDonacion('')
+
+    if (donacion.entregaCodigo) {
+      setCodigosEntrega((current) => ({
+        ...current,
+        [donacion.id]: current[donacion.id] ?? createCodigoEntregaPayload(donacion, donacion.entregaCodigo!),
+      }))
+      setMensajeDonacion('Codigo de entrega listo. Enseñalo en el puesto para confirmar la llegada.')
+      return
+    }
+
+    if (!isOnline) {
+      const entregaCodigo = createOfflineEntregaCodigo(donacion.id)
+      if (!donacion.id.startsWith('offline-')) {
+        await enqueueSync({
+          entity: 'donacion',
+          method: 'POST',
+          url: `/api/donaciones/${donacion.id}/codigo-entrega`,
+          priority: 'critical',
+        })
+      }
+      const donacionConCodigo = {
+        ...donacion,
+        entregaCodigo,
+        entregaCodigoGeneradoAt: new Date().toISOString(),
+      }
+      setMisDonaciones((current) => current.map((item) => (
+        item.id === donacion.id ? donacionConCodigo : item
+      )))
+      setCodigosEntrega((current) => ({
+        ...current,
+        [donacion.id]: createCodigoEntregaPayload(donacionConCodigo, entregaCodigo),
+      }))
+      setMensajeDonacion('Sin conexion: codigo temporal generado y solicitud pendiente de sincronizar.')
+      return
+    }
+
+    setEstadoLoadingId(donacion.id)
+    try {
+      const { data } = await apiClient.post(`/api/donaciones/${donacion.id}/codigo-entrega`)
+      const donacionActualizada = data.donacion as Donacion
+      const entregaCodigo = donacionActualizada.entregaCodigo
+      setMisDonaciones((current) => current.map((item) => (
+        item.id === donacion.id ? donacionActualizada : item
+      )))
+      if (entregaCodigo) {
+        setCodigosEntrega((current) => ({
+          ...current,
+          [donacion.id]: createCodigoEntregaPayload(donacionActualizada, entregaCodigo),
+        }))
+      }
+      setMensajeDonacion('Codigo de entrega generado. Enseñalo en el puesto para confirmar la llegada.')
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+        : undefined
+      setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo generar el codigo de entrega.')
+    } finally {
+      setEstadoLoadingId('')
+    }
+  }
+
   return (
-    <div className="h-full overflow-y-auto overscroll-contain bg-gradient-to-b from-emerald-50 via-sky-50/60 to-white pb-24 safe-bottom">
-      <div className="border-b border-emerald-100 bg-white/90 px-4 py-5 shadow-sm backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-emerald-600">Panel de voluntario</p>
-            <h1 className="mt-1 text-xl font-semibold text-slate-800">Centro de actividad</h1>
-            <p className="mt-1 hidden text-sm text-slate-500 sm:block">Elige, confirma y manten una unica tarea activa.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="hidden rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-right shadow-sm sm:block">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-sky-600">Opciones</p>
-              <p className="mt-1 text-sm font-semibold text-sky-800">3 actividades</p>
+    <div className="h-full overflow-y-auto overscroll-contain bg-slate-50 pb-24 text-slate-900 safe-bottom">
+      <div className="border-b border-cyan-100 bg-white px-4 py-6 shadow-sm">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-cyan-700">Panel de voluntario</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950 sm:text-4xl">Centro de actividad</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                Coordina donaciones, incidencias y apoyo en puestos manteniendo una unica actividad operativa.
+              </p>
             </div>
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-right shadow-sm">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-600">Estado</p>
-              <div className="mt-1 flex items-center justify-end gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <p className="text-sm font-semibold text-emerald-800">Disponible</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
+              <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase text-cyan-700">Estado</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950">{estadoOperativo}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase text-slate-500">Conexion</p>
+                <p className={`mt-1 text-sm font-semibold ${mode === 'offline' ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  {connectionLabel}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase text-slate-500">Activas</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950">{donacionesActivas.length}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase text-slate-500">Sincronizacion</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950">{pendingSync}</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <main className="mx-auto max-w-5xl px-4 pt-5">
+      <main className="mx-auto max-w-6xl px-4 pt-5">
         {actividadActiva && (
           <Notice tone="success">
             Actividad en curso: <strong>{actividadActiva.nombre}</strong>. Termina o cancela esta tarea antes de elegir otra.
           </Notice>
         )}
         {accion && (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-emerald-100 bg-white/90 p-4 shadow-sm backdrop-blur">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Actividad elegida</p>
-              <h2 className="mt-0.5 text-lg font-semibold text-slate-800">
-                {accion === 'donacion' ? 'Hacer una donacion' : accion === 'incidencia' ? 'Ayudar en incidencia' : 'Ayudar en puesto'}
+              <p className="text-xs font-semibold uppercase text-slate-400">Actividad elegida</p>
+              <h2 className="mt-0.5 text-lg font-semibold text-slate-950">
+                {actionMeta[accion].title}
               </h2>
             </div>
             {!actividadActiva && (
@@ -741,7 +1067,7 @@ export default function VoluntarioDashboard() {
           </div>
         )}
         {!accion && (
-          <section className="rounded-lg border border-emerald-100 bg-white/90 p-5 shadow-sm backdrop-blur">
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <SectionHeader
               title="Que quieres hacer ahora?"
               subtitle="Elige una linea de trabajo. Cuando inicies una actividad, el resto quedara bloqueado hasta que la termines."
@@ -771,7 +1097,7 @@ export default function VoluntarioDashboard() {
       </main>
 
       {accion && (
-      <main className="mx-auto max-w-5xl px-4 pt-5">
+      <main className="mx-auto max-w-6xl px-4 pt-5">
         {loading ? (
           <EmptyState>Cargando opciones disponibles...</EmptyState>
         ) : (
@@ -788,19 +1114,19 @@ export default function VoluntarioDashboard() {
                 )}
 
                 {donacionActiva && vistaDonacion === 'necesidades' && (
-                  <div className="bg-blue-50 border border-blue-200 text-blue-800 text-sm px-3 py-2 rounded-lg">
+                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900 shadow-sm">
                     Tienes una donacion activa para <strong>{donacionActiva.puesto.nombre}</strong>. Puedes añadir mas productos a ese centro, pero no a otro distinto hasta finalizarla.
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 rounded-lg border border-emerald-100 bg-white/90 p-1 shadow-sm">
+                <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-200 p-1 shadow-sm">
                   <button
                     type="button"
                     onClick={() => setVistaDonacion('necesidades')}
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       vistaDonacion === 'necesidades'
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-emerald-50'
+                        ? 'bg-cyan-700 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white'
                     }`}
                   >
                     Necesidades
@@ -810,8 +1136,8 @@ export default function VoluntarioDashboard() {
                     onClick={() => setVistaDonacion('mis-donaciones')}
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
                       vistaDonacion === 'mis-donaciones'
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-emerald-50'
+                        ? 'bg-cyan-700 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white'
                     }`}
                   >
                     Mis donaciones ({donacionesActivas.length})
@@ -874,7 +1200,7 @@ export default function VoluntarioDashboard() {
                           </div>
 
                           {selected && selectedNeed && (
-                            <div className="space-y-3 border-t border-green-100 bg-green-50/60 p-4">
+                            <div className="space-y-3 border-t border-slate-200 bg-slate-50 p-4">
                               <div>
                                 <p className="text-sm font-semibold text-slate-800">Vas a llevar {selectedNeed.item.producto.nombre}</p>
                                 <p className="text-xs text-slate-500">Destino: {selectedNeed.puesto.nombre}</p>
@@ -895,7 +1221,7 @@ export default function VoluntarioDashboard() {
                                   className={`w-full rounded-lg text-sm ${
                                     cantidadError
                                       ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                                      : 'border-gray-300 focus:border-green-500 focus:ring-green-500'
+                                      : 'border-gray-300 focus:border-slate-900 focus:ring-slate-900'
                                   }`}
                                   placeholder={`Ej. 10 ${selectedNeed.item.producto.unidad}`}
                                 />
@@ -909,7 +1235,7 @@ export default function VoluntarioDashboard() {
                                 <textarea
                                   value={comentarioDonacion}
                                   onChange={(event) => setComentarioDonacion(event.target.value)}
-                                  className="w-full rounded-lg border-gray-300 focus:border-green-500 focus:ring-green-500 text-sm"
+                                  className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
                                   rows={2}
                                   placeholder="Ej. llego en furgoneta sobre las 18:00"
                                 />
@@ -935,7 +1261,12 @@ export default function VoluntarioDashboard() {
                       <EmptyState>No tienes donaciones activas ahora mismo.</EmptyState>
                     ) : (
                     <div className="space-y-3">
-                      {donacionesActivas.map((donacion) => (
+                      {donacionesActivas.map((donacion) => {
+                        const codigoEntrega = codigosEntrega[donacion.id] ?? (
+                          donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
+                        )
+
+                        return (
                         <div key={donacion.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -951,7 +1282,7 @@ export default function VoluntarioDashboard() {
                           <button
                             type="button"
                             onClick={() => handleComoLlegar(donacion.puesto, donacion.id)}
-                            className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
+                            className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800"
                             disabled={rutaLoading}
                           >
                             {rutaLoadingId === donacion.id ? 'Calculando ruta...' : 'Como llegar'}
@@ -976,12 +1307,12 @@ export default function VoluntarioDashboard() {
                             </div>
                           )}
                           {rutaActiva?.donacionId === donacion.id && (
-                            <div className="mt-3 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm">
-                              <div className="border-b border-blue-100 bg-blue-50 px-3 py-3">
+                            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                              <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
                                 <div className="flex items-start justify-between gap-3">
                                   <div>
-                                    <p className="text-sm font-semibold text-blue-900">Ruta segura a {rutaActiva.puesto.nombre}</p>
-                                    <p className="mt-1 text-xs text-blue-700">
+                                    <p className="text-sm font-semibold text-slate-950">Ruta segura a {rutaActiva.puesto.nombre}</p>
+                                    <p className="mt-1 text-xs text-slate-600">
                                       {rutaActiva.distanciaKm.toFixed(1)} km · ~{rutaActiva.duracionMin} min
                                       {rutaActiva.incidenciasEvitadas > 0 && ` · evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
                                     </p>
@@ -989,7 +1320,7 @@ export default function VoluntarioDashboard() {
                                   <button
                                     type="button"
                                     onClick={() => setRutaActiva(null)}
-                                    className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                                    className="text-xs font-medium text-slate-500 hover:text-slate-950"
                                   >
                                     Cerrar
                                   </button>
@@ -1006,6 +1337,31 @@ export default function VoluntarioDashboard() {
                                 route={rutaActiva.points}
                                 markerVariant="neutral"
                               />
+                              <RouteSafetyPanel
+                                distanciaKm={rutaActiva.distanciaKm}
+                                duracionMin={rutaActiva.duracionMin}
+                                incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
+                                incidenciasCercanas={rutaActiva.incidenciasCercanas}
+                                destino={rutaActiva.puesto.nombre}
+                              />
+                            </div>
+                          )}
+                          {codigoEntrega && (
+                            <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                              <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+                                <div className="rounded-lg border border-cyan-100 bg-white p-3 shadow-sm">
+                                  <QRCodeSVG value={codigoEntrega} size={164} level="M" includeMargin />
+                                </div>
+                                <div className="text-center sm:text-left">
+                                  <p className="text-sm font-semibold text-cyan-950">Codigo de entrega</p>
+                                  <p className="mt-1 text-sm text-cyan-900">
+                                    Enseña este QR al personal del puesto para que confirme la recepcion.
+                                  </p>
+                                  <p className="mt-2 break-all rounded-md bg-white/80 px-2 py-1 font-mono text-xs text-cyan-950">
+                                    {donacion.id}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
                           )}
                           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -1026,9 +1382,9 @@ export default function VoluntarioDashboard() {
                                 size="sm"
                                 variant="secondary"
                                 loading={estadoLoadingId === donacion.id}
-                                onClick={() => void handleActualizarEstadoDonacion(donacion, 'ENTREGADA')}
+                                onClick={() => void handleGenerarCodigoEntrega(donacion)}
                               >
-                                Entregada
+                                {codigoEntrega ? 'Mostrar codigo' : 'Generar codigo'}
                               </Button>
                             )}
                             <Button
@@ -1042,8 +1398,40 @@ export default function VoluntarioDashboard() {
                             </Button>
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
+                    )}
+
+                    {donacionesHistorial.length > 0 && (
+                      <div className="mt-5">
+                        <SectionHeader
+                          title="Historial"
+                          subtitle="Ultimas donaciones cerradas o canceladas."
+                        />
+                        <div className="mt-3 space-y-2">
+                          {donacionesHistorial.slice(0, 8).map((donacion) => (
+                            <div key={donacion.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">
+                                    {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-500">{donacion.puesto.nombre}</p>
+                                  {donacion.entregaCodigoGeneradoAt && (
+                                    <p className="mt-1 text-xs text-slate-400">
+                                      Codigo generado: {new Date(donacion.entregaCodigoGeneradoAt).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge variant={donacion.estado === 'ENTREGADA' ? 'success' : 'danger'}>
+                                  {donacion.estado.replace('_', ' ')}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
 
                     {/*
@@ -1065,8 +1453,8 @@ export default function VoluntarioDashboard() {
                     )}
 
                     {rutaActiva && (
-                      <div className="mt-3 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm">
-                        <div className="border-b border-blue-100 bg-blue-50 px-3 py-3">
+                      <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold text-blue-900">Ruta segura a {rutaActiva.puesto.nombre}</p>
@@ -1109,114 +1497,136 @@ export default function VoluntarioDashboard() {
                   subtitle="Elige una incidencia en la que puedas ayudar."
                 />
 
+                {errorDonacion && (
+                  <Notice tone="danger">{errorDonacion}</Notice>
+                )}
+
                 {incidencias.length === 0 ? (
                   <EmptyState>No hay incidencias registradas ahora mismo.</EmptyState>
                 ) : (
                   <div className="space-y-3">
-                    {incidencias.map((incidencia) => (
-                      <button
-                        key={incidencia.id}
-                        onClick={() => setSeleccion(incidencia.id)}
-                        className={`${cardClass(seleccion === incidencia.id)} w-full p-4 text-left`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-slate-800">{incidencia.descripcion || 'Incidencia sin descripcion'}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {incidencia.latitud.toFixed(5)}, {incidencia.longitud.toFixed(5)}
-                            </p>
-                          </div>
-                          <Badge variant={incidencia.estado === 'CORTADA' ? 'danger' : 'success'}>
-                            {incidencia.estado === 'CORTADA' ? 'Cortada' : 'Transitable'}
-                          </Badge>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                    {incidencias.map((incidencia) => {
+                      const selected = seleccion === incidencia.id
+                      const incidenciaActiva = actividadManualActiva?.tipo === 'incidencia' && actividadManualActiva.id === incidencia.id
 
-                {selectedIncidencia && (
-                  <div className="rounded-lg border border-green-200 bg-white p-4 shadow-sm">
-                    <p className="text-sm font-semibold text-slate-800">Incidencia seleccionada</p>
-                    <p className="mt-1 text-sm text-slate-500">{selectedIncidencia.descripcion || 'Sin descripcion'}</p>
-                    <button
-                      type="button"
-                      onClick={() => handleComoLlegarIncidencia(selectedIncidencia)}
-                      className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700"
-                      disabled={rutaLoading}
-                    >
-                      {rutaLoadingId === `incidencia:${selectedIncidencia.id}` ? 'Calculando ruta...' : 'Como llegar'}
-                    </button>
-                    {rutaError && rutaErrorDonacionId === `incidencia:${selectedIncidencia.id}` && (
-                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                        <p>{rutaError}</p>
-                        {rutaError.includes('ubicacion') && (
-                          <Button
+                      return (
+                        <div key={incidencia.id} className={cardClass(selected)}>
+                          <button
                             type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="mt-2 w-full sm:w-auto"
-                            onClick={() => handleComoLlegarIncidencia(selectedIncidencia)}
+                            onClick={() => setSeleccion(selected ? '' : incidencia.id)}
+                            className="w-full p-4 text-left"
                           >
-                            Compartir ubicacion
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                    {rutaActiva?.donacionId === `incidencia:${selectedIncidencia.id}` && (
-                      <div className="mt-3 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm">
-                        <div className="border-b border-blue-100 bg-blue-50 px-3 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-blue-900">Ruta segura a la incidencia</p>
-                              <p className="mt-1 text-xs text-blue-700">
-                                {rutaActiva.distanciaKm.toFixed(1)} km · ~{rutaActiva.duracionMin} min
-                                {rutaActiva.incidenciasEvitadas > 0 && ` · evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
-                              </p>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-slate-900">{incidencia.descripcion || 'Incidencia sin descripcion'}</p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {incidencia.latitud.toFixed(5)}, {incidencia.longitud.toFixed(5)}
+                                </p>
+                                {incidencia._count?.asignacionesVoluntarios !== undefined && (
+                                  <p className="mt-1 text-xs text-slate-400">
+                                    {incidencia._count.asignacionesVoluntarios} voluntario{incidencia._count.asignacionesVoluntarios === 1 ? '' : 's'} asignado{incidencia._count.asignacionesVoluntarios === 1 ? '' : 's'}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <Badge variant={incidencia.estado === 'CORTADA' ? 'danger' : 'success'}>
+                                  {incidencia.estado === 'CORTADA' ? 'Cortada' : 'Transitable'}
+                                </Badge>
+                                <span className="text-xs font-medium text-slate-400">{selected ? 'Cerrar' : 'Ver detalle'}</span>
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => setRutaActiva(null)}
-                              className="text-xs font-medium text-blue-700 hover:text-blue-900"
-                            >
-                              Cerrar
-                            </button>
-                          </div>
+                          </button>
+
+                          {selected && (
+                            <div className="border-t border-slate-200 bg-slate-50 p-4">
+                              <p className="text-sm font-semibold text-slate-900">Incidencia seleccionada</p>
+                              <p className="mt-1 text-sm text-slate-600">{incidencia.descripcion || 'Sin descripcion'}</p>
+                              <button
+                                type="button"
+                                onClick={() => handleComoLlegarIncidencia(incidencia)}
+                                className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800"
+                                disabled={rutaLoading}
+                              >
+                                {rutaLoadingId === `incidencia:${incidencia.id}` ? 'Calculando ruta...' : 'Como llegar'}
+                              </button>
+                              {rutaError && rutaErrorDonacionId === `incidencia:${incidencia.id}` && (
+                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                                  <p>{rutaError}</p>
+                                  {rutaError.includes('ubicacion') && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="secondary"
+                                      className="mt-2 w-full sm:w-auto"
+                                      onClick={() => handleComoLlegarIncidencia(incidencia)}
+                                    >
+                                      Compartir ubicacion
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                              {rutaActiva?.donacionId === `incidencia:${incidencia.id}` && (
+                                <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                                  <div className="border-b border-slate-200 bg-white px-3 py-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-950">Ruta segura a la incidencia</p>
+                                        <p className="mt-1 text-xs text-slate-600">
+                                          {rutaActiva.distanciaKm.toFixed(1)} km Â· ~{rutaActiva.duracionMin} min
+                                          {rutaActiva.incidenciasEvitadas > 0 && ` Â· evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setRutaActiva(null)}
+                                        className="text-xs font-medium text-slate-500 hover:text-slate-950"
+                                      >
+                                        Cerrar
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <Map
+                                    className="h-72"
+                                    center={[incidencia.latitud, incidencia.longitud]}
+                                    userPosition={userPosition}
+                                    onUserLocated={setUserPosition}
+                                    incidencias={incidencias as IncidenciaMarker[]}
+                                    route={rutaActiva.points}
+                                    markerVariant="neutral"
+                                  />
+                                  <RouteSafetyPanel
+                                    distanciaKm={rutaActiva.distanciaKm}
+                                    duracionMin={rutaActiva.duracionMin}
+                                    incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
+                                    incidenciasCercanas={rutaActiva.incidenciasCercanas}
+                                    destino={rutaActiva.puesto.nombre}
+                                  />
+                                </div>
+                              )}
+                              {incidenciaActiva ? (
+                                <Button
+                                  fullWidth
+                                  variant="secondary"
+                                  className="mt-3"
+                                  onClick={finalizarAyudaManual}
+                                >
+                                  Terminar ayuda en incidencia
+                                </Button>
+                              ) : (
+                                <Button
+                                  fullWidth
+                                  className="mt-3"
+                                  disabled={Boolean(actividadActiva)}
+                                  onClick={() => void iniciarAyudaIncidencia(incidencia)}
+                                >
+                                  Apuntarme para ayudar
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <Map
-                          className="h-72"
-                          center={[selectedIncidencia.latitud, selectedIncidencia.longitud]}
-                          userPosition={userPosition}
-                          onUserLocated={setUserPosition}
-                          incidencias={incidencias as IncidenciaMarker[]}
-                          route={rutaActiva.points}
-                          markerVariant="neutral"
-                        />
-                      </div>
-                    )}
-                  {actividadManualActiva?.tipo === 'incidencia' && actividadManualActiva.id === selectedIncidencia.id ? (
-                      <Button
-                        fullWidth
-                        variant="secondary"
-                        className="mt-3"
-                        onClick={finalizarAyudaManual}
-                      >
-                        Terminar ayuda en incidencia
-                      </Button>
-                    ) : (
-                      <Button
-                        fullWidth
-                        className="mt-3"
-                        disabled={Boolean(actividadActiva)}
-                        onClick={() => setActividadManualActiva({
-                          tipo: 'incidencia',
-                          id: selectedIncidencia.id,
-                          nombre: selectedIncidencia.descripcion || 'Incidencia sin descripcion',
-                        })}
-                      >
-                        Apuntarme para ayudar
-                      </Button>
-                    )}
+                      )
+                    })}
                   </div>
                 )}
               </section>
@@ -1277,8 +1687,8 @@ export default function VoluntarioDashboard() {
                           </button>
 
                           {selected && (
-                            <div className="border-t border-emerald-100 bg-emerald-50/40 p-4">
-                              <p className={`text-xs ${lleno ? 'text-red-600' : 'text-emerald-700'}`}>
+                            <div className="border-t border-slate-200 bg-slate-50 p-4">
+                              <p className={`text-xs ${lleno ? 'text-red-600' : 'text-slate-600'}`}>
                                 {lleno
                                   ? 'Este puesto esta lleno ahora mismo.'
                                   : `Quedan ${huecosLibres} hueco${huecosLibres === 1 ? '' : 's'} disponible${huecosLibres === 1 ? '' : 's'}.`}
@@ -1286,7 +1696,7 @@ export default function VoluntarioDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleComoLlegar(puesto, `puesto:${puesto.id}`)}
-                                className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-700 disabled:opacity-60"
+                                className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800 disabled:opacity-60"
                                 disabled={rutaLoading}
                               >
                                 {rutaLoadingId === `puesto:${puesto.id}` ? 'Calculando ruta...' : 'Como llegar'}
@@ -1308,12 +1718,12 @@ export default function VoluntarioDashboard() {
                                 </div>
                               )}
                               {rutaActiva?.donacionId === `puesto:${puesto.id}` && (
-                                <div className="mt-3 overflow-hidden rounded-lg border border-blue-200 bg-white shadow-sm">
-                                  <div className="border-b border-blue-100 bg-blue-50 px-3 py-3">
+                                <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                                  <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
-                                        <p className="text-sm font-semibold text-blue-900">Ruta segura a {puesto.nombre}</p>
-                                        <p className="mt-1 text-xs text-blue-700">
+                                        <p className="text-sm font-semibold text-slate-950">Ruta segura a {puesto.nombre}</p>
+                                        <p className="mt-1 text-xs text-slate-600">
                                           {rutaActiva.distanciaKm.toFixed(1)} km · ~{rutaActiva.duracionMin} min
                                           {rutaActiva.incidenciasEvitadas > 0 && ` · evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
                                         </p>
@@ -1321,7 +1731,7 @@ export default function VoluntarioDashboard() {
                                       <button
                                         type="button"
                                         onClick={() => setRutaActiva(null)}
-                                        className="text-xs font-medium text-blue-700 hover:text-blue-900"
+                                        className="text-xs font-medium text-slate-500 hover:text-slate-950"
                                       >
                                         Cerrar
                                       </button>
@@ -1337,6 +1747,13 @@ export default function VoluntarioDashboard() {
                                     selectedPuestoId={puesto.id}
                                     route={rutaActiva.points}
                                     markerVariant="neutral"
+                                  />
+                                  <RouteSafetyPanel
+                                    distanciaKm={rutaActiva.distanciaKm}
+                                    duracionMin={rutaActiva.duracionMin}
+                                    incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
+                                    incidenciasCercanas={rutaActiva.incidenciasCercanas}
+                                    destino={rutaActiva.puesto.nombre}
                                   />
                                 </div>
                               )}

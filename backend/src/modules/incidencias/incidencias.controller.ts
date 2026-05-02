@@ -6,11 +6,19 @@ import {
   updateEstadoSchema,
 } from './incidencias.schema.js'
 import {
+  createAsignacionIncidencia,
   createComentarioIncidencia,
   createIncidencia,
+  finalizarAsignacionIncidencia,
+  getAsignacionIncidenciaActiva,
   listIncidencias,
   updateIncidenciaEstado,
 } from './incidencias.service.js'
+
+function getUsuarioId(user: unknown) {
+  const authUser = user as { sub?: string; id?: string } | undefined
+  return authUser?.sub ?? authUser?.id
+}
 
 export async function getIncidencias(request: FastifyRequest, reply: FastifyReply) {
   const query = listIncidenciasQuerySchema.parse(request.query)
@@ -67,4 +75,30 @@ export async function postComentarioIncidencia(request: FastifyRequest, reply: F
 
   const result = await createComentarioIncidencia(id, input, autorId)
   return reply.status(201).send(result)
+}
+
+export async function getMiAsignacionIncidenciaActiva(request: FastifyRequest, reply: FastifyReply) {
+  const usuarioId = getUsuarioId(request.user)
+  if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+  const asignacion = await getAsignacionIncidenciaActiva(usuarioId)
+  return reply.send({ asignacion })
+}
+
+export async function postAsignacionIncidencia(request: FastifyRequest, reply: FastifyReply) {
+  const usuarioId = getUsuarioId(request.user)
+  if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+  const { id } = request.params as { id: string }
+  const asignacion = await createAsignacionIncidencia(usuarioId, id)
+  return reply.status(201).send({ asignacion })
+}
+
+export async function postFinalizarAsignacionIncidencia(request: FastifyRequest, reply: FastifyReply) {
+  const usuarioId = getUsuarioId(request.user)
+  if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+  const { id } = request.params as { id: string }
+  const asignacion = await finalizarAsignacionIncidencia(usuarioId, id)
+  return reply.send({ asignacion })
 }
