@@ -34,7 +34,9 @@ pnpm-debug.log*
 Thumbs.db
 
 # Prisma
-backend/prisma/migrations/
+backend/prisma/migrations/*
+!backend/prisma/migrations/20260502120000_add_puesto_asignaciones/
+!backend/prisma/migrations/20260502120000_add_puesto_asignaciones/migration.sql
 
 # Coverage
 coverage/

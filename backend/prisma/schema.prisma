@@ -37,6 +37,12 @@ enum EstadoDonacion {
   CANCELADA
 }
 
+enum EstadoAsignacionPuesto {
+  ACTIVA
+  FINALIZADA
+  CANCELADA
+}
+
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
@@ -122,6 +128,7 @@ model PuestoEmergencia {
   longitud     Float
   tipo         String
   activo       Boolean    @default(true)
+  capacidadTrabajo Int     @default(6)
   catastrofeId String
   adminId      String
   createdAt    DateTime   @default(now())
@@ -131,6 +138,7 @@ model PuestoEmergencia {
   admin      Usuario    @relation("AdminPuesto", fields: [adminId], references: [id])
   inventario Inventario[]
   donaciones Donacion[]
+  asignacionesVoluntarios AsignacionPuesto[]
 
   @@map("puestos_emergencia")
 }
@@ -174,8 +182,27 @@ model Voluntario {
 
   usuario Usuario @relation(fields: [usuarioId], references: [id])
   donaciones Donacion[]
+  asignacionesPuestos AsignacionPuesto[]
 
   @@map("voluntarios")
+}
+
+model AsignacionPuesto {
+  id           String                 @id @default(cuid())
+  voluntarioId String
+  puestoId     String
+  estado       EstadoAsignacionPuesto @default(ACTIVA)
+  startedAt    DateTime               @default(now())
+  endedAt      DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  voluntario Voluntario       @relation(fields: [voluntarioId], references: [id])
+  puesto     PuestoEmergencia @relation(fields: [puestoId], references: [id])
+
+  @@index([voluntarioId, estado])
+  @@index([puestoId, estado])
+  @@map("asignaciones_puestos")
 }
 
 model Donacion {

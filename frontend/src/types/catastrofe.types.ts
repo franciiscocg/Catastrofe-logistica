@@ -26,4 +26,6 @@ export interface PuestoEmergencia {
   activo: boolean
   catastrofeId: string
   distanciaKm?: number
+  capacidadTrabajo?: number
+  voluntariosTrabajando?: number
 }
