@@ -89,6 +89,23 @@ export async function puestosRouter(app: FastifyInstance) {
     reply.send({ asignacion })
   })
 
+  app.get('/mis-asignaciones', {
+    preHandler: [requireAuth, requireRole('VOLUNTARIO')],
+  }, async (request, reply) => {
+    const usuarioId = getUsuarioId(request.user)
+    if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+    const voluntario = await getVoluntarioByUsuario(usuarioId)
+    const asignaciones = await prisma.asignacionPuesto.findMany({
+      where: { voluntarioId: voluntario.id },
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+      include: { puesto: true },
+    })
+
+    reply.send({ asignaciones })
+  })
+
   app.post('/:id/asignaciones', {
     preHandler: [requireAuth, requireRole('VOLUNTARIO')],
   }, async (request, reply) => {

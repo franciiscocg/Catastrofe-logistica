@@ -72,6 +72,8 @@ type AsignacionPuestoActiva = {
   id: string
   puestoId: string
   estado: 'ACTIVA' | 'FINALIZADA' | 'CANCELADA'
+  startedAt?: string
+  endedAt?: string | null
   puesto: PuestoEmergencia
 }
 
@@ -79,6 +81,8 @@ type AsignacionIncidenciaActiva = {
   id: string
   incidenciaId: string
   estado: 'ACTIVA' | 'FINALIZADA' | 'CANCELADA'
+  startedAt?: string
+  endedAt?: string | null
   incidencia: Incidencia
 }
 
@@ -353,6 +357,11 @@ function RouteSafetyPanel({
   )
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return 'Sin fecha'
+  return new Date(value).toLocaleString()
+}
+
 function ocupacionInicialPuesto(puesto: PuestoEmergencia, index: number): OcupacionPuesto {
   const fallback: Record<string, OcupacionPuesto> = {
     'demo-1': { capacidad: 6, trabajando: 4 },
@@ -377,6 +386,8 @@ export default function VoluntarioDashboard() {
   const [incidencias, setIncidencias] = useState<Incidencia[]>([])
   const [necesidadesApi, setNecesidadesApi] = useState<Necesidad[]>([])
   const [misDonaciones, setMisDonaciones] = useState<Donacion[]>([])
+  const [misAsignacionesPuesto, setMisAsignacionesPuesto] = useState<AsignacionPuestoActiva[]>([])
+  const [misAsignacionesIncidencia, setMisAsignacionesIncidencia] = useState<AsignacionIncidenciaActiva[]>([])
   const [loading, setLoading] = useState(true)
   const [seleccion, setSeleccion] = useState('')
   const [cantidad, setCantidad] = useState('')
@@ -432,13 +443,24 @@ export default function VoluntarioDashboard() {
     async function load() {
       setLoading(true)
       try {
-        const [{ data: puestosData }, { data: incidenciasData }, necesidadesResult, misDonacionesResult, asignacionPuestoResult, asignacionIncidenciaResult] = await Promise.all([
+        const [
+          { data: puestosData },
+          { data: incidenciasData },
+          necesidadesResult,
+          misDonacionesResult,
+          asignacionPuestoResult,
+          asignacionIncidenciaResult,
+          misAsignacionesPuestoResult,
+          misAsignacionesIncidenciaResult,
+        ] = await Promise.all([
           apiClient.get('/api/puestos'),
           apiClient.get('/api/incidencias'),
           apiClient.get('/api/donaciones/necesidades').catch(() => ({ data: { necesidades: [] } })),
           apiClient.get('/api/donaciones/mis-donaciones').catch(() => ({ data: { donaciones: [] } })),
           apiClient.get('/api/puestos/mis-asignaciones/activa').catch(() => ({ data: { asignacion: null } })),
           apiClient.get('/api/incidencias/mis-asignaciones/activa').catch(() => ({ data: { asignacion: null } })),
+          apiClient.get('/api/puestos/mis-asignaciones').catch(() => ({ data: { asignaciones: [] } })),
+          apiClient.get('/api/incidencias/mis-asignaciones').catch(() => ({ data: { asignaciones: [] } })),
         ])
 
         const apiNecesidades: NecesidadDonacionApi[] = necesidadesResult.data.necesidades ?? []
@@ -496,6 +518,8 @@ export default function VoluntarioDashboard() {
             prioridad: necesidad.prioridad,
           })))
           setMisDonaciones(misDonacionesResult.data.donaciones ?? [])
+          setMisAsignacionesPuesto(misAsignacionesPuestoResult.data.asignaciones ?? [])
+          setMisAsignacionesIncidencia(misAsignacionesIncidenciaResult.data.asignaciones ?? [])
         }
       } catch {
         if (!cancelled) {
@@ -503,6 +527,8 @@ export default function VoluntarioDashboard() {
           setOcupacionPorPuesto(Object.fromEntries(PUESTOS_FALLBACK.map((puesto, index) => [puesto.id, ocupacionInicialPuesto(puesto, index)] as const)))
           setInventarioPorPuesto(NECESIDADES_FALLBACK)
           setIncidencias([])
+          setMisAsignacionesPuesto([])
+          setMisAsignacionesIncidencia([])
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -527,6 +553,8 @@ export default function VoluntarioDashboard() {
   const selectedNeed = necesidades.find((necesidad) => necesidad.item.id === seleccion)
   const donacionesActivas = misDonaciones.filter(isDonacionActiva)
   const donacionesHistorial = misDonaciones.filter((donacion) => !isDonacionActiva(donacion))
+  const historialPuestos = misAsignacionesPuesto.filter((asignacion) => asignacion.estado !== 'ACTIVA')
+  const historialIncidencias = misAsignacionesIncidencia.filter((asignacion) => asignacion.estado !== 'ACTIVA')
   const donacionActiva = donacionesActivas[0]
   const actividadActiva = donacionActiva
     ? {
@@ -614,7 +642,10 @@ export default function VoluntarioDashboard() {
       if (!actividadManualActiva.id.startsWith('demo-')) {
         try {
           if (isOnline) {
-            await apiClient.post(`/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`)
+            const { data } = await apiClient.post(`/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`)
+            if (data.asignacion) {
+              setMisAsignacionesPuesto((current) => [data.asignacion, ...current.filter((item) => item.id !== data.asignacion.id)])
+            }
           } else {
             await enqueueSync({
               entity: 'asignacion-puesto',
@@ -649,7 +680,10 @@ export default function VoluntarioDashboard() {
       if (!actividadManualActiva.id.startsWith('demo-')) {
         try {
           if (isOnline) {
-            await apiClient.post(`/api/incidencias/${actividadManualActiva.id}/asignaciones/finalizar`)
+            const { data } = await apiClient.post(`/api/incidencias/${actividadManualActiva.id}/asignaciones/finalizar`)
+            if (data.asignacion) {
+              setMisAsignacionesIncidencia((current) => [data.asignacion, ...current.filter((item) => item.id !== data.asignacion.id)])
+            }
           } else {
             await enqueueSync({
               entity: 'asignacion-incidencia',
@@ -1009,6 +1043,26 @@ export default function VoluntarioDashboard() {
     }
   }
 
+  const puestoActividad = actividadManualActiva?.tipo === 'puesto'
+    ? puestos.find((puesto) => puesto.id === actividadManualActiva.id)
+    : undefined
+  const incidenciaActividad = actividadManualActiva?.tipo === 'incidencia'
+    ? incidencias.find((incidencia) => incidencia.id === actividadManualActiva.id)
+    : undefined
+  const codigoEntregaActividad = donacionActiva
+    ? codigosEntrega[donacionActiva.id] ?? (
+      donacionActiva.entregaCodigo ? createCodigoEntregaPayload(donacionActiva, donacionActiva.entregaCodigo) : ''
+    )
+    : ''
+  const actividadRutaId = donacionActiva
+    ? donacionActiva.id
+    : incidenciaActividad
+      ? `incidencia:${incidenciaActividad.id}`
+      : puestoActividad
+        ? `puesto:${puestoActividad.id}`
+        : ''
+  const rutaActividadVisible = rutaActiva && actividadRutaId && rutaActiva.donacionId === actividadRutaId
+
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-slate-50 pb-24 text-slate-900 safe-bottom">
       <div className="border-b border-cyan-100 bg-white px-4 py-6 shadow-sm">
@@ -1047,9 +1101,163 @@ export default function VoluntarioDashboard() {
 
       <main className="mx-auto max-w-6xl px-4 pt-5">
         {actividadActiva && (
-          <Notice tone="success">
-            Actividad en curso: <strong>{actividadActiva.nombre}</strong>. Termina o cancela esta tarea antes de elegir otra.
-          </Notice>
+          <section className="rounded-lg border border-cyan-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-cyan-700">Mi actividad actual</p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-950">{actividadActiva.nombre}</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {actividadActiva.tipo === 'donacion'
+                    ? `Estado: ${donacionActiva?.estado.replace('_', ' ')}`
+                    : actividadActiva.tipo === 'incidencia'
+                      ? 'Ayuda asignada a incidencia'
+                      : 'Apoyo activo en puesto'}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[430px]">
+                {donacionActiva && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void handleComoLlegar(donacionActiva.puesto, donacionActiva.id)}
+                    >
+                      Ver ruta
+                    </Button>
+                    {donacionActiva.estado === 'EN_CAMINO' && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        loading={estadoLoadingId === donacionActiva.id}
+                        onClick={() => void handleGenerarCodigoEntrega(donacionActiva)}
+                      >
+                        {codigoEntregaActividad ? 'Mostrar QR' : 'Generar QR'}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      loading={estadoLoadingId === donacionActiva.id}
+                      onClick={() => void handleActualizarEstadoDonacion(donacionActiva, 'CANCELADA')}
+                    >
+                      Cancelar
+                    </Button>
+                  </>
+                )}
+                {incidenciaActividad && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleComoLlegarIncidencia(incidenciaActividad)}
+                    >
+                      Ver ruta
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void finalizarAyudaManual()}
+                    >
+                      Finalizar
+                    </Button>
+                  </>
+                )}
+                {puestoActividad && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void handleComoLlegar(puestoActividad, `puesto:${puestoActividad.id}`)}
+                    >
+                      Ver ruta
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void finalizarAyudaManual()}
+                    >
+                      Finalizar
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+            {codigoEntregaActividad && donacionActiva && (
+              <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-cyan-100 bg-cyan-50 p-4 sm:flex-row">
+                <div className="rounded-lg border border-cyan-100 bg-white p-3 shadow-sm">
+                  <QRCodeSVG value={codigoEntregaActividad} size={132} level="M" includeMargin />
+                </div>
+                <div className="text-center sm:text-left">
+                  <p className="text-sm font-semibold text-cyan-950">Codigo de entrega activo</p>
+                  <p className="mt-1 text-sm text-cyan-900">Enseña este QR en el puesto para confirmar la recepcion.</p>
+                </div>
+              </div>
+            )}
+            {rutaError && rutaErrorDonacionId === actividadRutaId && (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                <p>{rutaError}</p>
+                {rutaError.includes('ubicacion') && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="mt-2 w-full sm:w-auto"
+                    onClick={() => {
+                      if (donacionActiva) void handleComoLlegar(donacionActiva.puesto, donacionActiva.id)
+                      else if (incidenciaActividad) handleComoLlegarIncidencia(incidenciaActividad)
+                      else if (puestoActividad) void handleComoLlegar(puestoActividad, `puesto:${puestoActividad.id}`)
+                    }}
+                  >
+                    Compartir ubicacion
+                  </Button>
+                )}
+              </div>
+            )}
+            {rutaActividadVisible && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">Ruta a {rutaActiva.puesto.nombre}</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {rutaActiva.distanciaKm.toFixed(1)} km - ~{rutaActiva.duracionMin} min
+                        {rutaActiva.incidenciasEvitadas > 0 && ` - evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRutaActiva(null)}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-950"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+                <Map
+                  className="h-72"
+                  center={[rutaActiva.puesto.latitud, rutaActiva.puesto.longitud]}
+                  userPosition={userPosition}
+                  onUserLocated={setUserPosition}
+                  puestos={rutaActiva.puesto.catastrofeId === 'incidencia' ? [] : puestoRutaMarker}
+                  incidencias={incidencias as IncidenciaMarker[]}
+                  selectedPuestoId={rutaActiva.puesto.id}
+                  route={rutaActiva.points}
+                  markerVariant="neutral"
+                />
+                <RouteSafetyPanel
+                  distanciaKm={rutaActiva.distanciaKm}
+                  duracionMin={rutaActiva.duracionMin}
+                  incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
+                  incidenciasCercanas={rutaActiva.incidenciasCercanas}
+                  destino={rutaActiva.puesto.nombre}
+                />
+              </div>
+            )}
+          </section>
         )}
         {accion && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -1629,6 +1837,38 @@ export default function VoluntarioDashboard() {
                     })}
                   </div>
                 )}
+
+                {historialIncidencias.length > 0 && (
+                  <div className="mt-5">
+                    <SectionHeader
+                      title="Historial de incidencias"
+                      subtitle="Incidencias en las que ya has colaborado."
+                    />
+                    <div className="mt-3 space-y-2">
+                      {historialIncidencias.slice(0, 8).map((asignacion) => (
+                        <div key={asignacion.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">
+                                {asignacion.incidencia.descripcion || 'Incidencia sin descripcion'}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                Inicio: {formatDateTime(asignacion.startedAt)}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                Fin: {formatDateTime(asignacion.endedAt)}
+                              </p>
+                            </div>
+                            <Badge variant={asignacion.estado === 'FINALIZADA' ? 'success' : 'danger'}>
+                              {asignacion.estado}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
               </section>
             )}
 
@@ -1781,6 +2021,33 @@ export default function VoluntarioDashboard() {
                         </div>
                       )
                     })}
+                  </div>
+                )}
+
+                {historialPuestos.length > 0 && (
+                  <div className="mt-5">
+                    <SectionHeader
+                      title="Historial de puestos"
+                      subtitle="Puestos donde ya te has incorporado como apoyo."
+                    />
+                    <div className="mt-3 space-y-2">
+                      {historialPuestos.slice(0, 8).map((asignacion) => (
+                        <div key={asignacion.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{asignacion.puesto.nombre}</p>
+                              <p className="mt-1 text-xs text-slate-500">{asignacion.puesto.direccion}</p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                {formatDateTime(asignacion.startedAt)} - {formatDateTime(asignacion.endedAt)}
+                              </p>
+                            </div>
+                            <Badge variant={asignacion.estado === 'FINALIZADA' ? 'success' : 'danger'}>
+                              {asignacion.estado}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </section>

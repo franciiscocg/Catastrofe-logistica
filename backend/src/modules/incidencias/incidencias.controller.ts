@@ -11,6 +11,7 @@ import {
   createIncidencia,
   finalizarAsignacionIncidencia,
   getAsignacionIncidenciaActiva,
+  listAsignacionesIncidencia,
   listIncidencias,
   updateIncidenciaEstado,
 } from './incidencias.service.js'
@@ -83,6 +84,14 @@ export async function getMiAsignacionIncidenciaActiva(request: FastifyRequest, r
 
   const asignacion = await getAsignacionIncidenciaActiva(usuarioId)
   return reply.send({ asignacion })
+}
+
+export async function getMisAsignacionesIncidencia(request: FastifyRequest, reply: FastifyReply) {
+  const usuarioId = getUsuarioId(request.user)
+  if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+  const asignaciones = await listAsignacionesIncidencia(usuarioId)
+  return reply.send({ asignaciones })
 }
 
 export async function postAsignacionIncidencia(request: FastifyRequest, reply: FastifyReply) {

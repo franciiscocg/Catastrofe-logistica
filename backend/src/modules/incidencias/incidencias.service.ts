@@ -198,6 +198,17 @@ export async function getAsignacionIncidenciaActiva(usuarioId: string) {
   })
 }
 
+export async function listAsignacionesIncidencia(usuarioId: string) {
+  const voluntario = await getVoluntarioByUsuario(usuarioId)
+
+  return prisma.asignacionIncidencia.findMany({
+    where: { voluntarioId: voluntario.id },
+    orderBy: { startedAt: 'desc' },
+    take: 20,
+    include: { incidencia: true },
+  })
+}
+
 export async function createAsignacionIncidencia(usuarioId: string, incidenciaId: string) {
   const voluntario = await getVoluntarioByUsuario(usuarioId)
 

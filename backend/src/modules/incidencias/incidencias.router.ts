@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import {
+  getMisAsignacionesIncidencia,
   getMiAsignacionIncidenciaActiva,
   getIncidencias,
   patchIncidenciaEstado,
@@ -27,6 +28,10 @@ export async function incidenciasRouter(app: FastifyInstance) {
   app.get('/mis-asignaciones/activa', {
     preHandler: [requireAuth, requireRole('VOLUNTARIO')],
   }, getMiAsignacionIncidenciaActiva)
+
+  app.get('/mis-asignaciones', {
+    preHandler: [requireAuth, requireRole('VOLUNTARIO')],
+  }, getMisAsignacionesIncidencia)
 
   app.post('/', { preHandler: optionalAuth }, postIncidencia)
 
