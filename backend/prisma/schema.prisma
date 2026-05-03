@@ -43,9 +43,10 @@ model Usuario {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  voluntario  Voluntario?
-  puestosAdmin PuestoEmergencia[] @relation("AdminPuesto")
-  auditLogs   AuditLog[]
+  voluntario         Voluntario?
+  puestosAdmin       PuestoEmergencia[]  @relation("AdminPuesto")
+  puestosTrabajador  PuestoTrabajador[]  @relation("TrabajadoresPuesto")
+  auditLogs          AuditLog[]
   incidenciasReportadas IncidenciaVia[] @relation("ReportanteIncidencia")
   comentariosIncidencias ComentarioIncidenciaVia[] @relation("AutorComentarioIncidencia")
 
@@ -120,11 +121,26 @@ model PuestoEmergencia {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  catastrofe Catastrofe @relation(fields: [catastrofeId], references: [id])
-  admin      Usuario    @relation("AdminPuesto", fields: [adminId], references: [id])
-  inventario Inventario[]
+  catastrofe   Catastrofe       @relation(fields: [catastrofeId], references: [id])
+  admin        Usuario          @relation("AdminPuesto", fields: [adminId], references: [id])
+  inventario   Inventario[]
+  trabajadores PuestoTrabajador[]
 
   @@map("puestos_emergencia")
+}
+
+model PuestoTrabajador {
+  id        String   @id @default(cuid())
+  puestoId  String
+  usuarioId String
+  addedBy   String
+  addedAt   DateTime @default(now())
+
+  puesto  PuestoEmergencia @relation(fields: [puestoId], references: [id], onDelete: Cascade)
+  usuario Usuario          @relation("TrabajadoresPuesto", fields: [usuarioId], references: [id])
+
+  @@unique([puestoId, usuarioId])
+  @@map("puesto_trabajadores")
 }
 
 model Producto {

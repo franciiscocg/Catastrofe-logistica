@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { apiClient } from '@/lib/api/client'
+import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -130,6 +131,7 @@ function StepIndicator({ step }: { step: Step }) {
 
 export default function RegisterPuesto() {
   const navigate = useNavigate()
+  const { login: storeLogin } = useAuthStore()
   const [step, setStep] = useState<Step>(1)
   const [form, setForm] = useState<FormData>(INITIAL)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -182,7 +184,11 @@ export default function RegisterPuesto() {
     setSubmitError('')
 
     try {
-      await apiClient.post('/api/auth/register', {
+      const { data } = await apiClient.post<{
+        user: { id: string; email: string; nombre: string; apellidos: string; roles: string[] }
+        puesto?: { id: string; nombre: string }
+        accessToken: string
+      }>('/api/auth/register', {
         email: form.email,
         password: form.password,
         nombre: form.nombre,
@@ -199,6 +205,9 @@ export default function RegisterPuesto() {
           longitud: parseFloat(form.longitud),
         },
       })
+
+      // Guardar sesión y el puestoId en el store para acceso inmediato
+      storeLogin(data.user as any, data.accessToken, data.puesto?.id)
       navigate('/auth/registro-exitoso?role=puesto')
     } catch (err: unknown) {
       const response = (err as { response?: { data?: { error?: string; details?: { field: string; message: string }[] } } })?.response

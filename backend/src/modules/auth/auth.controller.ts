@@ -7,7 +7,8 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   const user = await loginUser(input)
 
   const accessToken = await reply.jwtSign(
-    { sub: user.id, email: user.email, roles: user.roles },
+    // Incluir tanto sub como id para que request.user.id funcione en todos los handlers
+    { sub: user.id, id: user.id, email: user.email, roles: user.roles },
     { expiresIn: process.env.JWT_EXPIRES_IN ?? '15m' },
   )
 
@@ -16,14 +17,14 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
-  const user = await registerUser(input)
+  const { user, puesto } = await registerUser(input)
 
   const accessToken = await reply.jwtSign(
-    { sub: user.id, email: user.email, roles: user.roles },
+    { sub: user.id, id: user.id, email: user.email, roles: user.roles },
     { expiresIn: process.env.JWT_EXPIRES_IN ?? '15m' },
   )
 
-  return reply.status(201).send({ user, accessToken })
+  return reply.status(201).send({ user, puesto, accessToken })
 }
 
 export async function me(request: FastifyRequest, reply: FastifyReply) {

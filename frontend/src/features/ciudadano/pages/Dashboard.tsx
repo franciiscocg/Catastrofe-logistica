@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -17,15 +18,7 @@ import {
 import { apiClient } from '@/lib/api/client'
 import { useSyncStore } from '@/store/sync.store'
 
-// ── Datos de ejemplo (sustituir por API en Mes 2) ─────────────────────────────
-
-const PUESTOS_BASE: Omit<PuestoMarker, 'distanciaKm'>[] = [
-  { id: '1', nombre: 'CEIP La Paz',                 direccion: 'C/ Major 14, Paiporta',               latitud: 39.4254, longitud: -0.4178, necesidades: 4 },
-  { id: '2', nombre: 'Pabellón Municipal Benetússer', direccion: 'Av. del Deportiu 3, Benetússer',     latitud: 39.4328, longitud: -0.3948, necesidades: 2 },
-  { id: '3', nombre: 'IES Sedaví',                  direccion: 'C/ Sant Antoni 8, Sedaví',             latitud: 39.4205, longitud: -0.3801, necesidades: 1 },
-  { id: '4', nombre: 'Centro Cívico Catarroja',     direccion: "Pl. de l'Ajuntament 1, Catarroja",     latitud: 39.3990, longitud: -0.4019, necesidades: 0 },
-  { id: '5', nombre: 'Poliesportiu Alfafar',        direccion: 'C/ Esport 12, Alfafar',                latitud: 39.4148, longitud: -0.3927, necesidades: 3 },
-]
+// PUESTOS_BASE ya no se usa — los puestos vienen de la API (/api/puestos)
 
 type ItemInventario = { nombre: string; categoria: string; cantidad: number; unidad: string }
 // Re-export alias para compatibilidad con el resto del fichero
@@ -284,7 +277,30 @@ function InventarioSheet({
   puesto: PuestoMarker
   onClose: () => void
 }) {
-  const inv = INVENTARIO[puesto.id] ?? { disponible: [], necesario: [] }
+  // Intentar cargar inventario real desde la API; si falla usar los datos locales de ejemplo
+  const { data: apiInv, isLoading } = useQuery({
+    queryKey: ['inventario-ciudadano', puesto.id],
+    queryFn: () =>
+      apiClient
+        .get<{ inventario: Array<{ id: string; tipo: string; cantidad: number; producto: { nombre: string; categoria: string; unidad: string } }> }>(
+          `/api/inventario/puesto/${puesto.id}`,
+        )
+        .then((r) => {
+          const disponible = r.data.inventario
+            .filter((i) => i.tipo === 'DISPONIBLE')
+            .map((i) => ({ nombre: i.producto.nombre, categoria: i.producto.categoria, cantidad: i.cantidad, unidad: i.producto.unidad }))
+          const necesario = r.data.inventario
+            .filter((i) => i.tipo === 'NECESARIO')
+            .map((i) => ({ nombre: i.producto.nombre, categoria: i.producto.categoria, cantidad: i.cantidad, unidad: i.producto.unidad }))
+          return { disponible, necesario }
+        }),
+    staleTime: 1000 * 30,
+    retry: false,
+  })
+
+  // Fallback a datos de ejemplo si la API falla o no tiene datos todavía
+  const fallback = INVENTARIO[puesto.id] ?? { disponible: [], necesario: [] }
+  const inv = apiInv ?? fallback
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[2000] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[70vh]">
@@ -309,6 +325,12 @@ function InventarioSheet({
 
       {/* Contenido scrollable */}
       <div className="overflow-y-auto flex-1 px-4 pb-6 space-y-5 pt-3">
+
+        {isLoading && (
+          <div className="flex justify-center py-6">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
+          </div>
+        )}
 
         {/* Disponible */}
         <section>
@@ -1049,9 +1071,23 @@ export default function CiudadanoDashboard() {
     }
   }
 
+  // Carga puestos desde la API (actualización cada 30 segundos)
+  const { data: puestosApiData, isLoading: loadingPuestos } = useQuery({
+    queryKey: ['puestos-ciudadano'],
+    queryFn: () =>
+      apiClient
+        .get<{ puestos: Omit<PuestoMarker, 'distanciaKm'>[] }>('/api/puestos')
+        .then((r) => r.data.puestos),
+    staleTime: 1000 * 30,
+    retry: false,     // no reintentar en offline
+    placeholderData: [], // evitar parpadeo mientras carga
+  })
+
+  const puestosBase = puestosApiData ?? []
+
   const puestos: PuestoMarker[] = userPosition
-    ? sortByDistance(PUESTOS_BASE, userPosition[0], userPosition[1])
-    : PUESTOS_BASE.map((p) => ({ ...p }))
+    ? sortByDistance(puestosBase, userPosition[0], userPosition[1])
+    : puestosBase.map((p) => ({ ...p }))
 
   const productosDisponibles = getProductosDisponibles(puestos)
   const productoOptions = getProductoOptions(productosDisponibles)
@@ -1218,9 +1254,12 @@ export default function CiudadanoDashboard() {
       {/* Lista de puestos */}
       <div className={`flex-1 min-h-0 overflow-y-auto ${vista === 'buscar' ? 'hidden' : ''}`}>
         <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900 text-sm">
+          <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
             Puestos de emergencia
-            <span className="ml-1.5 font-normal text-gray-400">({puestos.length})</span>
+            {loadingPuestos
+              ? <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500 inline-block" />
+              : <span className="font-normal text-gray-400">({puestos.length})</span>
+            }
           </h2>
           {userPosition && <span className="text-xs text-blue-600">Por distancia</span>}
         </div>
