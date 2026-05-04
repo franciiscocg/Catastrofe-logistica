@@ -82,22 +82,6 @@ export async function listNecesidadesDonacion() {
 export async function createDonacion(usuarioId: string, input: CreateDonacionInput) {
   const voluntario = await getVoluntarioByUsuario(usuarioId)
 
-  const donacionActiva = await prisma.donacion.findFirst({
-    where: {
-      voluntarioId: voluntario.id,
-      estado: { in: ['PENDIENTE', 'EN_CAMINO'] },
-    },
-    select: {
-      puestoId: true,
-      puesto: { select: { nombre: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-
-  if (donacionActiva && donacionActiva.puestoId !== input.puestoId) {
-    throw badRequest(`Ya tienes una donacion activa para ${donacionActiva.puesto.nombre}. Finalizala o cancelala antes de comprometerte con otro centro.`)
-  }
-
   const necesidad = await prisma.inventario.findFirst({
     where: {
       puestoId: input.puestoId,

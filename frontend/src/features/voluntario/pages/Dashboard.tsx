@@ -9,10 +9,11 @@ import Map, { type IncidenciaMarker, type PuestoMarker } from '@/components/shar
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useConnectivity } from '@/hooks/useConnectivity'
 import { useSyncStore } from '@/store/sync.store'
+import { sortByDistance } from '@/utils/haversine'
 import { fetchRutaEvitandoIncidencias } from '@/utils/routing'
 
 type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
-type VistaDonacion = 'necesidades' | 'mis-donaciones'
+type VistaDonacion = 'objetos' | 'necesidades' | 'mis-donaciones'
 type ActividadManualActiva = {
   tipo: 'incidencia' | 'puesto'
   id: string
@@ -31,6 +32,7 @@ type Incidencia = {
   estado: 'CORTADA' | 'TRANSITABLE'
   descripcion?: string | null
   createdAt: string
+  distanciaKm?: number
   _count?: { comentarios: number; asignacionesVoluntarios?: number }
 }
 
@@ -362,6 +364,10 @@ function formatDateTime(value?: string | null) {
   return new Date(value).toLocaleString()
 }
 
+function productoDonableKey(producto: ItemInventario['producto']) {
+  return `${producto.id}:${producto.nombre}:${producto.unidad}`
+}
+
 function ocupacionInicialPuesto(puesto: PuestoEmergencia, index: number): OcupacionPuesto {
   const fallback: Record<string, OcupacionPuesto> = {
     'demo-1': { capacidad: 6, trabajando: 4 },
@@ -390,9 +396,13 @@ export default function VoluntarioDashboard() {
   const [misAsignacionesIncidencia, setMisAsignacionesIncidencia] = useState<AsignacionIncidenciaActiva[]>([])
   const [loading, setLoading] = useState(true)
   const [seleccion, setSeleccion] = useState('')
+  const [seleccionObjetosDonacion, setSeleccionObjetosDonacion] = useState<Record<string, SeleccionObjetoDonacion>>({})
+  const [rutaDonacionPlan, setRutaDonacionPlan] = useState<RutaDonacionMultiparada | null>(null)
+  const [rutaDonacionesActivas, setRutaDonacionesActivas] = useState<RutaDonacionMultiparada | null>(null)
+  const [rutaDonacionLoading, setRutaDonacionLoading] = useState(false)
   const [cantidad, setCantidad] = useState('')
   const [comentarioDonacion, setComentarioDonacion] = useState('')
-  const [vistaDonacion, setVistaDonacion] = useState<VistaDonacion>('necesidades')
+  const [vistaDonacion, setVistaDonacion] = useState<VistaDonacion>('objetos')
   const [donacionLoading, setDonacionLoading] = useState(false)
   const [estadoLoadingId, setEstadoLoadingId] = useState('')
   const [mensajeDonacion, setMensajeDonacion] = useState('')
@@ -420,6 +430,11 @@ export default function VoluntarioDashboard() {
     donacionId?: string
     excluirIncidenciaId?: string
   } | null>(null)
+  const [incidenciaFinalizacion, setIncidenciaFinalizacion] = useState<Incidencia | null>(null)
+  const [estadoIncidenciaFinal, setEstadoIncidenciaFinal] = useState<'CORTADA' | 'TRANSITABLE'>('CORTADA')
+  const [comentarioIncidenciaFinal, setComentarioIncidenciaFinal] = useState('')
+  const [finalizacionIncidenciaError, setFinalizacionIncidenciaError] = useState('')
+  const [finalizacionIncidenciaLoading, setFinalizacionIncidenciaLoading] = useState(false)
   const { position, request: requestGeo } = useGeolocation()
   const { mode, isOnline } = useConnectivity()
   const enqueueSync = useSyncStore((store) => store.enqueue)
@@ -550,11 +565,92 @@ export default function VoluntarioDashboard() {
     ))
   ), [inventarioPorPuesto, necesidadesApi, puestos])
 
+  const objetosDonables = useMemo<ObjetoDonable[]>(() => {
+    const grouped = new globalThis.Map<string, ObjetoDonable>()
+
+    necesidades.forEach((necesidad) => {
+      const key = productoDonableKey(necesidad.item.producto)
+      const current = grouped.get(key)
+      const cantidad = necesidad.cantidadPendiente ?? necesidad.item.cantidad
+
+      if (current) {
+        current.necesidades.push(necesidad)
+        current.cantidadTotal += cantidad
+      } else {
+        grouped.set(key, {
+          key,
+          producto: necesidad.item.producto,
+          necesidades: [necesidad],
+          cantidadTotal: cantidad,
+        })
+      }
+    })
+
+    return Array.from(grouped.values())
+      .map((objeto) => ({
+        ...objeto,
+        necesidades: userPosition
+          ? sortByDistance(objeto.necesidades.map((necesidad) => ({
+              ...necesidad,
+              latitud: necesidad.puesto.latitud,
+              longitud: necesidad.puesto.longitud,
+            })), userPosition[0], userPosition[1])
+          : [...objeto.necesidades].sort((a, b) => (
+              (b.cantidadPendiente ?? b.item.cantidad) - (a.cantidadPendiente ?? a.item.cantidad)
+            )),
+      }))
+      .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre))
+  }, [necesidades, userPosition])
+
+  const donacionesSeleccionadas = useMemo(() => (
+    objetosDonables.flatMap((objeto) => {
+      const seleccionObjeto = seleccionObjetosDonacion[objeto.key]
+      if (!seleccionObjeto) return []
+
+      const necesidad = objeto.necesidades.find((item) => item.puesto.id === seleccionObjeto.puestoId) ?? objeto.necesidades[0]
+      if (!necesidad) return []
+
+      return [{ objeto, necesidad, cantidad: seleccionObjeto.cantidad }]
+    })
+  ), [objetosDonables, seleccionObjetosDonacion])
+
+  const puestosRutaDonacion = useMemo(() => {
+    const byId = new globalThis.Map<string, PuestoEmergencia>()
+    donacionesSeleccionadas.forEach(({ necesidad }) => byId.set(necesidad.puesto.id, necesidad.puesto))
+    const selectedPuestos = Array.from(byId.values())
+    return userPosition ? sortByDistance(selectedPuestos, userPosition[0], userPosition[1]) : selectedPuestos
+  }, [donacionesSeleccionadas, userPosition])
+
   const selectedNeed = necesidades.find((necesidad) => necesidad.item.id === seleccion)
   const donacionesActivas = misDonaciones.filter(isDonacionActiva)
+  const paradasDonacionesActivas = useMemo(() => {
+    const byPuesto = new globalThis.Map<string, { puesto: PuestoEmergencia; donaciones: Donacion[] }>()
+
+    donacionesActivas.forEach((donacion) => {
+      const current = byPuesto.get(donacion.puesto.id)
+      if (current) {
+        current.donaciones.push(donacion)
+      } else {
+        byPuesto.set(donacion.puesto.id, { puesto: donacion.puesto, donaciones: [donacion] })
+      }
+    })
+
+    const paradas: Array<{ puesto: PuestoEmergencia; donaciones: Donacion[]; distanciaKm?: number }> = Array.from(byPuesto.values())
+    return userPosition
+      ? sortByDistance(paradas.map((parada) => ({
+          ...parada,
+          latitud: parada.puesto.latitud,
+          longitud: parada.puesto.longitud,
+        })), userPosition[0], userPosition[1])
+      : paradas
+  }, [donacionesActivas, userPosition])
   const donacionesHistorial = misDonaciones.filter((donacion) => !isDonacionActiva(donacion))
   const historialPuestos = misAsignacionesPuesto.filter((asignacion) => asignacion.estado !== 'ACTIVA')
   const historialIncidencias = misAsignacionesIncidencia.filter((asignacion) => asignacion.estado !== 'ACTIVA')
+  const incidenciasCortadas = useMemo(() => {
+    const cortadas = incidencias.filter((incidencia) => incidencia.estado === 'CORTADA')
+    return userPosition ? sortByDistance(cortadas, userPosition[0], userPosition[1]) : cortadas
+  }, [incidencias, userPosition])
   const donacionActiva = donacionesActivas[0]
   const actividadActiva = donacionActiva
     ? {
@@ -575,6 +671,8 @@ export default function VoluntarioDashboard() {
     setMensajeDonacion('')
     setErrorDonacion('')
     setCantidadError('')
+    setRutaDonacionPlan(null)
+    if (next === 'donacion') setVistaDonacion('objetos')
   }
 
   useEffect(() => {
@@ -594,6 +692,20 @@ export default function VoluntarioDashboard() {
     setCantidadError('')
     setRutaActiva(null)
     setRutaError('')
+  }
+
+  const abrirFinalizacionIncidencia = (incidencia: Incidencia) => {
+    setIncidenciaFinalizacion(incidencia)
+    setEstadoIncidenciaFinal(incidencia.estado)
+    setComentarioIncidenciaFinal('')
+    setFinalizacionIncidenciaError('')
+  }
+
+  const cerrarFinalizacionIncidencia = () => {
+    if (finalizacionIncidenciaLoading) return
+    setIncidenciaFinalizacion(null)
+    setComentarioIncidenciaFinal('')
+    setFinalizacionIncidenciaError('')
   }
 
   const iniciarAyudaPuesto = async (puesto: PuestoEmergencia) => {
@@ -677,32 +789,82 @@ export default function VoluntarioDashboard() {
         }
       })
     } else if (actividadManualActiva?.tipo === 'incidencia') {
-      if (!actividadManualActiva.id.startsWith('demo-')) {
-        try {
-          if (isOnline) {
-            const { data } = await apiClient.post(`/api/incidencias/${actividadManualActiva.id}/asignaciones/finalizar`)
-            if (data.asignacion) {
-              setMisAsignacionesIncidencia((current) => [data.asignacion, ...current.filter((item) => item.id !== data.asignacion.id)])
-            }
-          } else {
-            await enqueueSync({
-              entity: 'asignacion-incidencia',
-              method: 'POST',
-              url: `/api/incidencias/${actividadManualActiva.id}/asignaciones/finalizar`,
-              priority: 'high',
-            })
-            setMensajeDonacion('Sin conexion: finalizacion de incidencia guardada para sincronizar.')
-          }
-        } catch (err: unknown) {
-          const message = err && typeof err === 'object' && 'response' in err
-            ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-            : undefined
-          setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo finalizar la ayuda en la incidencia.')
-          return
-        }
-      }
+      const incidencia = incidencias.find((item) => item.id === actividadManualActiva.id)
+      if (incidencia) abrirFinalizacionIncidencia(incidencia)
+      return
     }
     setActividadManualActiva(null)
+  }
+
+  const finalizarAyudaIncidenciaConActualizacion = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!incidenciaFinalizacion || !actividadManualActiva || actividadManualActiva.tipo !== 'incidencia') return
+
+    const comentario = comentarioIncidenciaFinal.trim()
+    if (!comentario) {
+      setFinalizacionIncidenciaError('Describe el estado actual de la calle antes de terminar la ayuda.')
+      return
+    }
+
+    setFinalizacionIncidenciaLoading(true)
+    setFinalizacionIncidenciaError('')
+    setErrorDonacion('')
+
+    try {
+      if (!isOnline) {
+        await enqueueSync({
+          entity: 'comentario-incidencia',
+          method: 'POST',
+          url: `/api/incidencias/${incidenciaFinalizacion.id}/comentarios`,
+          body: {
+            estado: estadoIncidenciaFinal,
+            comentario,
+          },
+          priority: 'high',
+        })
+        await enqueueSync({
+          entity: 'asignacion-incidencia',
+          method: 'POST',
+          url: `/api/incidencias/${incidenciaFinalizacion.id}/asignaciones/finalizar`,
+          priority: 'high',
+        })
+
+        setIncidencias((current) => current.map((incidencia) => (
+          incidencia.id === incidenciaFinalizacion.id
+            ? { ...incidencia, estado: estadoIncidenciaFinal }
+            : incidencia
+        )))
+        setMensajeDonacion('Sin conexion: actualizacion y finalizacion guardadas para sincronizar.')
+      } else {
+        const { data: comentarioData } = await apiClient.post(`/api/incidencias/${incidenciaFinalizacion.id}/comentarios`, {
+          estado: estadoIncidenciaFinal,
+          comentario,
+        })
+        setIncidencias((current) => current.map((incidencia) => (
+          incidencia.id === incidenciaFinalizacion.id
+            ? { ...incidencia, ...(comentarioData.incidencia ?? {}), distanciaKm: incidencia.distanciaKm }
+            : incidencia
+        )))
+
+        const { data } = await apiClient.post(`/api/incidencias/${incidenciaFinalizacion.id}/asignaciones/finalizar`)
+        if (data.asignacion) {
+          setMisAsignacionesIncidencia((current) => [data.asignacion, ...current.filter((item) => item.id !== data.asignacion.id)])
+        }
+        setMensajeDonacion('Incidencia actualizada y ayuda finalizada correctamente.')
+      }
+
+      setActividadManualActiva(null)
+      setIncidenciaFinalizacion(null)
+      setComentarioIncidenciaFinal('')
+      setSeleccion('')
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+        : undefined
+      setFinalizacionIncidenciaError(message?.error ?? message?.message ?? 'No se pudo actualizar la incidencia y finalizar la ayuda.')
+    } finally {
+      setFinalizacionIncidenciaLoading(false)
+    }
   }
 
   const iniciarAyudaIncidencia = async (incidencia: Incidencia) => {
@@ -794,6 +956,221 @@ export default function VoluntarioDashboard() {
       }]
     : []
 
+  const toggleObjetoDonacion = (objeto: ObjetoDonable) => {
+    setSeleccionObjetosDonacion((current) => {
+      if (current[objeto.key]) {
+        const next = { ...current }
+        delete next[objeto.key]
+        return next
+      }
+
+      const necesidadSugerida = objeto.necesidades[0]
+      if (!necesidadSugerida) return current
+
+      return {
+        ...current,
+        [objeto.key]: {
+          cantidad: '1',
+          puestoId: necesidadSugerida.puesto.id,
+        },
+      }
+    })
+    setRutaDonacionPlan(null)
+    setErrorDonacion('')
+    setMensajeDonacion('')
+  }
+
+  const updateObjetoDonacion = (key: string, patch: Partial<SeleccionObjetoDonacion>) => {
+    setSeleccionObjetosDonacion((current) => {
+      const selected = current[key]
+      if (!selected) return current
+      return { ...current, [key]: { ...selected, ...patch } }
+    })
+    setRutaDonacionPlan(null)
+    setErrorDonacion('')
+  }
+
+  const calcularRutaDonacionesSeleccionadas = async () => {
+    setErrorDonacion('')
+    setRutaError('')
+
+    if (donacionesSeleccionadas.length === 0) {
+      setErrorDonacion('Selecciona al menos un objeto para calcular la ruta.')
+      return
+    }
+
+    if (!userPosition) {
+      requestGeo()
+      setErrorDonacion('Comparte tu ubicacion para calcular la ruta de entrega.')
+      return
+    }
+
+    setRutaDonacionLoading(true)
+    try {
+      const allPoints: [number, number][] = []
+      let desde = userPosition
+      let distanciaKm = 0
+      let duracionMin = 0
+      let incidenciasEvitadas = 0
+      let incidenciasCercanas = 0
+
+      for (const puesto of puestosRutaDonacion) {
+        const resultado = await fetchRutaEvitandoIncidencias(
+          desde,
+          [puesto.latitud, puesto.longitud],
+          incidencias,
+        )
+        allPoints.push(...(allPoints.length > 0 ? resultado.points.slice(1) : resultado.points))
+        distanciaKm += resultado.distanciaKm
+        duracionMin += resultado.duracionMin
+        incidenciasEvitadas += resultado.incidenciasEvitadas
+        incidenciasCercanas += resultado.incidenciasCercanas
+        desde = [puesto.latitud, puesto.longitud]
+      }
+
+      setRutaDonacionPlan({
+        puestos: puestosRutaDonacion,
+        points: allPoints,
+        distanciaKm,
+        duracionMin,
+        incidenciasEvitadas,
+        incidenciasCercanas,
+      })
+    } catch (error) {
+      setErrorDonacion(error instanceof Error ? error.message : 'No se pudo calcular la ruta de entrega.')
+    } finally {
+      setRutaDonacionLoading(false)
+    }
+  }
+
+  const calcularRutaDonacionesActivas = async () => {
+    setErrorDonacion('')
+    setRutaError('')
+
+    if (paradasDonacionesActivas.length === 0) {
+      setErrorDonacion('No hay donaciones activas para calcular una ruta.')
+      return
+    }
+
+    if (!userPosition) {
+      requestGeo()
+      setErrorDonacion('Comparte tu ubicacion para calcular la ruta completa de entrega.')
+      return
+    }
+
+    setRutaDonacionLoading(true)
+    try {
+      const allPoints: [number, number][] = []
+      let desde = userPosition
+      let distanciaKm = 0
+      let duracionMin = 0
+      let incidenciasEvitadas = 0
+      let incidenciasCercanas = 0
+
+      for (const parada of paradasDonacionesActivas) {
+        const resultado = await fetchRutaEvitandoIncidencias(
+          desde,
+          [parada.puesto.latitud, parada.puesto.longitud],
+          incidencias,
+        )
+        allPoints.push(...(allPoints.length > 0 ? resultado.points.slice(1) : resultado.points))
+        distanciaKm += resultado.distanciaKm
+        duracionMin += resultado.duracionMin
+        incidenciasEvitadas += resultado.incidenciasEvitadas
+        incidenciasCercanas += resultado.incidenciasCercanas
+        desde = [parada.puesto.latitud, parada.puesto.longitud]
+      }
+
+      setRutaDonacionesActivas({
+        puestos: paradasDonacionesActivas.map((parada) => parada.puesto),
+        points: allPoints,
+        distanciaKm,
+        duracionMin,
+        incidenciasEvitadas,
+        incidenciasCercanas,
+      })
+    } catch (error) {
+      setErrorDonacion(error instanceof Error ? error.message : 'No se pudo calcular la ruta completa de entrega.')
+    } finally {
+      setRutaDonacionLoading(false)
+    }
+  }
+
+  const handleCrearDonacionesSeleccionadas = async () => {
+    if (donacionesSeleccionadas.length === 0) {
+      setErrorDonacion('Selecciona al menos un objeto para donar.')
+      return
+    }
+
+    setDonacionLoading(true)
+    setErrorDonacion('')
+    setMensajeDonacion('')
+
+    try {
+      const nuevasDonaciones: Donacion[] = []
+
+      for (const { necesidad, cantidad: cantidadSeleccionada } of donacionesSeleccionadas) {
+        const parsedCantidad = Number(cantidadSeleccionada.replace(',', '.'))
+        const cantidadMaxima = necesidad.cantidadPendiente ?? necesidad.item.cantidad
+
+        if (!Number.isFinite(parsedCantidad) || parsedCantidad <= 0 || !Number.isInteger(parsedCantidad)) {
+          throw new Error(`Introduce una cantidad valida para ${necesidad.item.producto.nombre}.`)
+        }
+        if (parsedCantidad > cantidadMaxima) {
+          throw new Error(`No puedes comprometer mas de ${cantidadMaxima} ${necesidad.item.producto.unidad} de ${necesidad.item.producto.nombre}.`)
+        }
+
+        const body = {
+          puestoId: necesidad.puesto.id,
+          productoId: necesidad.item.producto.id,
+          cantidad: parsedCantidad,
+          unidad: necesidad.item.producto.unidad,
+          comentario: comentarioDonacion || undefined,
+        }
+
+        if (!isOnline) {
+          const donacionOffline: Donacion = {
+            id: `offline-${crypto.randomUUID()}`,
+            cantidad: parsedCantidad,
+            unidad: necesidad.item.producto.unidad,
+            estado: 'PENDIENTE',
+            comentario: comentarioDonacion || undefined,
+            producto: necesidad.item.producto,
+            puesto: necesidad.puesto,
+          }
+
+          await enqueueSync({
+            entity: 'donacion',
+            method: 'POST',
+            url: '/api/donaciones',
+            body,
+            priority: 'high',
+          })
+          nuevasDonaciones.push(donacionOffline)
+        } else {
+          const { data } = await apiClient.post('/api/donaciones', body)
+          nuevasDonaciones.push(data.donacion)
+        }
+      }
+
+      setMisDonaciones((current) => [...nuevasDonaciones, ...current])
+      setSeleccionObjetosDonacion({})
+      setRutaDonacionPlan(null)
+      setComentarioDonacion('')
+      setVistaDonacion('mis-donaciones')
+      setMensajeDonacion(isOnline
+        ? 'Donaciones registradas correctamente. La ruta queda organizada por puestos.'
+        : 'Sin conexion: donaciones guardadas y pendientes de sincronizar.')
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+        : undefined
+      setErrorDonacion(message?.error ?? message?.message ?? (err instanceof Error ? err.message : 'No se pudieron registrar las donaciones.'))
+    } finally {
+      setDonacionLoading(false)
+    }
+  }
+
   const handleCrearDonacion = async () => {
     if (!selectedNeed) return
 
@@ -819,11 +1196,6 @@ export default function VoluntarioDashboard() {
     const cantidadMaxima = selectedNeed.cantidadPendiente ?? selectedNeed.item.cantidad
     if (parsedCantidad > cantidadMaxima) {
       setCantidadError(`No puedes comprometer mas de ${cantidadMaxima} ${selectedNeed.item.producto.unidad}.`)
-      return
-    }
-
-    if (donacionActiva && donacionActiva.puesto.id !== selectedNeed.puesto.id) {
-      setErrorDonacion(`Ya tienes una donacion activa para ${donacionActiva.puesto.nombre}. Finalizala o cancelala antes de comprometerte con otro centro.`)
       return
     }
 
@@ -1159,7 +1531,7 @@ export default function VoluntarioDashboard() {
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => void finalizarAyudaManual()}
+                      onClick={() => abrirFinalizacionIncidencia(incidenciaActividad)}
                     >
                       Finalizar
                     </Button>
@@ -1310,34 +1682,28 @@ export default function VoluntarioDashboard() {
           <EmptyState>Cargando opciones disponibles...</EmptyState>
         ) : (
           <>
-            {accion === 'donacion' && (
+                {accion === 'donacion' && (
               <section className="space-y-3">
                 <SectionHeader
                   title="Donaciones"
-                  subtitle="Elige una necesidad o revisa las donaciones que ya has comprometido."
+                  subtitle="Selecciona objetos para donar, ajusta sus destinos y revisa tus donaciones comprometidas."
                 />
 
                 {mensajeDonacion && (
                   <Notice tone="success">{mensajeDonacion}</Notice>
                 )}
 
-                {donacionActiva && vistaDonacion === 'necesidades' && (
-                  <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900 shadow-sm">
-                    Tienes una donacion activa para <strong>{donacionActiva.puesto.nombre}</strong>. Puedes añadir mas productos a ese centro, pero no a otro distinto hasta finalizarla.
-                  </div>
-                )}
-
                 <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-200 p-1 shadow-sm">
                   <button
                     type="button"
-                    onClick={() => setVistaDonacion('necesidades')}
+                    onClick={() => setVistaDonacion('objetos')}
                     className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      vistaDonacion === 'necesidades'
+                      vistaDonacion === 'objetos'
                         ? 'bg-cyan-700 text-white shadow-sm'
                         : 'text-slate-600 hover:bg-white'
                     }`}
                   >
-                    Necesidades
+                    Objetos
                   </button>
                   <button
                     type="button"
@@ -1352,18 +1718,184 @@ export default function VoluntarioDashboard() {
                   </button>
                 </div>
 
-                {vistaDonacion === 'necesidades' && necesidades.length === 0 ? (
+                {vistaDonacion === 'objetos' && objetosDonables.length === 0 ? (
+                  <EmptyState>No hay objetos donables publicados ahora mismo.</EmptyState>
+                ) : vistaDonacion === 'objetos' ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-cyan-100 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">Selecciona lo que puedes llevar</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Elige objetos, ajusta el puesto de entrega y calcula una ruta por los puestos necesarios.
+                          </p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
+                          <Button type="button" variant="secondary" fullWidth loading={rutaDonacionLoading} onClick={() => void calcularRutaDonacionesSeleccionadas()}>
+                            Calcular ruta
+                          </Button>
+                          <Button type="button" fullWidth loading={donacionLoading} onClick={() => void handleCrearDonacionesSeleccionadas()}>
+                            Confirmar seleccion
+                          </Button>
+                        </div>
+                      </div>
+                      {errorDonacion && <div className="mt-3"><Notice tone="danger">{errorDonacion}</Notice></div>}
+                      {donacionesSeleccionadas.length > 0 && (
+                        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                          {donacionesSeleccionadas.length} objeto{donacionesSeleccionadas.length === 1 ? '' : 's'} para {puestosRutaDonacion.length} puesto{puestosRutaDonacion.length === 1 ? '' : 's'}.
+                        </div>
+                      )}
+                    </div>
+
+                    {rutaDonacionPlan && (
+                      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">Ruta sugerida de entrega</p>
+                              <p className="mt-1 text-xs text-slate-600">
+                                {rutaDonacionPlan.puestos.length} parada{rutaDonacionPlan.puestos.length === 1 ? '' : 's'} - primero {rutaDonacionPlan.puestos[0]?.nombre}
+                                {' '} - {rutaDonacionPlan.distanciaKm.toFixed(1)} km - ~{rutaDonacionPlan.duracionMin} min
+                                {rutaDonacionPlan.incidenciasEvitadas > 0 && ` - evita ${rutaDonacionPlan.incidenciasEvitadas} incidencia${rutaDonacionPlan.incidenciasEvitadas === 1 ? '' : 's'}`}
+                              </p>
+                            </div>
+                            <button type="button" onClick={() => setRutaDonacionPlan(null)} className="text-xs font-medium text-slate-500 hover:text-slate-950">
+                              Cerrar
+                            </button>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {rutaDonacionPlan.puestos.map((puesto, index) => (
+                              <span key={puesto.id} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                                {index + 1}. {puesto.nombre}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <Map
+                          className="h-80"
+                          center={[rutaDonacionPlan.puestos[0]?.latitud ?? userPosition?.[0] ?? 39.4254, rutaDonacionPlan.puestos[0]?.longitud ?? userPosition?.[1] ?? -0.4178]}
+                          userPosition={userPosition}
+                          onUserLocated={setUserPosition}
+                          puestos={rutaDonacionPlan.puestos.map((puesto) => ({
+                            id: puesto.id,
+                            nombre: puesto.nombre,
+                            direccion: puesto.direccion,
+                            latitud: puesto.latitud,
+                            longitud: puesto.longitud,
+                            necesidades: 0,
+                          }))}
+                          incidencias={incidencias as IncidenciaMarker[]}
+                          route={rutaDonacionPlan.points}
+                          markerVariant="neutral"
+                        />
+                        <RouteSafetyPanel
+                          distanciaKm={rutaDonacionPlan.distanciaKm}
+                          duracionMin={rutaDonacionPlan.duracionMin}
+                          incidenciasEvitadas={rutaDonacionPlan.incidenciasEvitadas}
+                          incidenciasCercanas={rutaDonacionPlan.incidenciasCercanas}
+                          destino={rutaDonacionPlan.puestos.map((puesto) => puesto.nombre).join(', ')}
+                        />
+                      </div>
+                    )}
+
+                    {objetosDonables.map((objeto) => {
+                      const selected = seleccionObjetosDonacion[objeto.key]
+                      const necesidadDestino = selected
+                        ? objeto.necesidades.find((necesidad) => necesidad.puesto.id === selected.puestoId) ?? objeto.necesidades[0]
+                        : objeto.necesidades[0]
+                      const maximoDestino = necesidadDestino ? necesidadDestino.cantidadPendiente ?? necesidadDestino.item.cantidad : objeto.cantidadTotal
+
+                      return (
+                        <div key={objeto.key} className={cardClass(Boolean(selected))}>
+                          <button
+                            type="button"
+                            onClick={() => toggleObjetoDonacion(objeto)}
+                            className="flex w-full items-start gap-3 p-4 text-left"
+                          >
+                            <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-sm font-semibold ${
+                              selected ? 'border-cyan-700 bg-cyan-700 text-white' : 'border-slate-300 bg-white text-transparent'
+                            }`}>
+                              x
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-slate-900">{objeto.producto.nombre}</span>
+                              <span className="mt-1 block text-sm text-slate-500">{objeto.producto.categoria}</span>
+                              <span className="mt-1 block text-xs text-slate-400">
+                                {objeto.cantidadTotal} {objeto.producto.unidad} pendientes en {objeto.necesidades.length} puesto{objeto.necesidades.length === 1 ? '' : 's'}
+                              </span>
+                              {necesidadDestino && (
+                                <span className="mt-2 block text-xs font-medium text-cyan-700">
+                                  Destino sugerido: {necesidadDestino.puesto.nombre}
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex shrink-0 flex-col items-end gap-2">
+                              <Badge variant={objeto.cantidadTotal <= 5 ? 'danger' : 'warning'}>
+                                {objeto.cantidadTotal} {objeto.producto.unidad}
+                              </Badge>
+                              <span className="text-xs font-medium text-slate-400">{selected ? 'Seleccionado' : 'Tocar para elegir'}</span>
+                            </span>
+                          </button>
+
+                          {selected && necesidadDestino && (
+                            <div className="grid gap-3 border-t border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_160px]">
+                              <div>
+                                <label className="mb-1 block text-sm font-medium text-slate-700">Puesto de entrega</label>
+                                <select
+                                  value={selected.puestoId}
+                                  onChange={(event) => updateObjetoDonacion(objeto.key, { puestoId: event.target.value })}
+                                  className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
+                                >
+                                  {objeto.necesidades.map((necesidad) => (
+                                    <option key={necesidad.puesto.id} value={necesidad.puesto.id}>
+                                      {necesidad.puesto.nombre} - {necesidad.cantidadPendiente ?? necesidad.item.cantidad} {objeto.producto.unidad}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="mt-1 text-xs text-slate-500">{necesidadDestino.puesto.direccion}</p>
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-sm font-medium text-slate-700">Cantidad</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={maximoDestino}
+                                  step="1"
+                                  value={selected.cantidad}
+                                  onChange={(event) => updateObjetoDonacion(objeto.key, { cantidad: event.target.value })}
+                                  className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
+                                />
+                                <p className="mt-1 text-xs text-slate-500">Max. {maximoDestino}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+
+                    {donacionesSeleccionadas.length > 0 && (
+                      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                        <label className="mb-1 block text-sm font-medium text-slate-700">Comentario para las donaciones</label>
+                        <textarea
+                          value={comentarioDonacion}
+                          onChange={(event) => setComentarioDonacion(event.target.value)}
+                          className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
+                          rows={2}
+                          placeholder="Ej. salgo ahora y puedo hacer varias paradas"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : vistaDonacion === 'necesidades' && necesidades.length === 0 ? (
                   <EmptyState>No hay necesidades publicadas ahora mismo.</EmptyState>
                 ) : vistaDonacion === 'necesidades' ? (
                   <div className="space-y-2">
                     {necesidades.map(({ puesto, item, cantidadNecesaria, cantidadComprometida }) => {
                       const selected = seleccion === item.id
-                      const bloqueadaPorOtroCentro = Boolean(donacionActiva && donacionActiva.puesto.id !== puesto.id)
-
                       return (
                         <div
                           key={item.id}
-                          className={cardClass(selected, bloqueadaPorOtroCentro)}
+                          className={cardClass(selected)}
                         >
                           <div className="p-4">
                             <div className="flex items-start justify-between gap-3">
@@ -1388,7 +1920,6 @@ export default function VoluntarioDashboard() {
                               size="sm"
                               variant={selected ? 'secondary' : 'primary'}
                               className="mt-3"
-                              disabled={bloqueadaPorOtroCentro}
                               onClick={() => {
                                 setSeleccion(item.id)
                                 setCantidad('')
@@ -1398,13 +1929,8 @@ export default function VoluntarioDashboard() {
                                 setCantidadError('')
                               }}
                             >
-                              {bloqueadaPorOtroCentro ? 'Bloqueado por donacion activa' : selected ? 'Seleccionado' : 'Llevar esto'}
+                              {selected ? 'Seleccionado' : 'Llevar esto'}
                             </Button>
-                            {bloqueadaPorOtroCentro && (
-                              <p className="text-xs text-gray-500 mt-2">
-                                Termina la donacion activa en {donacionActiva?.puesto.nombre} para poder elegir otro centro.
-                              </p>
-                            )}
                           </div>
 
                           {selected && selectedNeed && (
@@ -1469,6 +1995,94 @@ export default function VoluntarioDashboard() {
                       <EmptyState>No tienes donaciones activas ahora mismo.</EmptyState>
                     ) : (
                     <div className="space-y-3">
+                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950 shadow-sm">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <p className="font-semibold">Ruta de entrega activa</p>
+                            <p className="mt-1 text-cyan-900">
+                              {paradasDonacionesActivas.length === 1
+                                ? `Primero tienes que ir a ${paradasDonacionesActivas[0].puesto.nombre}.`
+                                : `Primero tienes que ir a ${paradasDonacionesActivas[0].puesto.nombre} y despues a ${paradasDonacionesActivas.slice(1).map((parada) => parada.puesto.nombre).join(', ')}.`}
+                            </p>
+                            <p className="mt-1 text-xs text-cyan-800">
+                              {donacionesActivas.length} donacion{donacionesActivas.length === 1 ? '' : 'es'} en {paradasDonacionesActivas.length} parada{paradasDonacionesActivas.length === 1 ? '' : 's'}.
+                            </p>
+                            {!userPosition && (
+                              <p className="mt-1 text-xs text-cyan-800">
+                                Comparte tu ubicacion para ordenar las paradas por cercania.
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            loading={rutaDonacionLoading}
+                            onClick={() => void calcularRutaDonacionesActivas()}
+                          >
+                            Ver ruta completa
+                          </Button>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {paradasDonacionesActivas.map((parada, index) => (
+                            <div key={parada.puesto.id} className="rounded-md bg-white/80 px-3 py-2 ring-1 ring-cyan-100">
+                              <p className="text-xs font-semibold uppercase text-cyan-700">
+                                Parada {index + 1}{parada.distanciaKm !== undefined ? ` - ${parada.distanciaKm.toFixed(1)} km` : ''}
+                              </p>
+                              <p className="mt-0.5 font-medium text-slate-900">{parada.puesto.nombre}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                {parada.donaciones.map((donacion) => `${donacion.cantidad} ${donacion.unidad} de ${donacion.producto.nombre}`).join(' · ')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        {rutaDonacionesActivas && (
+                          <div className="mt-3 overflow-hidden rounded-lg border border-cyan-100 bg-white shadow-sm">
+                            <div className="border-b border-slate-200 bg-white px-3 py-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-950">Ruta completa de la mision</p>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    {rutaDonacionesActivas.puestos.length} parada{rutaDonacionesActivas.puestos.length === 1 ? '' : 's'} - {rutaDonacionesActivas.distanciaKm.toFixed(1)} km - ~{rutaDonacionesActivas.duracionMin} min
+                                    {rutaDonacionesActivas.incidenciasEvitadas > 0 && ` - evita ${rutaDonacionesActivas.incidenciasEvitadas} incidencia${rutaDonacionesActivas.incidenciasEvitadas === 1 ? '' : 's'}`}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setRutaDonacionesActivas(null)}
+                                  className="text-xs font-medium text-slate-500 hover:text-slate-950"
+                                >
+                                  Cerrar
+                                </button>
+                              </div>
+                            </div>
+                            <Map
+                              className="h-80"
+                              center={[rutaDonacionesActivas.puestos[0]?.latitud ?? userPosition?.[0] ?? 39.4254, rutaDonacionesActivas.puestos[0]?.longitud ?? userPosition?.[1] ?? -0.4178]}
+                              userPosition={userPosition}
+                              onUserLocated={setUserPosition}
+                              puestos={rutaDonacionesActivas.puestos.map((puesto) => ({
+                                id: puesto.id,
+                                nombre: puesto.nombre,
+                                direccion: puesto.direccion,
+                                latitud: puesto.latitud,
+                                longitud: puesto.longitud,
+                                necesidades: 0,
+                              }))}
+                              incidencias={incidencias as IncidenciaMarker[]}
+                              route={rutaDonacionesActivas.points}
+                              markerVariant="neutral"
+                            />
+                            <RouteSafetyPanel
+                              distanciaKm={rutaDonacionesActivas.distanciaKm}
+                              duracionMin={rutaDonacionesActivas.duracionMin}
+                              incidenciasEvitadas={rutaDonacionesActivas.incidenciasEvitadas}
+                              incidenciasCercanas={rutaDonacionesActivas.incidenciasCercanas}
+                              destino={rutaDonacionesActivas.puestos.map((puesto) => puesto.nombre).join(', ')}
+                            />
+                          </div>
+                        )}
+                      </div>
                       {donacionesActivas.map((donacion) => {
                         const codigoEntrega = codigosEntrega[donacion.id] ?? (
                           donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
@@ -1709,11 +2323,22 @@ export default function VoluntarioDashboard() {
                   <Notice tone="danger">{errorDonacion}</Notice>
                 )}
 
-                {incidencias.length === 0 ? (
-                  <EmptyState>No hay incidencias registradas ahora mismo.</EmptyState>
+                {!userPosition && (
+                  <Notice tone="info">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>Comparte tu ubicacion para ordenar las calles cortadas por cercania.</span>
+                      <Button type="button" size="sm" variant="secondary" onClick={requestGeo}>
+                        Usar mi ubicacion
+                      </Button>
+                    </div>
+                  </Notice>
+                )}
+
+                {incidenciasCortadas.length === 0 ? (
+                  <EmptyState>No hay calles cortadas registradas ahora mismo.</EmptyState>
                 ) : (
                   <div className="space-y-3">
-                    {incidencias.map((incidencia) => {
+                    {incidenciasCortadas.map((incidencia) => {
                       const selected = seleccion === incidencia.id
                       const incidenciaActiva = actividadManualActiva?.tipo === 'incidencia' && actividadManualActiva.id === incidencia.id
 
@@ -1730,6 +2355,11 @@ export default function VoluntarioDashboard() {
                                 <p className="mt-1 text-xs text-slate-500">
                                   {incidencia.latitud.toFixed(5)}, {incidencia.longitud.toFixed(5)}
                                 </p>
+                                {incidencia.distanciaKm !== undefined && (
+                                  <p className="mt-1 text-xs font-medium text-cyan-700">
+                                    {incidencia.distanciaKm.toFixed(1)} km de tu ubicacion
+                                  </p>
+                                )}
                                 {incidencia._count?.asignacionesVoluntarios !== undefined && (
                                   <p className="mt-1 text-xs text-slate-400">
                                     {incidencia._count.asignacionesVoluntarios} voluntario{incidencia._count.asignacionesVoluntarios === 1 ? '' : 's'} asignado{incidencia._count.asignacionesVoluntarios === 1 ? '' : 's'}
@@ -1816,7 +2446,7 @@ export default function VoluntarioDashboard() {
                                   fullWidth
                                   variant="secondary"
                                   className="mt-3"
-                                  onClick={finalizarAyudaManual}
+                                  onClick={() => abrirFinalizacionIncidencia(incidencia)}
                                 >
                                   Terminar ayuda en incidencia
                                 </Button>
@@ -2056,6 +2686,120 @@ export default function VoluntarioDashboard() {
         )}
       </main>
       )}
+      {incidenciaFinalizacion && (
+        <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+          <form
+            onSubmit={finalizarAyudaIncidenciaConActualizacion}
+            className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-5 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase text-cyan-700">Actualizar incidencia</p>
+                <h2 className="mt-1 text-lg font-semibold text-slate-950">Estado actual de la calle</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {incidenciaFinalizacion.descripcion || 'Incidencia sin descripcion'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarFinalizacionIncidencia}
+                className="text-sm font-medium text-slate-500 hover:text-slate-950"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <label className={`rounded-lg border px-4 py-3 text-sm transition-colors ${estadoIncidenciaFinal === 'CORTADA' ? 'border-red-300 bg-red-50 text-red-950' : 'border-slate-200 bg-white text-slate-700'}`}>
+                <input
+                  type="radio"
+                  name="estadoIncidenciaFinal"
+                  value="CORTADA"
+                  checked={estadoIncidenciaFinal === 'CORTADA'}
+                  onChange={() => setEstadoIncidenciaFinal('CORTADA')}
+                  className="mr-2"
+                />
+                La calle sigue cortada
+              </label>
+              <label className={`rounded-lg border px-4 py-3 text-sm transition-colors ${estadoIncidenciaFinal === 'TRANSITABLE' ? 'border-emerald-300 bg-emerald-50 text-emerald-950' : 'border-slate-200 bg-white text-slate-700'}`}>
+                <input
+                  type="radio"
+                  name="estadoIncidenciaFinal"
+                  value="TRANSITABLE"
+                  checked={estadoIncidenciaFinal === 'TRANSITABLE'}
+                  onChange={() => setEstadoIncidenciaFinal('TRANSITABLE')}
+                  className="mr-2"
+                />
+                La calle ya es transitable
+              </label>
+            </div>
+
+            <label className="mt-4 block text-sm font-medium text-slate-700" htmlFor="comentario-incidencia-final">
+              Estado actual
+            </label>
+            <textarea
+              id="comentario-incidencia-final"
+              value={comentarioIncidenciaFinal}
+              onChange={(event) => {
+                setComentarioIncidenciaFinal(event.target.value)
+                setFinalizacionIncidenciaError('')
+              }}
+              rows={4}
+              required
+              maxLength={500}
+              placeholder="Describe lo que has encontrado al llegar: obstaculos, agua, escombros, paso parcial, senalizacion..."
+              className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+            />
+            <p className="mt-1 text-xs text-slate-400">{comentarioIncidenciaFinal.trim().length}/500</p>
+
+            {finalizacionIncidenciaError && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {finalizacionIncidenciaError}
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="secondary"
+                fullWidth
+                onClick={cerrarFinalizacionIncidencia}
+                disabled={finalizacionIncidenciaLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                fullWidth
+                loading={finalizacionIncidenciaLoading}
+              >
+                Actualizar y terminar
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   )
+}
+
+type ObjetoDonable = {
+  key: string
+  producto: ItemInventario['producto']
+  necesidades: Necesidad[]
+  cantidadTotal: number
+}
+
+type SeleccionObjetoDonacion = {
+  cantidad: string
+  puestoId: string
+}
+
+type RutaDonacionMultiparada = {
+  puestos: PuestoEmergencia[]
+  points: [number, number][]
+  distanciaKm: number
+  duracionMin: number
+  incidenciasEvitadas: number
+  incidenciasCercanas: number
 }
