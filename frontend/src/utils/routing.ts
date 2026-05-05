@@ -1,6 +1,6 @@
 import type { IncidenciaMarker } from '@/components/shared/Map'
 
-const ROUTE_BLOCK_RADIUS_KM = 0.025
+export const ROUTE_BLOCK_RADIUS_KM = 0.025
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const toRad = (deg: number) => (deg * Math.PI) / 180
@@ -16,7 +16,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   return 6371 * c
 }
 
-function pointToSegmentDistanceKm(point: [number, number], a: [number, number], b: [number, number]) {
+export function pointToSegmentDistanceKm(point: [number, number], a: [number, number], b: [number, number]) {
   const latScale = 111
   const lngScale = 111 * Math.cos((point[0] * Math.PI) / 180)
   const px = point[1] * lngScale
@@ -34,7 +34,7 @@ function pointToSegmentDistanceKm(point: [number, number], a: [number, number], 
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 }
 
-function blockedIncidenciasNearRoute(points: [number, number][], incidencias: IncidenciaMarker[]) {
+export function blockedIncidenciasNearRoute(points: [number, number][], incidencias: IncidenciaMarker[]) {
   const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
   return cortadas.filter((inc) => {
     const point: [number, number] = [inc.latitud, inc.longitud]
