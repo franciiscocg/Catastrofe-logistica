@@ -1,0 +1,7 @@
+{
+  "name": "tests-feature-buscar-productos-ciudadano",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.46.0"
+  }
+}

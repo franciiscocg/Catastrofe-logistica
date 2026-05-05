@@ -1,22 +1,19 @@
-import type { IncidenciaMarker } from '@/components/shared/Map'
+import { haversineKm } from './haversine'
 
 export const ROUTE_BLOCK_RADIUS_KM = 0.025
 
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2)
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return 6371 * c
+export interface IncidenciaRutaInput {
+  latitud: number
+  longitud: number
+  estado: 'CORTADA' | 'TRANSITABLE'
+  pendingSync?: boolean
 }
 
-export function pointToSegmentDistanceKm(point: [number, number], a: [number, number], b: [number, number]) {
+export function pointToSegmentDistanceKm(
+  point: [number, number],
+  a: [number, number],
+  b: [number, number],
+): number {
   const latScale = 111
   const lngScale = 111 * Math.cos((point[0] * Math.PI) / 180)
   const px = point[1] * lngScale
@@ -34,7 +31,24 @@ export function pointToSegmentDistanceKm(point: [number, number], a: [number, nu
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 }
 
-export function blockedIncidenciasNearRoute(points: [number, number][], incidencias: IncidenciaMarker[]) {
+export function countBlockedIncidenciasNearRoute(
+  points: [number, number][],
+  incidencias: IncidenciaRutaInput[],
+): number {
+  const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
+  return cortadas.filter((inc) => {
+    const point: [number, number] = [inc.latitud, inc.longitud]
+    for (let i = 0; i < points.length - 1; i += 1) {
+      if (pointToSegmentDistanceKm(point, points[i], points[i + 1]) <= ROUTE_BLOCK_RADIUS_KM) return true
+    }
+    return false
+  }).length
+}
+
+export function blockedIncidenciasNearRoute<T extends IncidenciaRutaInput>(
+  points: [number, number][],
+  incidencias: T[],
+): T[] {
   const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
   return cortadas.filter((inc) => {
     const point: [number, number] = [inc.latitud, inc.longitud]
@@ -54,7 +68,7 @@ type RouteCandidate = {
 
 async function fetchRouteCandidates(
   coordinates: [number, number][],
-  incidencias: IncidenciaMarker[],
+  incidencias: IncidenciaRutaInput[],
   signal?: AbortSignal,
 ): Promise<RouteCandidate[]> {
   const path = coordinates.map(([lat, lng]) => `${lng},${lat}`).join(';')
@@ -87,7 +101,7 @@ function sortRouteCandidates(candidates: RouteCandidate[]) {
   ))
 }
 
-function detourPointsAroundIncidencia(incidencia: IncidenciaMarker): [number, number][] {
+function detourPointsAroundIncidencia(incidencia: IncidenciaRutaInput): [number, number][] {
   const mid: [number, number] = [incidencia.latitud, incidencia.longitud]
   const offset = 0.004
 
@@ -103,7 +117,7 @@ function detourPointsAroundIncidencia(incidencia: IncidenciaMarker): [number, nu
   ]
 }
 
-function buildDetourWaypointSets(desde: [number, number], hasta: [number, number], blocked: IncidenciaMarker[]) {
+function buildDetourWaypointSets(desde: [number, number], hasta: [number, number], blocked: IncidenciaRutaInput[]) {
   const waypointSets: [number, number][][] = []
   const detoursByBlock = blocked.slice(0, 4).map((inc) => detourPointsAroundIncidencia(inc))
 
@@ -130,7 +144,7 @@ function buildDetourWaypointSets(desde: [number, number], hasta: [number, number
 export async function fetchRutaEvitandoIncidencias(
   desde: [number, number],
   hasta: [number, number],
-  incidencias: IncidenciaMarker[],
+  incidencias: IncidenciaRutaInput[],
   signal?: AbortSignal,
 ) {
   const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias, signal)
