@@ -11,8 +11,8 @@ export interface User {
   nombre: string
   apellidos: string
   telefono?: string
-  roles: Role[]
-  createdAt: string
+  roles: string[]
+  createdAt?: string
 }
 
 export interface AuthTokens {
