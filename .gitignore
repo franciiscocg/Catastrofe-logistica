@@ -20,6 +20,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Claude Code (configuración personal local)
+.claude/settings.local.json
+
 # Editor
 .vscode/
 .idea/
