@@ -88,12 +88,32 @@ const CATEGORIA_EMOJI: Record<string, string> = {
   Herramientas: '🔧', Calzado: '👟', Movilidad: '♿',
 }
 
+const INVENTARIO_DEMO_POR_NOMBRE: Record<string, keyof typeof INVENTARIO> = {
+  'ceip la paz': '1',
+  'pabellon municipal benetusser': '2',
+  'ies sedavi': '3',
+  'centro civico catarroja': '4',
+  'poliesportiu alfafar': '5',
+}
+
 type ProductoDisponible = ItemInventario & { puesto: PuestoMarker }
 type ProductoOption = {
   nombre: string
   categoria: string
   unidad: string
   total: number
+}
+
+type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
+type ApiInventarioItem = {
+  id: string
+  tipo: 'DISPONIBLE' | 'NECESARIO' | 'disponible' | 'necesario'
+  cantidad: number
+  producto: {
+    nombre: string
+    categoria: string
+    unidad: string
+  }
 }
 
 const ROUTE_SEARCH_TIMEOUT_MS = 90000
@@ -390,8 +410,58 @@ function InventarioSheet({
 
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
-function getProductosDisponibles(puestos: PuestoMarker[]) {
-  return _getProductosDisponibles(puestos, INVENTARIO)
+function normalizeApiInventario(items: ApiInventarioItem[]) {
+  return items.reduce<{ disponible: ItemInventario[]; necesario: ItemInventario[] }>((acc, item) => {
+    const normalized = {
+      nombre: item.producto.nombre,
+      categoria: item.producto.categoria,
+      cantidad: item.cantidad,
+      unidad: item.producto.unidad,
+    }
+
+    if (item.tipo === 'DISPONIBLE' || item.tipo === 'disponible') {
+      acc.disponible.push(normalized)
+    } else if (item.tipo === 'NECESARIO' || item.tipo === 'necesario') {
+      acc.necesario.push(normalized)
+    }
+
+    return acc
+  }, { disponible: [], necesario: [] })
+}
+
+function normalizeText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+}
+
+function getDemoInventarioForPuesto(puesto: Pick<PuestoMarker, 'id' | 'nombre'>) {
+  const byId = INVENTARIO[puesto.id]
+  if (byId) return byId
+
+  const demoId = INVENTARIO_DEMO_POR_NOMBRE[normalizeText(puesto.nombre)]
+  return demoId ? INVENTARIO[demoId] : { disponible: [], necesario: [] }
+}
+
+function mergeWithDemoInventario(
+  puesto: Pick<PuestoMarker, 'id' | 'nombre'>,
+  apiInventario: { disponible: ItemInventario[]; necesario: ItemInventario[] },
+) {
+  const demoInventario = getDemoInventarioForPuesto(puesto)
+
+  return {
+    disponible: apiInventario.disponible.length > 0
+      ? apiInventario.disponible
+      : demoInventario.disponible,
+    necesario: apiInventario.necesario.length > 0
+      ? apiInventario.necesario
+      : demoInventario.necesario,
+  }
+}
+
+function getProductosDisponibles(puestos: PuestoMarker[], inventario: InventarioPorPuesto) {
+  return _getProductosDisponibles(puestos, inventario)
 }
 
 function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[] {
@@ -404,6 +474,7 @@ function BuscarProductoSheet({
   productos,
   resultados,
   selectedPuesto,
+  inventarioPorPuesto,
   userPosition,
   routeLoading,
   routeError,
@@ -419,6 +490,7 @@ function BuscarProductoSheet({
   productos: ProductoOption[]
   resultados: ProductoDisponible[]
   selectedPuesto: PuestoMarker | null
+  inventarioPorPuesto: InventarioPorPuesto
   userPosition: [number, number] | null
   routeLoading: boolean
   routeError: string | null
@@ -432,7 +504,7 @@ function BuscarProductoSheet({
   const recomendado = resultados[0]
   const [inputFocused, setInputFocused] = useState(false)
   const inventarioSeleccionado = selectedPuesto
-    ? INVENTARIO[selectedPuesto.id] ?? { disponible: [], necesario: [] }
+    ? inventarioPorPuesto[selectedPuesto.id] ?? { disponible: [], necesario: [] }
     : null
   const showSugerencias = inputFocused
   const hasTextoBusqueda = textoBusqueda.trim().length > 0
@@ -1109,7 +1181,37 @@ export default function CiudadanoDashboard() {
     ? sortByDistance(puestosBase, userPosition[0], userPosition[1])
     : puestosBase.map((p) => ({ ...p }))
 
-  const productosDisponibles = getProductosDisponibles(puestos)
+  const puestoIds = puestosBase.map((puesto) => puesto.id)
+  const { data: inventarioApiData } = useQuery({
+    queryKey: ['inventario-ciudadano-busqueda', puestoIds],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        puestosBase.map(async (puesto) => {
+          try {
+            const response = await apiClient.get<{ inventario: ApiInventarioItem[] }>(
+              `/api/inventario/puesto/${puesto.id}`,
+            )
+            return [puesto.id, mergeWithDemoInventario(puesto, normalizeApiInventario(response.data.inventario))] as const
+          } catch {
+            return [puesto.id, getDemoInventarioForPuesto(puesto)] as const
+          }
+        }),
+      )
+
+      return Object.fromEntries(entries) as InventarioPorPuesto
+    },
+    enabled: puestosBase.length > 0,
+    staleTime: 1000 * 30,
+    retry: false,
+    placeholderData: {},
+  })
+
+  const inventarioPorPuesto = useMemo<InventarioPorPuesto>(() => ({
+    ...INVENTARIO,
+    ...(inventarioApiData ?? {}),
+  }), [inventarioApiData])
+
+  const productosDisponibles = getProductosDisponibles(puestos, inventarioPorPuesto)
   const productoOptions = getProductoOptions(productosDisponibles)
   const textoProductoNormalizado = textoProductoBusqueda.trim().toLocaleLowerCase('es')
   const productoOptionsFiltradas = textoProductoNormalizado
@@ -1120,6 +1222,8 @@ export default function CiudadanoDashboard() {
     : productoOptions
   const productoSeleccionado = productoOptions.some((item) => item.nombre === productoBusqueda)
     ? productoBusqueda
+    : textoProductoNormalizado && productoOptionsFiltradas.length === 1
+      ? productoOptionsFiltradas[0].nombre
     : ''
   const resultadosProducto = productosDisponibles.filter((item) => item.nombre === productoSeleccionado)
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
@@ -1398,6 +1502,7 @@ export default function CiudadanoDashboard() {
           productos={productoOptionsFiltradas}
           resultados={resultadosProducto}
           selectedPuesto={selectedPuestoBusqueda}
+          inventarioPorPuesto={inventarioPorPuesto}
           userPosition={userPosition}
           routeLoading={routeLoading}
           routeError={routeError}
