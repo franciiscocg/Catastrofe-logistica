@@ -3,18 +3,22 @@ import { RolUsuario } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import type { LoginInput, RegisterInput } from './auth.schema.js'
 
+function appError(message: string, statusCode: number) {
+  return Object.assign(new Error(message), { statusCode })
+}
+
 function badRequest(message: string) {
-  return Object.assign(new Error(message), { statusCode: 400 })
+  return appError(message, 400)
 }
 
 export async function loginUser({ email, password }: LoginInput) {
   const user = await prisma.usuario.findUnique({ where: { email } })
-  if (!user) throw new Error('Credenciales incorrectas')
+  if (!user) throw appError('Credenciales incorrectas', 401)
 
   const valid = await bcrypt.compare(password, user.password)
-  if (!valid) throw new Error('Credenciales incorrectas')
+  if (!valid) throw appError('Credenciales incorrectas', 401)
 
-  if (!user.activo) throw new Error('Cuenta desactivada')
+  if (!user.activo) throw appError('Cuenta desactivada', 403)
 
   return {
     id: user.id,
@@ -28,19 +32,22 @@ export async function loginUser({ email, password }: LoginInput) {
 
 export async function registerUser(input: RegisterInput) {
   const exists = await prisma.usuario.findUnique({ where: { email: input.email } })
-  if (exists) throw badRequest('Este email ya está registrado')
+  if (exists) throw badRequest('Este email ya esta registrado')
 
   if (input.dni) {
     const dniExists = await prisma.usuario.findUnique({ where: { dni: input.dni } })
-    if (dniExists) throw badRequest('Este DNI/NIE ya está registrado')
+    if (dniExists) throw badRequest('Este DNI/NIE ya esta registrado')
   }
 
   const hashed = await bcrypt.hash(input.password, 12)
-  const roles = input.role === 'voluntario'
-    ? [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
-    : [RolUsuario.CIUDADANO]
+  const esPuesto = input.roles?.includes('PUESTO_EMERGENCIA') ?? false
+  const roles = esPuesto
+    ? [RolUsuario.PUESTO_EMERGENCIA]
+    : input.role === 'voluntario'
+      ? [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
+      : [RolUsuario.CIUDADANO]
 
-  const user = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const created = await tx.usuario.create({
       data: {
         email: input.email,
@@ -50,6 +57,7 @@ export async function registerUser(input: RegisterInput) {
         telefono: input.telefono,
         dni: input.dni,
         roles,
+        activo: true,
       },
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true },
     })
@@ -62,8 +70,35 @@ export async function registerUser(input: RegisterInput) {
       })
     }
 
-    return created
+    let puesto = null
+
+    if (esPuesto && input.puesto) {
+      const catastrofe = await tx.catastrofe.findFirst({
+        orderBy: [{ activa: 'desc' }, { createdAt: 'desc' }],
+      })
+
+      if (!catastrofe) {
+        throw appError('No hay ninguna catastrofe registrada en el sistema. Contacta con un coordinador.', 422)
+      }
+
+      puesto = await tx.puestoEmergencia.create({
+        data: {
+          nombre: input.puesto.nombre,
+          tipo: input.puesto.tipo,
+          direccion: input.puesto.direccion,
+          descripcion: input.puesto.descripcion,
+          latitud: input.puesto.latitud,
+          longitud: input.puesto.longitud,
+          activo: true,
+          catastrofeId: catastrofe.id,
+          adminId: created.id,
+        },
+        select: { id: true, nombre: true, direccion: true, tipo: true },
+      })
+    }
+
+    return { user: created, puesto }
   })
 
-  return user
+  return result
 }

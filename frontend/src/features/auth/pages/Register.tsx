@@ -4,6 +4,7 @@ import { ROLE_LABELS, ROLE_ROUTES, Role } from '@/types/auth.types'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
+import RegisterPuesto from './RegisterPuesto'
 
 type RegisterForm = {
   nombre: string
@@ -128,6 +129,10 @@ export default function Register() {
     }
   }
 
+  // Formularios específicos por rol
+  if (roleParam === Role.PUESTO) return <RegisterPuesto />
+
+  // Stub genérico para los demás roles (a implementar en Mes 2)
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8">
       <div className="max-w-md mx-auto w-full">

@@ -7,7 +7,8 @@ interface AuthStore {
   accessToken: string | null
   selectedRole: Role | null
   isAuthenticated: boolean
-  login: (user: User, accessToken: string) => void
+  puestoId: string | null           // puesto del usuario si tiene rol PUESTO
+  login: (user: User, accessToken: string, puestoId?: string) => void
   logout: () => void
   selectRole: (role: Role) => void
   clearRole: () => void
@@ -21,12 +22,13 @@ export const useAuthStore = create<AuthStore>()(
       accessToken: null,
       selectedRole: null,
       isAuthenticated: false,
+      puestoId: null,
 
-      login: (user, accessToken) =>
-        set({ user, accessToken, isAuthenticated: true }),
+      login: (user, accessToken, puestoId) =>
+        set({ user, accessToken, isAuthenticated: true, puestoId: puestoId ?? null }),
 
       logout: () =>
-        set({ user: null, accessToken: null, selectedRole: null, isAuthenticated: false }),
+        set({ user: null, accessToken: null, selectedRole: null, isAuthenticated: false, puestoId: null }),
 
       selectRole: (role) => set({ selectedRole: role }),
 
@@ -44,6 +46,7 @@ export const useAuthStore = create<AuthStore>()(
         accessToken: state.accessToken,
         selectedRole: state.selectedRole,
         isAuthenticated: state.isAuthenticated,
+        puestoId: state.puestoId,
       }),
     },
   ),

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { prisma } from '../../lib/prisma.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
+import { listTrabajadores, addTrabajador, removeTrabajador } from './trabajadores.service.js'
 
 function badRequest(message: string) {
   return Object.assign(new Error(message), { statusCode: 400 })
@@ -37,7 +38,7 @@ function formatPuesto(puesto: {
   activo: boolean
   capacidadTrabajo: number
   catastrofeId: string
-  _count: { asignacionesVoluntarios: number }
+  _count: { asignacionesVoluntarios: number; inventario: number }
 }) {
   return {
     id: puesto.id,
@@ -49,6 +50,7 @@ function formatPuesto(puesto: {
     tipo: puesto.tipo,
     activo: puesto.activo,
     capacidadTrabajo: puesto.capacidadTrabajo,
+    necesidades: puesto._count.inventario,
     voluntariosTrabajando: puesto._count.asignacionesVoluntarios,
     catastrofeId: puesto.catastrofeId,
   }
@@ -62,6 +64,7 @@ export async function puestosRouter(app: FastifyInstance) {
       include: {
         _count: {
           select: {
+            inventario: { where: { tipo: 'NECESARIO' } },
             asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
           },
         },
@@ -81,9 +84,7 @@ export async function puestosRouter(app: FastifyInstance) {
     const asignacion = await prisma.asignacionPuesto.findFirst({
       where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
       orderBy: { startedAt: 'desc' },
-      include: {
-        puesto: true,
-      },
+      include: { puesto: true },
     })
 
     reply.send({ asignacion })
@@ -104,6 +105,31 @@ export async function puestosRouter(app: FastifyInstance) {
     })
 
     reply.send({ asignaciones })
+  })
+
+  app.get('/mio', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const userId = (req.user as { id: string }).id
+
+    const [comoAdmin, comoTrabajador] = await Promise.all([
+      prisma.puestoEmergencia.findMany({
+        where: { adminId: userId },
+        select: puestoSelect,
+      }),
+      prisma.puestoEmergencia.findMany({
+        where: { trabajadores: { some: { usuarioId: userId } } },
+        select: puestoSelect,
+      }),
+    ])
+
+    const adminIds = new Set(comoAdmin.map((p) => p.id))
+    const puestos = [
+      ...comoAdmin,
+      ...comoTrabajador.filter((p) => !adminIds.has(p.id)),
+    ]
+
+    return reply.send({ puestos })
   })
 
   app.post('/:id/asignaciones', {
@@ -192,9 +218,58 @@ export async function puestosRouter(app: FastifyInstance) {
     reply.send({ asignacion: finalizada })
   })
 
+  app.get('/:id', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const puesto = await prisma.puestoEmergencia.findUnique({
+      where: { id },
+      select: puestoSelect,
+    })
+    if (!puesto) return reply.status(404).send({ error: 'Puesto no encontrado' })
+    return reply.send({ puesto })
+  })
+
+  app.get('/:id/trabajadores', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const trabajadores = await listTrabajadores(id)
+    return reply.send({ trabajadores })
+  })
+
+  app.post('/:id/trabajadores', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { email } = req.body as { email: string }
+    if (!email) return reply.status(400).send({ error: 'El email es obligatorio' })
+    const adminId = (req.user as { id: string }).id
+    const trabajador = await addTrabajador(id, email, adminId)
+    return reply.status(201).send({ trabajador })
+  })
+
+  app.delete('/:id/trabajadores/:userId', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const { id, userId } = req.params as { id: string; userId: string }
+    const adminId = (req.user as { id: string }).id
+    await removeTrabajador(id, userId, adminId)
+    return reply.status(204).send()
+  })
+
   app.post('/', {
     preHandler: [requireAuth, requireRole('COORDINADOR', 'PUESTO_EMERGENCIA')],
   }, async (_req, reply) => {
     reply.status(201).send({ message: 'Pendiente de implementar' })
   })
 }
+
+const puestoSelect = {
+  id: true,
+  nombre: true,
+  direccion: true,
+  latitud: true,
+  longitud: true,
+  tipo: true,
+  activo: true,
+  catastrofe: { select: { id: true, nombre: true, fase: true } },
+} as const

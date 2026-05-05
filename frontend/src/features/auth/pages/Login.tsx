@@ -24,8 +24,23 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const { data } = await apiClient.post('/api/auth/login', { email, password })
-      login(data.user, data.accessToken)
+      const { data } = await apiClient.post<{
+        user: { id: string; email: string; nombre: string; apellidos: string; roles: string[] }
+        accessToken: string
+      }>('/api/auth/login', { email, password })
+
+      // Cargar puestoId si el usuario es responsable de un puesto
+      let puestoId: string | undefined
+      if (data.user.roles.includes('PUESTO_EMERGENCIA')) {
+        try {
+          const res = await apiClient.get<{ puestos: { id: string }[] }>('/api/puestos/mio', {
+            headers: { Authorization: `Bearer ${data.accessToken}` },
+          })
+          puestoId = res.data.puestos?.[0]?.id
+        } catch { /* no bloquear el login si falla */ }
+      }
+
+      login(data.user as any, data.accessToken, puestoId)
       if (roleParam) selectRole(roleParam)
       navigate(roleParam ? ROLE_ROUTES[roleParam] : '/')
     } catch (err: unknown) {
