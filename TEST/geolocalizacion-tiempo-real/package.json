@@ -1,0 +1,7 @@
+{
+  "name": "tests-geolocalizacion-tiempo-real",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.46.0"
+  }
+}

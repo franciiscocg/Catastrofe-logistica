@@ -65,6 +65,7 @@ interface MapProps {
   onIncidenciaAction?: (incidencia: IncidenciaMarker, action: IncidenciaAction) => void
   onIncidenciaCommentsOpen?: (incidencia: IncidenciaMarker) => void
   route?: [number, number][] | null
+  focusUserPositionKey?: number
   markerVariant?: 'urgency' | 'neutral'
   className?: string
 }
@@ -172,6 +173,22 @@ function FitRoute({ points }: { points: [number, number][] }) {
   return null
 }
 
+function FocusUserPosition({
+  position,
+  triggerKey,
+}: {
+  position: [number, number]
+  triggerKey: number
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    map.flyTo(position, Math.max(map.getZoom(), 15), { duration: 0.8 })
+  }, [position, triggerKey, map])
+
+  return null
+}
+
 function LocateButton({ onLocated }: { onLocated: (pos: [number, number]) => void }) {
   const map = useMap()
 
@@ -238,6 +255,7 @@ export default function Map({
   onIncidenciaAction,
   onIncidenciaCommentsOpen,
   route,
+  focusUserPositionKey = 0,
   markerVariant = 'urgency',
   className = 'h-64',
 }: MapProps) {
@@ -279,6 +297,10 @@ export default function Map({
               <span style={{ fontWeight: 600 }}>Tu ubicación</span>
             </Popup>
           </Marker>
+        )}
+
+        {userPosition && focusUserPositionKey > 0 && (
+          <FocusUserPosition position={userPosition} triggerKey={focusUserPositionKey} />
         )}
 
         {/* Punto de incidencia seleccionado */}
