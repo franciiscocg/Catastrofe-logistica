@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { apiClient } from '@/lib/api/client'
@@ -158,14 +158,15 @@ export default function RegisterPuesto() {
     }
   }
 
-  // Sync geolocation result into form when it arrives
-  if (position && (!form.latitud || form.latitud !== position.lat.toFixed(6))) {
+  useEffect(() => {
+    if (!position || (form.latitud && form.latitud === position.lat.toFixed(6))) return
+
     setForm((prev) => ({
       ...prev,
       latitud: position.lat.toFixed(6),
       longitud: position.lng.toFixed(6),
     }))
-  }
+  }, [form.latitud, position])
 
   const handleNextStep = () => {
     const errs = validateStep1(form)

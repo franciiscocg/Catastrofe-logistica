@@ -776,6 +776,8 @@ export default function CiudadanoDashboard() {
   const [productoBusqueda, setProductoBusqueda] = useState('')
   const [textoProductoBusqueda, setTextoProductoBusqueda] = useState('')
   const [busquedaPuestoId, setBusquedaPuestoId] = useState<string | null>(null)
+  const [focusUserPositionKey, setFocusUserPositionKey] = useState(0)
+  const [pendingUserPositionFocus, setPendingUserPositionFocus] = useState(false)
 
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
   const enqueueSync = useSyncStore((s) => s.enqueue)
@@ -784,6 +786,11 @@ export default function CiudadanoDashboard() {
   const routeTimeoutRef = useRef<number | null>(null)
   const routeAbortReasonRef = useRef<'cancel' | 'timeout' | null>(null)
   const autoRouteTargetRef = useRef<string | null>(null)
+  const didFocusInitialUserPositionRef = useRef(false)
+
+  const currentUserPosition = useMemo<[number, number] | null>(() => (
+    position ? [position.lat, position.lng] : userPosition
+  ), [position, userPosition])
 
   const destinoPuesto = useMemo<Omit<PuestoMarker, 'distanciaKm'> | null>(() => {
     const id = searchParams.get('destinoId')
@@ -803,8 +810,25 @@ export default function CiudadanoDashboard() {
   }, [searchParams])
 
   useEffect(() => {
-    if (position) setUserPosition([position.lat, position.lng])
-  }, [position])
+    if (!position) return
+
+    setUserPosition([position.lat, position.lng])
+    if (pendingUserPositionFocus || !didFocusInitialUserPositionRef.current) {
+      setFocusUserPositionKey((current) => current + 1)
+      setPendingUserPositionFocus(false)
+      didFocusInitialUserPositionRef.current = true
+    }
+  }, [pendingUserPositionFocus, position])
+
+  const handleLocalizarme = () => {
+    setPendingUserPositionFocus(true)
+    requestGeo()
+
+    if (currentUserPosition) {
+      setFocusUserPositionKey((current) => current + 1)
+      setPendingUserPositionFocus(false)
+    }
+  }
 
   useEffect(() => {
     if (!feedbackMessage) return
@@ -869,7 +893,7 @@ export default function CiudadanoDashboard() {
   }
 
   const calcularRutaPuesto = async (puesto: PuestoMarker) => {
-    if (!userPosition) {
+    if (!currentUserPosition) {
       setRouteError('Comparte tu ubicación primero para calcular la ruta')
       return
     }
@@ -888,7 +912,7 @@ export default function CiudadanoDashboard() {
     setRouteLoading(true)
     setRouteError(null)
     try {
-      const resultado = await fetchRutaSegura(userPosition, [puesto.latitud, puesto.longitud], incidencias, controller.signal)
+      const resultado = await fetchRutaSegura(currentUserPosition, [puesto.latitud, puesto.longitud], incidencias, controller.signal)
       setRoute(resultado.points)
       setRouteInfo({
         distanciaKm: resultado.distanciaKm,
@@ -1177,8 +1201,8 @@ export default function CiudadanoDashboard() {
     ? [destinoPuesto, ...(puestosApiData ?? []).filter((puesto) => puesto.id !== destinoPuesto.id)]
     : puestosApiData ?? []
 
-  const puestos: PuestoMarker[] = userPosition
-    ? sortByDistance(puestosBase, userPosition[0], userPosition[1])
+  const puestos: PuestoMarker[] = currentUserPosition
+    ? sortByDistance(puestosBase, currentUserPosition[0], currentUserPosition[1])
     : puestosBase.map((p) => ({ ...p }))
 
   const puestoIds = puestosBase.map((puesto) => puesto.id)
@@ -1233,7 +1257,7 @@ export default function CiudadanoDashboard() {
   const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
 
   useEffect(() => {
-    if (!destinoPuesto || !userPosition || routeLoading) return
+    if (!destinoPuesto || !currentUserPosition || routeLoading) return
     if (autoRouteTargetRef.current === destinoPuesto.id) return
 
     const puesto = puestos.find((item) => item.id === destinoPuesto.id)
@@ -1242,7 +1266,7 @@ export default function CiudadanoDashboard() {
     autoRouteTargetRef.current = destinoPuesto.id
     setSelectedId(puesto.id)
     void calcularRutaPuesto(puesto)
-  }, [destinoPuesto, puestos, routeLoading, userPosition])
+  }, [currentUserPosition, destinoPuesto, puestos, routeLoading])
 
   return (
     <div className="flex flex-col h-full">
@@ -1286,9 +1310,9 @@ export default function CiudadanoDashboard() {
         style={vista === 'buscar' ? undefined : { height: '50vh' }}
       >
         <Map
-          center={[39.4250, -0.4000]}
+          center={currentUserPosition ?? [39.4250, -0.4000]}
           zoom={13}
-          userPosition={userPosition}
+          userPosition={currentUserPosition}
           reportPoint={reportPosition}
           selectingReportPoint={vista === 'reportar'}
           puestos={puestos}
@@ -1305,6 +1329,7 @@ export default function CiudadanoDashboard() {
           onIncidenciaAction={handleIncidenciaAction}
           onIncidenciaCommentsOpen={setHistorialComentariosIncidencia}
           route={route}
+          focusUserPositionKey={focusUserPositionKey}
           markerVariant="neutral"
           className="h-full w-full"
         />
@@ -1363,7 +1388,7 @@ export default function CiudadanoDashboard() {
 
         {/* Botón localizarme */}
         <button
-          onClick={requestGeo}
+          onClick={handleLocalizarme}
           disabled={geoLoading}
           className="absolute top-3 right-12 z-[1000] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
         >
@@ -1397,7 +1422,7 @@ export default function CiudadanoDashboard() {
               : <span className="font-normal text-gray-400">({puestos.length})</span>
             }
           </h2>
-          {userPosition && <span className="text-xs text-blue-600">Por distancia</span>}
+          {currentUserPosition && <span className="text-xs text-blue-600">Por distancia</span>}
         </div>
 
         <div className="px-4 pb-6 space-y-2">
@@ -1503,7 +1528,7 @@ export default function CiudadanoDashboard() {
           resultados={resultadosProducto}
           selectedPuesto={selectedPuestoBusqueda}
           inventarioPorPuesto={inventarioPorPuesto}
-          userPosition={userPosition}
+          userPosition={currentUserPosition}
           routeLoading={routeLoading}
           routeError={routeError}
           onTextoBusquedaChange={handleTextoProductoBusqueda}
@@ -1683,13 +1708,13 @@ export default function CiudadanoDashboard() {
                   </p>
                 </div>
 
-                {userPosition && (
+                {currentUserPosition && (
                   <Button
                     variant="secondary"
                     size="sm"
                     fullWidth
                     onClick={() => {
-                      setReportPosition(userPosition)
+                      setReportPosition(currentUserPosition)
                       setIsPickingLocation(false)
                       setReportError(null)
                     }}
@@ -1715,7 +1740,7 @@ export default function CiudadanoDashboard() {
                 </p>
               )}
 
-              {userPosition && (
+              {currentUserPosition && (
                 <div className="mt-2">
                   <Button
                     variant="secondary"
