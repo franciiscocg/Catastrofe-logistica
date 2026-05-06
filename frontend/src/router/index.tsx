@@ -5,10 +5,12 @@ import RoleGuard from './RoleGuard'
 import AuthGuard from './AuthGuard'
 import { Role } from '@/types/auth.types'
 
-const RoleSelection = lazy(() => import('@/features/auth/pages/RoleSelection'))
+const Welcome = lazy(() => import('@/features/auth/pages/Welcome'))
 const Login = lazy(() => import('@/features/auth/pages/Login'))
 const Register = lazy(() => import('@/features/auth/pages/Register'))
+const RegisterPuesto = lazy(() => import('@/features/auth/pages/RegisterPuesto'))
 const RegisterSuccess = lazy(() => import('@/features/auth/pages/RegisterSuccess'))
+const RoleSelection = lazy(() => import('@/features/auth/pages/RoleSelection'))
 
 const CiudadanoDashboard = lazy(() => import('@/features/ciudadano/pages/Dashboard'))
 const VoluntarioDashboard = lazy(() => import('@/features/voluntario/pages/Dashboard'))
@@ -24,6 +26,14 @@ const Loading = () => (
 export const router = createBrowserRouter([
   {
     path: '/',
+    element: (
+      <Suspense fallback={<Loading />}>
+        <Welcome />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/seleccionar-rol',
     element: (
       <Suspense fallback={<Loading />}>
         <RoleSelection />
@@ -46,6 +56,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <Register />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'registro-puesto',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <RegisterPuesto />
           </Suspense>
         ),
       },

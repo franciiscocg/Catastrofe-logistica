@@ -43,6 +43,12 @@ enum EstadoAsignacionPuesto {
   CANCELADA
 }
 
+enum EstadoPuesto {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
 enum EstadoAsignacionIncidencia {
   ACTIVA
   FINALIZADA
@@ -135,8 +141,10 @@ model PuestoEmergencia {
   latitud      Float
   longitud     Float
   tipo         String
-  activo       Boolean    @default(true)
-  capacidadTrabajo Int     @default(6)
+  activo          Boolean      @default(true)
+  estadoSolicitud EstadoPuesto @default(PENDIENTE)
+  motivoRechazo   String?
+  capacidadTrabajo Int         @default(6)
   catastrofeId String
   adminId      String
   createdAt    DateTime   @default(now())

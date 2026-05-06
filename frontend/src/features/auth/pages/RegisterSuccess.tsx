@@ -1,23 +1,25 @@
 import { Link, useSearchParams } from 'react-router-dom'
-import { ROLE_LABELS, Role } from '@/types/auth.types'
 
 export default function RegisterSuccess() {
   const [params] = useSearchParams()
-  const role = params.get('role') as Role | null
-  const roleLabel = role ? ROLE_LABELS[role] : null
+  const role = params.get('role')
 
-  const messages: Record<string, { icon: string; title: string; body: string }> = {
+  const messages: Record<string, { icon: string; title: string; body: string; linkText: string; linkTo: string }> = {
     puesto: {
-      icon: '🏪',
-      title: '¡Puesto registrado!',
-      body: 'Tu cuenta y puesto de emergencia están activos. Ya puedes iniciar sesión y empezar a gestionar el inventario y los voluntarios.',
+      icon: '⏳',
+      title: 'Solicitud enviada',
+      body: 'Tu cuenta y solicitud de puesto de emergencia han sido recibidas correctamente. Un coordinador revisará tu solicitud y activará el acceso cuando sea aprobada.',
+      linkText: 'Volver al inicio',
+      linkTo: '/',
     },
   }
 
   const msg = (role && messages[role]) ?? {
     icon: '✅',
     title: '¡Cuenta creada!',
-    body: 'Tu cuenta ha sido creada correctamente. Ya puedes iniciar sesión.',
+    body: 'Tu cuenta ha sido creada correctamente. Ya puedes acceder a la aplicación.',
+    linkText: 'Iniciar sesión',
+    linkTo: '/auth/login',
   }
 
   return (
@@ -25,20 +27,19 @@ export default function RegisterSuccess() {
       <div className="max-w-sm mx-auto w-full text-center">
         <div className="text-5xl mb-4">{msg.icon}</div>
         <h1 className="text-2xl font-bold text-gray-900 mb-3">{msg.title}</h1>
-        {roleLabel && (
-          <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">{roleLabel}</p>
-        )}
         <p className="text-sm text-gray-600 leading-relaxed mb-8">{msg.body}</p>
 
         <Link
-          to={role ? `/auth/login?role=${role}` : '/'}
-          className="inline-flex items-center justify-center w-full bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg py-2.5 text-sm transition-colors"
+          to={msg.linkTo}
+          className="inline-flex items-center justify-center w-full bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg py-2.5 text-sm transition-colors"
         >
-          Ir a iniciar sesión
+          {msg.linkText}
         </Link>
-        <Link to="/" className="block mt-3 text-sm text-gray-400 hover:text-gray-600">
-          Volver al inicio
-        </Link>
+        {msg.linkTo !== '/' && (
+          <Link to="/" className="block mt-3 text-sm text-gray-400 hover:text-gray-600">
+            Volver al inicio
+          </Link>
+        )}
       </div>
     </div>
   )

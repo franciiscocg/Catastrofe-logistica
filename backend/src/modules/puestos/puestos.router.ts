@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
+import { RolUsuario } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
@@ -260,6 +262,198 @@ export async function puestosRouter(app: FastifyInstance) {
     preHandler: [requireAuth, requireRole('COORDINADOR', 'PUESTO_EMERGENCIA')],
   }, async (_req, reply) => {
     reply.status(201).send({ message: 'Pendiente de implementar' })
+  })
+
+  // Estado de la solicitud del usuario autenticado
+  app.get('/mi-solicitud', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const userId = (req.user as { id: string }).id
+    const puesto = await prisma.puestoEmergencia.findFirst({
+      where: { adminId: userId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        nombre: true,
+        tipo: true,
+        direccion: true,
+        activo: true,
+        estadoSolicitud: true,
+        motivoRechazo: true,
+        createdAt: true,
+      },
+    })
+    return reply.send({ puesto })
+  })
+
+  // Puestos pendientes de aprobación (coordinador)
+  app.get('/pendientes', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (_req, reply) => {
+    const puestos = await prisma.puestoEmergencia.findMany({
+      where: { estadoSolicitud: 'PENDIENTE' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        nombre: true,
+        tipo: true,
+        direccion: true,
+        descripcion: true,
+        latitud: true,
+        longitud: true,
+        createdAt: true,
+        admin: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true } },
+      },
+    })
+    return reply.send({ puestos })
+  })
+
+  // Aprobar puesto (coordinador)
+  app.patch('/:id/aprobar', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const puesto = await prisma.puestoEmergencia.findUnique({ where: { id } })
+    if (!puesto) return reply.status(404).send({ error: 'Puesto no encontrado' })
+
+    const updated = await prisma.puestoEmergencia.update({
+      where: { id },
+      data: { activo: true, estadoSolicitud: 'APROBADO', motivoRechazo: null },
+      select: { id: true, nombre: true, activo: true, estadoSolicitud: true },
+    })
+    return reply.send({ puesto: updated })
+  })
+
+  // Rechazar puesto (coordinador) — guarda el motivo y quita el rol al usuario
+  app.patch('/:id/rechazar', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { motivo } = (req.body ?? {}) as { motivo?: string }
+
+    const puesto = await prisma.puestoEmergencia.findUnique({
+      where: { id },
+      select: { adminId: true },
+    })
+    if (!puesto) return reply.status(404).send({ error: 'Puesto no encontrado' })
+
+    await prisma.$transaction(async (tx) => {
+      await tx.puestoEmergencia.update({
+        where: { id },
+        data: {
+          activo: false,
+          estadoSolicitud: 'RECHAZADO',
+          motivoRechazo: motivo?.trim() || null,
+        },
+      })
+
+      // Quitar rol PUESTO_EMERGENCIA si no tiene otros puestos aprobados o pendientes
+      const otrosPuestos = await tx.puestoEmergencia.count({
+        where: {
+          adminId: puesto.adminId,
+          estadoSolicitud: { in: ['PENDIENTE', 'APROBADO'] },
+        },
+      })
+      if (otrosPuestos === 0) {
+        const usuario = await tx.usuario.findUnique({
+          where: { id: puesto.adminId },
+          select: { roles: true },
+        })
+        if (usuario) {
+          await tx.usuario.update({
+            where: { id: puesto.adminId },
+            data: { roles: usuario.roles.filter((r) => r !== 'PUESTO_EMERGENCIA') },
+          })
+        }
+      }
+    })
+
+    return reply.status(204).send()
+  })
+
+  // Solicitud de puesto para usuario ya autenticado
+  app.post('/solicitar', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const solicitarSchema = z.object({
+      nombre: z.string().min(2, 'El nombre del puesto es obligatorio'),
+      tipo: z.string().min(1, 'El tipo de instalación es obligatorio'),
+      direccion: z.string().min(5, 'La dirección es obligatoria'),
+      descripcion: z.string().max(500).optional(),
+      latitud: z.number().min(-90).max(90),
+      longitud: z.number().min(-180).max(180),
+    })
+
+    const input = solicitarSchema.parse(req.body)
+    const userId = (req.user as { id: string }).id
+
+    const catastrofe = await prisma.catastrofe.findFirst({
+      orderBy: [{ activa: 'desc' }, { createdAt: 'desc' }],
+    })
+
+    if (!catastrofe) {
+      return reply.status(422).send({
+        error: 'No hay ninguna catástrofe registrada en el sistema. Contacta con un coordinador.',
+      })
+    }
+
+    const puesto = await prisma.$transaction(async (tx) => {
+      const usuario = await tx.usuario.findUnique({
+        where: { id: userId },
+        select: { roles: true },
+      })
+      if (!usuario) throw Object.assign(new Error('Usuario no encontrado'), { statusCode: 404 })
+
+      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
+        await tx.usuario.update({
+          where: { id: userId },
+          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
+        })
+      }
+
+      // Reutilizar solicitud rechazada si existe
+      const rechazado = await tx.puestoEmergencia.findFirst({
+        where: { adminId: userId, estadoSolicitud: 'RECHAZADO' },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      if (rechazado) {
+        return tx.puestoEmergencia.update({
+          where: { id: rechazado.id },
+          data: {
+            nombre: input.nombre,
+            tipo: input.tipo,
+            direccion: input.direccion,
+            descripcion: input.descripcion,
+            latitud: input.latitud,
+            longitud: input.longitud,
+            activo: false,
+            estadoSolicitud: 'PENDIENTE',
+            motivoRechazo: null,
+            catastrofeId: catastrofe.id,
+          },
+          select: { id: true, nombre: true, direccion: true, tipo: true },
+        })
+      }
+
+      return tx.puestoEmergencia.create({
+        data: {
+          nombre: input.nombre,
+          tipo: input.tipo,
+          direccion: input.direccion,
+          descripcion: input.descripcion,
+          latitud: input.latitud,
+          longitud: input.longitud,
+          activo: false,
+          estadoSolicitud: 'PENDIENTE',
+          catastrofeId: catastrofe.id,
+          adminId: userId,
+        },
+        select: { id: true, nombre: true, direccion: true, tipo: true },
+      })
+    })
+
+    return reply.status(201).send({ puesto })
   })
 }
 
