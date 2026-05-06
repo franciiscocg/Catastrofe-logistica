@@ -510,25 +510,15 @@ function BuscarProductoSheet({
   const hasTextoBusqueda = textoBusqueda.trim().length > 0
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[2000] flex max-h-[84vh] flex-col bg-white rounded-t-2xl shadow-2xl">
-      <div className="flex justify-center pt-3 pb-1">
-        <div className="w-10 h-1 bg-gray-300 rounded-full" />
-      </div>
-
-      <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
+    <div className="flex-1 min-h-0 flex flex-col bg-white">
+      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
         <div>
           <p className="text-xs text-gray-400 uppercase tracking-wide">Buscar producto</p>
           <p className="font-semibold text-gray-900">Disponibilidad por puesto</p>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-        >
-          x
-        </button>
       </div>
 
-      <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
+      <div className="overflow-y-auto flex-1 px-4 pb-6 pt-4 space-y-4 bg-slate-50">
         <div>
           <label htmlFor="texto-producto-busqueda" className="block text-sm font-medium text-gray-700 mb-1">
             Producto
@@ -724,11 +714,21 @@ function BuscarProductoSheet({
           </section>
         )}
       </div>
+      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="mx-auto flex min-w-40 items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
+        >
+          Volver
+        </button>
+      </div>
     </div>
   )
 }
 
-type Vista = 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar'
+type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar'
+type PanelReturnVista = 'inicio' | 'default'
 type EstadoVia = 'CORTADA' | 'TRANSITABLE'
 
 type DuplicateIncidencia = {
@@ -742,11 +742,82 @@ type DuplicateIncidencia = {
 
 const CATASTROFE_ID = import.meta.env.VITE_CATASTROFE_ID ?? ''
 
+function CiudadanoInicio({
+  onVerMapa,
+  onBuscarProducto,
+  onReportarIncidencia,
+}: {
+  onVerMapa: () => void
+  onBuscarProducto: () => void
+  onReportarIncidencia: () => void
+}) {
+  const acciones = [
+    {
+      title: 'Ver mapa',
+      description: 'Consulta puestos de emergencia, incidencias y rutas seguras cercanas.',
+      icon: '🗺',
+      action: onVerMapa,
+      tone: 'border-blue-200 bg-blue-50 text-blue-700',
+    },
+    {
+      title: 'Buscar producto',
+      description: 'Encuentra agua, comida, mantas u otros recursos disponibles por puesto.',
+      icon: '🔍',
+      action: onBuscarProducto,
+      tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    },
+    {
+      title: 'Reportar incidencia',
+      description: 'Marca una calle cortada o un problema para avisar al resto de ciudadanos.',
+      icon: '📍',
+      action: onReportarIncidencia,
+      tone: 'border-red-200 bg-red-50 text-red-700',
+    },
+  ]
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50">
+      <div className="max-w-xl mx-auto px-4 py-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Acceso ciudadano</p>
+          <h1 className="mt-1 text-2xl font-bold text-gray-900">¿Qué necesitas hacer?</h1>
+          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+            Elige una acción para consultar ayuda cercana, buscar productos o avisar de una incidencia.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {acciones.map((accion) => (
+            <button
+              key={accion.title}
+              type="button"
+              onClick={accion.action}
+              className="group w-full rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition-all hover:border-blue-200 hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <div className="flex items-center gap-3">
+                <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border text-xl ${accion.tone}`}>
+                  {accion.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-gray-900">{accion.title}</span>
+                  <span className="mt-0.5 block text-sm leading-snug text-gray-500">{accion.description}</span>
+                </span>
+                <span className="text-xl text-gray-300 transition-colors group-hover:text-blue-500">›</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CiudadanoDashboard() {
   const [searchParams] = useSearchParams()
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null)
-  const [vista, setVista]             = useState<Vista>('default')
+  const [vista, setVista]             = useState<Vista>(() => (searchParams.has('destinoId') ? 'default' : 'inicio'))
+  const [panelReturnVista, setPanelReturnVista] = useState<PanelReturnVista>('inicio')
   const [route, setRoute]             = useState<[number, number][] | null>(null)
   const [routeInfo, setRouteInfo]     = useState<{
     distanciaKm: number
@@ -788,9 +859,12 @@ export default function CiudadanoDashboard() {
   const autoRouteTargetRef = useRef<string | null>(null)
   const didFocusInitialUserPositionRef = useRef(false)
 
-  const currentUserPosition = useMemo<[number, number] | null>(() => (
-    position ? [position.lat, position.lng] : userPosition
-  ), [position, userPosition])
+  const currentUserPosition = useMemo<[number, number] | null>(() => {
+    const nextPosition: [number, number] | null = position ? [position.lat, position.lng] : userPosition
+    return nextPosition && Number.isFinite(nextPosition[0]) && Number.isFinite(nextPosition[1])
+      ? nextPosition
+      : null
+  }, [position, userPosition])
 
   const destinoPuesto = useMemo<Omit<PuestoMarker, 'distanciaKm'> | null>(() => {
     const id = searchParams.get('destinoId')
@@ -810,7 +884,15 @@ export default function CiudadanoDashboard() {
   }, [searchParams])
 
   useEffect(() => {
+    if (destinoPuesto && vista === 'inicio') {
+      setVista('default')
+    }
+  }, [destinoPuesto, vista])
+
+  useEffect(() => {
     if (!position) return
+
+    if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng)) return
 
     setUserPosition([position.lat, position.lng])
     if (pendingUserPositionFocus || !didFocusInitialUserPositionRef.current) {
@@ -960,6 +1042,25 @@ export default function CiudadanoDashboard() {
     setRouteError(null)
   }
 
+  const volverInicioCiudadano = () => {
+    routeAbortReasonRef.current = 'cancel'
+    routeAbortControllerRef.current?.abort()
+    setVista('inicio')
+    setPanelReturnVista('inicio')
+    setRoute(null)
+    setRouteInfo(null)
+    setRouteError(null)
+    setSelectedId(null)
+    setBusquedaPuestoId(null)
+    setComentarioIncidencia(null)
+    setHistorialComentariosIncidencia(null)
+    setIsPickingLocation(false)
+    setReportError(null)
+    setReportSuccess(null)
+    setPendingDuplicate(null)
+    setReportPosition(null)
+  }
+
   const submitIncidencia = async (force: boolean) => {
     if (!reportPosition) {
       setReportError('Selecciona un punto en el mapa para reportar la incidencia.')
@@ -1000,7 +1101,7 @@ export default function CiudadanoDashboard() {
       setReportDescripcion('')
       setReportPosition(null)
       setIsPickingLocation(false)
-      setVista('default')
+      setVista(panelReturnVista)
       setFeedbackMessage('Reporte guardado offline y pendiente de sincronizar.')
     }
 
@@ -1023,7 +1124,7 @@ export default function CiudadanoDashboard() {
       setReportDescripcion('')
       setReportPosition(null)
       setIsPickingLocation(false)
-      setVista('default')
+      setVista(panelReturnVista)
       setFeedbackMessage('Incidencia creada correctamente.')
     } catch (error: unknown) {
       const response = (error as {
@@ -1055,7 +1156,10 @@ export default function CiudadanoDashboard() {
     await submitIncidencia(true)
   }
 
+  const getCurrentPanelReturnVista = (): PanelReturnVista => (vista === 'inicio' ? 'inicio' : 'default')
+
   const abrirReporte = (position: [number, number] | null = null) => {
+    setPanelReturnVista(getCurrentPanelReturnVista())
     setVista('reportar')
     setReportDescripcion('')
     setReportError(null)
@@ -1066,6 +1170,7 @@ export default function CiudadanoDashboard() {
   }
 
   const abrirBusquedaProducto = () => {
+    setPanelReturnVista(getCurrentPanelReturnVista())
     setProductoBusqueda('')
     setTextoProductoBusqueda('')
     setBusquedaPuestoId(null)
@@ -1304,10 +1409,20 @@ export default function CiudadanoDashboard() {
         </div>
       )}
 
-      {/* Mapa */}
+      {vista === 'inicio' && (
+        <CiudadanoInicio
+          onVerMapa={() => {
+            setPanelReturnVista('inicio')
+            setVista('default')
+          }}
+          onBuscarProducto={abrirBusquedaProducto}
+          onReportarIncidencia={() => abrirReporte()}
+        />
+      )}
+
+      {(vista === 'default' || vista === 'ruta' || vista === 'reportar' || vista === 'inventario') && (
       <div
-        className={`relative ${vista === 'buscar' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`}
-        style={vista === 'buscar' ? undefined : { height: '50vh' }}
+        className="relative flex-1 min-h-0"
       >
         <Map
           center={currentUserPosition ?? [39.4250, -0.4000]}
@@ -1334,8 +1449,16 @@ export default function CiudadanoDashboard() {
           className="h-full w-full"
         />
 
+        <button
+          type="button"
+          onClick={volverInicioCiudadano}
+          className="absolute bottom-6 left-1/2 z-[1200] min-w-40 -translate-x-1/2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-xl transition-colors hover:bg-blue-700"
+        >
+          Volver
+        </button>
+
         {vista === 'reportar' && (
-          <div className="absolute top-3 left-3 right-20 z-[1000] bg-red-600/90 text-white rounded-xl px-3 py-2 text-xs shadow-lg">
+          <div className="absolute top-3 left-24 right-20 z-[1000] bg-red-600/90 text-white rounded-xl px-3 py-2 text-xs shadow-lg">
             {isPickingLocation
               ? 'Toca el mapa para marcar la calle de la incidencia.'
               : 'Punto marcado. Puedes cambiarlo pulsando "Cambiar punto".'}
@@ -1396,9 +1519,10 @@ export default function CiudadanoDashboard() {
         </button>
 
       </div>
+      )}
 
       {/* Acciones rápidas */}
-      <div className={`px-4 py-2.5 grid-cols-2 gap-2 border-b border-gray-100 bg-white flex-shrink-0 ${vista === 'buscar' ? 'hidden' : 'grid'}`}>
+      <div className="hidden">
         <Button
           variant="secondary"
           size="sm"
@@ -1410,10 +1534,13 @@ export default function CiudadanoDashboard() {
         <Button variant="secondary" size="sm" fullWidth onClick={abrirBusquedaProducto}>
           🔍 Buscar producto
         </Button>
+        <Button variant="ghost" size="sm" fullWidth onClick={() => setVista('inicio')} className="col-span-2">
+          Volver al inicio
+        </Button>
       </div>
 
       {/* Lista de puestos */}
-      <div className={`flex-1 min-h-0 overflow-y-auto ${vista === 'buscar' ? 'hidden' : ''}`}>
+      <div className="hidden">
         <div className="px-4 pt-3 pb-2 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
             Puestos de emergencia
@@ -1536,7 +1663,7 @@ export default function CiudadanoDashboard() {
           onComoLlegar={(puestoId) => void handleComoLlegarBusqueda(puestoId)}
           onCancelRuta={handleCancelarBusquedaRuta}
           onBackToResults={() => setBusquedaPuestoId(null)}
-          onClose={() => setVista('default')}
+          onClose={() => setVista(panelReturnVista)}
         />
       )}
 
@@ -1553,7 +1680,7 @@ export default function CiudadanoDashboard() {
             </div>
             <button
               onClick={() => setHistorialComentariosIncidencia(null)}
-              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
             >
               ×
             </button>
@@ -1683,19 +1810,6 @@ export default function CiudadanoDashboard() {
               <p className="text-xs text-gray-400 uppercase tracking-wide">Nueva incidencia</p>
               <p className="font-semibold text-gray-900">Reportar calle cortada</p>
             </div>
-            <button
-              onClick={() => {
-                setVista('default')
-                setIsPickingLocation(false)
-                setReportError(null)
-                setReportSuccess(null)
-                setPendingDuplicate(null)
-                setReportPosition(null)
-              }}
-              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-            >
-              ✕
-            </button>
           </div>
 
           <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
@@ -1806,6 +1920,22 @@ export default function CiudadanoDashboard() {
             </Button>
               </>
             )}
+          </div>
+          <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+            <button
+              type="button"
+              onClick={() => {
+                setVista(panelReturnVista)
+                setIsPickingLocation(false)
+                setReportError(null)
+                setReportSuccess(null)
+                setPendingDuplicate(null)
+                setReportPosition(null)
+              }}
+              className="mx-auto flex min-w-40 items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
+            >
+              Volver
+            </button>
           </div>
         </div>
       )}
