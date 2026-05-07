@@ -62,9 +62,11 @@ export const router = createBrowserRouter([
   {
     path: '/ciudadano',
     element: (
-      <RoleGuard allowedRole={Role.CIUDADANO}>
-        <AppShell />
-      </RoleGuard>
+      <AuthGuard>
+        <RoleGuard allowedRole={Role.CIUDADANO}>
+          <AppShell />
+        </RoleGuard>
+      </AuthGuard>
     ),
     children: [
       {

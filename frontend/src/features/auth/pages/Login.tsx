@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
-import { ROLE_ROUTES, ROLE_LABELS, Role } from '@/types/auth.types'
+import { ROLE_LABELS, Role } from '@/types/auth.types'
 import { apiClient } from '@/lib/api/client'
 import Button from '@/components/ui/Button'
 
@@ -42,7 +42,7 @@ export default function Login() {
 
       login(data.user as any, data.accessToken, puestoId)
       if (roleParam) selectRole(roleParam)
-      navigate(roleParam ? ROLE_ROUTES[roleParam] : '/')
+      navigate('/')
     } catch (err: unknown) {
       setError('Email o contraseña incorrectos')
     } finally {
