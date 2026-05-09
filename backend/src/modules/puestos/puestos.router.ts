@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { RolUsuario } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
@@ -165,7 +166,7 @@ export async function puestosRouter(app: FastifyInstance) {
   })
 
   app.post('/solicitudes', {
-    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+    preHandler: [requireAuth],
   }, async (req, reply) => {
     const userId = (req.user as { id: string }).id
     const input = validateSolicitudPuesto(req.body as Partial<SolicitudPuestoInput>)
@@ -187,6 +188,19 @@ export async function puestosRouter(app: FastifyInstance) {
         select: { id: true },
       })
       if (pendiente) throw badRequest('Ya tienes una solicitud pendiente')
+
+      const usuario = await tx.usuario.findUnique({
+        where: { id: userId },
+        select: { roles: true },
+      })
+      if (!usuario) throw notFound('Usuario no encontrado')
+
+      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
+        await tx.usuario.update({
+          where: { id: userId },
+          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
+        })
+      }
 
       return tx.solicitudPuesto.create({
         data: { ...input, usuarioId: userId },
@@ -444,6 +458,7 @@ export async function puestosRouter(app: FastifyInstance) {
   }, async (_req, reply) => {
     reply.status(201).send({ message: 'Pendiente de implementar' })
   })
+
 }
 
 const puestoSelect = {

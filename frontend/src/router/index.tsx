@@ -8,6 +8,7 @@ import { Role } from '@/types/auth.types'
 const RoleSelection = lazy(() => import('@/features/auth/pages/RoleSelection'))
 const Login = lazy(() => import('@/features/auth/pages/Login'))
 const Register = lazy(() => import('@/features/auth/pages/Register'))
+const RegisterPuesto = lazy(() => import('@/features/auth/pages/RegisterPuesto'))
 const RegisterSuccess = lazy(() => import('@/features/auth/pages/RegisterSuccess'))
 
 const CiudadanoDashboard = lazy(() => import('@/features/ciudadano/pages/Dashboard'))
@@ -21,14 +22,20 @@ const Loading = () => (
   </div>
 )
 
+const roleSelectionElement = (
+  <Suspense fallback={<Loading />}>
+    <RoleSelection />
+  </Suspense>
+)
+
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: (
-      <Suspense fallback={<Loading />}>
-        <RoleSelection />
-      </Suspense>
-    ),
+    element: roleSelectionElement,
+  },
+  {
+    path: '/seleccionar-rol',
+    element: roleSelectionElement,
   },
   {
     path: '/auth',
@@ -50,6 +57,14 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'registro-puesto',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <RegisterPuesto />
+          </Suspense>
+        ),
+      },
+      {
         path: 'registro-exitoso',
         element: (
           <Suspense fallback={<Loading />}>
@@ -62,9 +77,11 @@ export const router = createBrowserRouter([
   {
     path: '/ciudadano',
     element: (
-      <RoleGuard allowedRole={Role.CIUDADANO}>
-        <AppShell />
-      </RoleGuard>
+      <AuthGuard>
+        <RoleGuard allowedRole={Role.CIUDADANO}>
+          <AppShell />
+        </RoleGuard>
+      </AuthGuard>
     ),
     children: [
       {

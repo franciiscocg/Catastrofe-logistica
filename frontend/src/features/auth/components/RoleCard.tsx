@@ -4,98 +4,119 @@ import { Role } from '@/types/auth.types'
 export interface RoleCardConfig {
   role: Role
   title: string
-  description: string
+  subtitle: string
   icon: string
-  color: 'blue' | 'green' | 'amber' | 'purple'
+  color: 'blue' | 'green' | 'amber'
   requiresAuth: boolean
-  features: string[]
 }
 
 const colorMap = {
   blue: {
-    card: 'border-blue-200 hover:border-blue-400 hover:shadow-blue-100',
-    icon: 'bg-blue-100 text-blue-600',
-    badge: 'bg-blue-50 text-blue-700',
-    button: 'bg-blue-600 hover:bg-blue-700 text-white',
-    dot: 'bg-blue-500',
+    border: 'border-blue-200 hover:border-blue-400',
+    icon: 'bg-blue-50 text-blue-600',
+    title: 'text-blue-700',
+    arrow: 'text-blue-300',
+    infoBtn: 'text-blue-600 hover:bg-blue-50',
+    ring: 'focus-visible:ring-blue-600',
   },
   green: {
-    card: 'border-green-200 hover:border-green-400 hover:shadow-green-100',
-    icon: 'bg-green-100 text-green-600',
-    badge: 'bg-green-50 text-green-700',
-    button: 'bg-green-600 hover:bg-green-700 text-white',
-    dot: 'bg-green-500',
+    border: 'border-green-200 hover:border-green-400',
+    icon: 'bg-green-50 text-green-700',
+    title: 'text-green-700',
+    arrow: 'text-green-300',
+    infoBtn: 'text-green-700 hover:bg-green-50',
+    ring: 'focus-visible:ring-green-700',
   },
   amber: {
-    card: 'border-amber-200 hover:border-amber-400 hover:shadow-amber-100',
-    icon: 'bg-amber-100 text-amber-600',
-    badge: 'bg-amber-50 text-amber-700',
-    button: 'bg-amber-500 hover:bg-amber-600 text-white',
-    dot: 'bg-amber-500',
-  },
-  purple: {
-    card: 'border-purple-200 hover:border-purple-400 hover:shadow-purple-100',
-    icon: 'bg-purple-100 text-purple-600',
-    badge: 'bg-purple-50 text-purple-700',
-    button: 'bg-purple-600 hover:bg-purple-700 text-white',
-    dot: 'bg-purple-500',
+    border: 'border-amber-200 hover:border-amber-400',
+    icon: 'bg-amber-50 text-amber-700',
+    title: 'text-amber-800',
+    arrow: 'text-amber-300',
+    infoBtn: 'text-amber-700 hover:bg-amber-50',
+    ring: 'focus-visible:ring-amber-700',
   },
 }
 
 interface RoleCardProps {
   config: RoleCardConfig
   onSelect: (role: Role) => void
+  onInfo: (role: Role) => void
 }
 
-export default function RoleCard({ config, onSelect }: RoleCardProps) {
+export default function RoleCard({ config, onSelect, onInfo }: RoleCardProps) {
   const c = colorMap[config.color]
 
   return (
-    <button
-      onClick={() => onSelect(config.role)}
+    <div
       className={clsx(
-        'group w-full text-left bg-white border-2 rounded-2xl p-5 transition-all duration-200',
-        'hover:shadow-lg active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500',
-        c.card,
+        'rounded-2xl border-2 bg-white overflow-hidden transition-all duration-200 hover:shadow-xl',
+        c.border,
       )}
     >
-      <div className="flex items-start gap-4">
-        <div className={clsx('flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-2xl', c.icon)}>
+      {/* Main action — selects the role */}
+      <button
+        onClick={() => onSelect(config.role)}
+        className={clsx(
+          'w-full text-left flex items-center gap-4 px-5 pt-5 pb-4',
+          'active:scale-[0.99] transition-transform',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
+          c.ring,
+        )}
+        aria-label={`Acceder como ${config.title}`}
+      >
+        {/* Role icon */}
+        <div
+          className={clsx(
+            'flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center text-4xl',
+            c.icon,
+          )}
+          aria-hidden="true"
+        >
           {config.icon}
         </div>
 
+        {/* Role text */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-gray-900 text-base">{config.title}</h3>
-            {config.requiresAuth ? (
-              <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium', c.badge)}>
-                Requiere registro
-              </span>
-            ) : (
-              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">
-                Acceso libre
-              </span>
-            )}
-          </div>
-
-          <p className="mt-1 text-sm text-gray-500 leading-relaxed">{config.description}</p>
-
-          <ul className="mt-3 space-y-1">
-            {config.features.map((f) => (
-              <li key={f} className="flex items-center gap-2 text-xs text-gray-500">
-                <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', c.dot)} />
-                {f}
-              </li>
-            ))}
-          </ul>
+          <p className={clsx('text-xl font-bold leading-tight', c.title)}>{config.title}</p>
+          <p className="text-gray-600 text-base mt-1 leading-snug">{config.subtitle}</p>
+          {!config.requiresAuth && (
+            <span className="inline-block mt-2 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+              Sin registro necesario
+            </span>
+          )}
         </div>
 
-        <div className="flex-shrink-0 self-center">
-          <svg className="w-5 h-5 text-gray-300 group-hover:text-gray-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
-      </div>
-    </button>
+        {/* Chevron */}
+        <svg
+          className={clsx('flex-shrink-0 w-7 h-7 transition-colors', c.arrow)}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {/* Visual separator */}
+      <div className="h-px bg-gray-100 mx-5" aria-hidden="true" />
+
+      {/* Info button — opens modal, separate from the main action */}
+      <button
+        onClick={() => onInfo(config.role)}
+        className={clsx(
+          'w-full text-left flex items-center gap-2 px-5 py-3',
+          'text-sm font-medium transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
+          c.infoBtn,
+          c.ring,
+        )}
+        aria-label={`Más información sobre el rol ${config.title}`}
+      >
+        <span className="text-base" aria-hidden="true">ℹ️</span>
+        <span>¿Qué hace este rol?</span>
+      </button>
+    </div>
   )
 }

@@ -35,7 +35,7 @@ export const ROLE_ROUTES: Record<Role, string> = {
 }
 
 export const ROLE_REQUIRES_AUTH: Record<Role, boolean> = {
-  [Role.CIUDADANO]: false,
+  [Role.CIUDADANO]: true,
   [Role.VOLUNTARIO]: true,
   [Role.PUESTO]: true,
   [Role.COORDINADOR]: true,

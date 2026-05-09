@@ -11,8 +11,14 @@ function badRequest(message: string) {
   return appError(message, 400)
 }
 
-export async function loginUser({ email, password }: LoginInput) {
-  const user = await prisma.usuario.findUnique({ where: { email } })
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export async function loginUser({ identifier, password }: LoginInput) {
+  const isEmail = emailRegex.test(identifier)
+  const user = isEmail
+    ? await prisma.usuario.findUnique({ where: { email: identifier } })
+    : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
+
   if (!user) throw appError('Credenciales incorrectas', 401)
 
   const valid = await bcrypt.compare(password, user.password)
@@ -34,18 +40,14 @@ export async function registerUser(input: RegisterInput) {
   const exists = await prisma.usuario.findUnique({ where: { email: input.email } })
   if (exists) throw badRequest('Este email ya esta registrado')
 
-  if (input.dni) {
-    const dniExists = await prisma.usuario.findUnique({ where: { dni: input.dni } })
-    if (dniExists) throw badRequest('Este DNI/NIE ya esta registrado')
-  }
+  const dniExists = await prisma.usuario.findUnique({ where: { dni: input.dni.toUpperCase() } })
+  if (dniExists) throw badRequest('Este DNI/NIE ya esta registrado')
 
   const hashed = await bcrypt.hash(input.password, 12)
-  const esPuesto = input.roles?.includes('PUESTO_EMERGENCIA') ?? false
+  const esPuesto = Boolean(input.puesto)
   const roles = esPuesto
     ? [RolUsuario.PUESTO_EMERGENCIA]
-    : input.role === 'voluntario'
-      ? [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
-      : [RolUsuario.CIUDADANO]
+    : [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
 
   const result = await prisma.$transaction(async (tx) => {
     const created = await tx.usuario.create({
@@ -55,20 +57,12 @@ export async function registerUser(input: RegisterInput) {
         nombre: input.nombre,
         apellidos: input.apellidos,
         telefono: input.telefono,
-        dni: input.dni,
+        dni: input.dni.toUpperCase(),
         roles,
         activo: true,
       },
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true },
     })
-
-    if (input.role === 'voluntario') {
-      await tx.voluntario.create({
-        data: {
-          usuarioId: created.id,
-        },
-      })
-    }
 
     let puesto = null
     let solicitud = null

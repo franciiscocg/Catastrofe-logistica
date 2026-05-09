@@ -32,10 +32,11 @@ function estadoBadge(estado: SolicitudPuesto['estado']) {
 }
 
 export default function CoordinadorDashboard() {
-  const qc = useQueryClient()
+  const queryClient = useQueryClient()
   const [rechazoId, setRechazoId] = useState<string | null>(null)
   const [motivoRechazo, setMotivoRechazo] = useState('')
   const [actionError, setActionError] = useState('')
+
   const { data, isLoading } = useQuery({
     queryKey: ['solicitudes-puesto'],
     queryFn: () =>
@@ -43,6 +44,7 @@ export default function CoordinadorDashboard() {
         .get<{ solicitudes: SolicitudPuesto[] }>('/api/puestos/solicitudes')
         .then((r) => r.data.solicitudes),
   })
+
   const { data: puestosActivos = [] } = useQuery({
     queryKey: ['puestos-activos-coordinador'],
     queryFn: () =>
@@ -55,7 +57,8 @@ export default function CoordinadorDashboard() {
     mutationFn: (id: string) => apiClient.post(`/api/puestos/solicitudes/${id}/aceptar`),
     onSuccess: () => {
       setActionError('')
-      qc.invalidateQueries({ queryKey: ['solicitudes-puesto'] })
+      queryClient.invalidateQueries({ queryKey: ['solicitudes-puesto'] })
+      queryClient.invalidateQueries({ queryKey: ['puestos-activos-coordinador'] })
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -70,7 +73,7 @@ export default function CoordinadorDashboard() {
       setActionError('')
       setRechazoId(null)
       setMotivoRechazo('')
-      qc.invalidateQueries({ queryKey: ['solicitudes-puesto'] })
+      queryClient.invalidateQueries({ queryKey: ['solicitudes-puesto'] })
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -116,6 +119,7 @@ export default function CoordinadorDashboard() {
           <h2 className="font-semibold text-gray-900">Solicitudes de puestos</h2>
           <span className="text-xs text-gray-500">{solicitudes.length} total</span>
         </div>
+
         {actionError && (
           <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             {actionError}
@@ -147,7 +151,7 @@ export default function CoordinadorDashboard() {
                   <p><span className="font-medium">Tipo:</span> {solicitud.tipo}</p>
                   <p><span className="font-medium">Ubicacion:</span> {solicitud.latitud.toFixed(4)}, {solicitud.longitud.toFixed(4)}</p>
                   <p className="col-span-2">
-                    <span className="font-medium">Solicitante:</span> {solicitud.usuario.nombre} {solicitud.usuario.apellidos} · {solicitud.usuario.email}
+                    <span className="font-medium">Solicitante:</span> {solicitud.usuario.nombre} {solicitud.usuario.apellidos} - {solicitud.usuario.email}
                   </p>
                   {solicitud.usuario.telefono && (
                     <p className="col-span-2"><span className="font-medium">Telefono:</span> {solicitud.usuario.telefono}</p>
@@ -165,7 +169,7 @@ export default function CoordinadorDashboard() {
                     <Button
                       size="sm"
                       className="bg-green-600 hover:bg-green-700"
-                      loading={aceptar.isPending}
+                      loading={aceptar.isPending && aceptar.variables === solicitud.id}
                       onClick={() => aceptar.mutate(solicitud.id)}
                     >
                       Aceptar
@@ -173,7 +177,7 @@ export default function CoordinadorDashboard() {
                     <Button
                       size="sm"
                       variant="danger"
-                      loading={rechazar.isPending}
+                      loading={rechazar.isPending && rechazar.variables?.id === solicitud.id}
                       onClick={() => {
                         setActionError('')
                         setRechazoId(solicitud.id)
