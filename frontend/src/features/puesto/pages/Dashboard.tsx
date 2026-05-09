@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Navigate } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
@@ -533,6 +534,10 @@ export default function PuestoDashboard() {
         <p className="text-sm text-gray-500">Tu cuenta no tiene ningún puesto de emergencia asociado todavía.</p>
       </div>
     )
+  }
+
+  if (!puesto.activo) {
+    return <Navigate to="/auth/registro-puesto" replace />
   }
 
   // ── UI principal ──────────────────────────────────────────────────────────

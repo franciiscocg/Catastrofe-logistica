@@ -64,6 +64,10 @@ export default function RoleSelection() {
   const hasPuesto = userBackendRoles.includes('PUESTO_EMERGENCIA')
 
   const handleSelectRole = (role: Role) => {
+    if (role === Role.PUESTO) {
+      navigate('/auth/registro-puesto')
+      return
+    }
     selectRole(role)
     navigate(ROLE_ROUTES[role])
   }
