@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const loginSchema = z.object({
-  email: z.string().email('Email invalido'),
+  identifier: z.string().min(1, 'Introduce tu email o DNI'),
   password: z.string().min(8, 'Minimo 8 caracteres'),
 })
 
@@ -17,40 +17,11 @@ const puestoSchema = z.object({
 export const registerSchema = z.object({
   email: z.string().email('Email invalido'),
   password: z.string().min(8, 'Minimo 8 caracteres'),
-  nombre: z.string().min(2),
-  apellidos: z.string().min(2),
+  nombre: z.string().min(2, 'El nombre es obligatorio'),
+  apellidos: z.string().min(2, 'Los apellidos son obligatorios'),
+  dni: z.string().min(1, 'El DNI es obligatorio'),
   telefono: z.string().optional(),
-  dni: z.string().optional(),
-  role: z.enum(['ciudadano', 'voluntario']).default('ciudadano'),
-  roles: z.array(z.string()).optional(),
   puesto: puestoSchema.optional(),
-}).superRefine((input, ctx) => {
-  const esVoluntario = input.role === 'voluntario'
-  const esPuesto = input.roles?.includes('PUESTO_EMERGENCIA') ?? false
-
-  if (esVoluntario && !input.telefono) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['telefono'],
-      message: 'El telefono es obligatorio para voluntarios',
-    })
-  }
-
-  if (esVoluntario && !input.dni) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['dni'],
-      message: 'El DNI/NIE es obligatorio para voluntarios',
-    })
-  }
-
-  if (esPuesto && !input.puesto) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['puesto'],
-      message: 'Los datos del puesto son obligatorios',
-    })
-  }
 })
 
 export type LoginInput = z.infer<typeof loginSchema>

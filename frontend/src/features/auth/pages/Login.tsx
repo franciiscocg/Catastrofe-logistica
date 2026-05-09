@@ -1,22 +1,17 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
-import { ROLE_ROUTES, ROLE_LABELS, Role } from '@/types/auth.types'
 import { apiClient } from '@/lib/api/client'
 import Button from '@/components/ui/Button'
 
 export default function Login() {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const navigate = useNavigate()
-  const [params] = useSearchParams()
-  const { login, selectRole } = useAuthStore()
-
-  const roleParam = params.get('role') as Role | null
-  const roleLabel = roleParam ? ROLE_LABELS[roleParam] : null
+  const { login } = useAuthStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,9 +22,8 @@ export default function Login() {
       const { data } = await apiClient.post<{
         user: { id: string; email: string; nombre: string; apellidos: string; roles: string[] }
         accessToken: string
-      }>('/api/auth/login', { email, password })
+      }>('/api/auth/login', { identifier, password })
 
-      // Cargar puestoId si el usuario es responsable de un puesto
       let puestoId: string | undefined
       if (data.user.roles.includes('PUESTO_EMERGENCIA')) {
         try {
@@ -37,14 +31,18 @@ export default function Login() {
             headers: { Authorization: `Bearer ${data.accessToken}` },
           })
           puestoId = res.data.puestos?.[0]?.id
-        } catch { /* no bloquear el login si falla */ }
+        } catch { /* no bloquear login si falla */ }
       }
 
       login(data.user as any, data.accessToken, puestoId)
-      if (roleParam) selectRole(roleParam)
-      navigate(roleParam ? ROLE_ROUTES[roleParam] : '/')
-    } catch (err: unknown) {
-      setError('Email o contraseña incorrectos')
+
+      if (data.user.roles.includes('COORDINADOR')) {
+        navigate('/coordinador')
+      } else {
+        navigate('/seleccionar-rol')
+      }
+    } catch {
+      setError('Credenciales incorrectas. Comprueba tu email, DNI y contraseña.')
     } finally {
       setLoading(false)
     }
@@ -56,11 +54,7 @@ export default function Login() {
 
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Iniciar sesión</h1>
-          {roleLabel && (
-            <p className="mt-1 text-sm text-gray-500">
-              Para acceder como <strong>{roleLabel}</strong>
-            </p>
-          )}
+          <p className="mt-1 text-sm text-gray-500">Accede con tu email o DNI</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -71,14 +65,15 @@ export default function Login() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email o DNI</label>
             <input
-              type="email"
+              type="text"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="tu@email.com"
+              placeholder="tu@email.com o 12345678A"
+              autoComplete="username"
             />
           </div>
 
@@ -91,6 +86,7 @@ export default function Login() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="••••••••"
+              autoComplete="current-password"
             />
           </div>
 
@@ -102,10 +98,7 @@ export default function Login() {
         <div className="mt-4 text-center space-y-2">
           <p className="text-sm text-gray-500">
             ¿No tienes cuenta?{' '}
-            <Link
-              to={`/auth/register${roleParam ? `?role=${roleParam}` : ''}`}
-              className="text-blue-600 font-medium hover:underline"
-            >
+            <Link to="/auth/register" className="text-blue-600 font-medium hover:underline">
               Regístrate
             </Link>
           </p>
@@ -113,7 +106,7 @@ export default function Login() {
             onClick={() => navigate('/')}
             className="text-sm text-gray-400 hover:text-gray-600"
           >
-            ← Volver a selección de rol
+            ← Volver al inicio
           </button>
         </div>
       </div>
