@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
+import { ROLE_LABELS, ROLE_ROUTES, Role } from '@/types/auth.types'
 import { apiClient } from '@/lib/api/client'
 import Button from '@/components/ui/Button'
 
@@ -11,7 +12,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
 
   const navigate = useNavigate()
-  const { login } = useAuthStore()
+  const [params] = useSearchParams()
+  const { login, selectRole } = useAuthStore()
+
+  const roleParam = params.get('role') as Role | null
+  const roleLabel = roleParam ? ROLE_LABELS[roleParam] : null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,18 +36,23 @@ export default function Login() {
             headers: { Authorization: `Bearer ${data.accessToken}` },
           })
           puestoId = res.data.puestos?.[0]?.id
-        } catch { /* no bloquear login si falla */ }
+        } catch {
+          // No bloquear login si falla la carga del puesto asociado.
+        }
       }
 
       login(data.user as any, data.accessToken, puestoId)
 
-      if (data.user.roles.includes('COORDINADOR')) {
+      if (roleParam) {
+        selectRole(roleParam)
+        navigate(ROLE_ROUTES[roleParam])
+      } else if (data.user.roles.includes('COORDINADOR')) {
         navigate('/coordinador')
       } else {
-        navigate('/seleccionar-rol')
+        navigate('/')
       }
     } catch {
-      setError('Credenciales incorrectas. Comprueba tu email, DNI y contraseña.')
+      setError('Credenciales incorrectas. Comprueba tu email, DNI y contrasena.')
     } finally {
       setLoading(false)
     }
@@ -53,8 +63,14 @@ export default function Login() {
       <div className="max-w-sm mx-auto w-full">
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Iniciar sesión</h1>
-          <p className="mt-1 text-sm text-gray-500">Accede con tu email o DNI</p>
+          <h1 className="text-2xl font-bold text-gray-900">Iniciar sesion</h1>
+          {roleLabel ? (
+            <p className="mt-1 text-sm text-gray-500">
+              Para acceder como <strong>{roleLabel}</strong>
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-gray-500">Accede con tu email o DNI</p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -78,14 +94,14 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
-              placeholder="••••••••"
+              placeholder="********"
               autoComplete="current-password"
             />
           </div>
@@ -97,16 +113,19 @@ export default function Login() {
 
         <div className="mt-4 text-center space-y-2">
           <p className="text-sm text-gray-500">
-            ¿No tienes cuenta?{' '}
-            <Link to="/auth/register" className="text-blue-600 font-medium hover:underline">
-              Regístrate
+            No tienes cuenta?{' '}
+            <Link
+              to={`/auth/register${roleParam ? `?role=${roleParam}` : ''}`}
+              className="text-blue-600 font-medium hover:underline"
+            >
+              Registrate
             </Link>
           </p>
           <button
             onClick={() => navigate('/')}
             className="text-sm text-gray-400 hover:text-gray-600"
           >
-            ← Volver al inicio
+            Volver a seleccion de rol
           </button>
         </div>
       </div>
