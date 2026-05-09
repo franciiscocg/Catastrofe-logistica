@@ -48,21 +48,21 @@ async function gotoVoluntario(page: import('@playwright/test').Page) {
 test.describe('Seleccion de rol — Voluntario', () => {
   test('muestra la tarjeta de Voluntario / Donante en la pantalla de inicio', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByText('Voluntario / Donante')).toBeVisible()
+    await expect(page.getByText('Voluntario')).toBeVisible()
   })
 
   test('redirige a login con role=voluntario al pulsar la tarjeta sin sesion', async ({ page }) => {
     await page.goto('/')
-    await page.getByText('Voluntario / Donante').click()
+    await page.getByRole('button', { name: /Acceder como Voluntario/i }).click()
     await expect(page).toHaveURL(/\/auth\/login.*role=voluntario/)
   })
 
-  test('muestra las 4 tarjetas de rol al abrir la app', async ({ page }) => {
+  test('muestra las tarjetas de rol disponibles al abrir la app', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('Ciudadano')).toBeVisible()
-    await expect(page.getByText('Voluntario / Donante')).toBeVisible()
+    await expect(page.getByText('Voluntario')).toBeVisible()
     await expect(page.getByText('Puesto de Emergencia')).toBeVisible()
-    await expect(page.getByText('Coordinador')).toBeVisible()
+    await expect(page.getByText('Coordinador')).not.toBeVisible()
   })
 })
 
