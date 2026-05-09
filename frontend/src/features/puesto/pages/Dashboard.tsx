@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import QrScanner from '@/components/shared/QrScanner'
@@ -28,7 +29,21 @@ interface Puesto {
   direccion: string
   tipo: string
   activo: boolean
+  esAdmin?: boolean
   catastrofe?: { id: string; nombre: string; fase: string }
+}
+
+interface SolicitudPuesto {
+  id: string
+  nombre: string
+  direccion: string
+  tipo: string
+  descripcion?: string | null
+  latitud: number
+  longitud: number
+  estado: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'
+  motivoRechazo?: string | null
+  createdAt: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -442,6 +457,202 @@ function WorkersSheet({
 
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
+function SolicitudPuestoForm() {
+  const qc = useQueryClient()
+  const { position, request: requestLocation, loading: loadingLocation } = useGeolocation()
+  const [form, setForm] = useState({
+    nombre: '',
+    direccion: '',
+    tipo: '',
+    descripcion: '',
+    latitud: '',
+    longitud: '',
+  })
+  const [error, setError] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['mi-solicitud-puesto'],
+    queryFn: () =>
+      apiClient
+        .get<{ solicitud: SolicitudPuesto | null }>('/api/puestos/solicitudes/mia')
+        .then((r) => r.data.solicitud),
+  })
+
+  const solicitud = data ?? null
+
+  useEffect(() => {
+    if (solicitud?.estado !== 'RECHAZADA') return
+    setForm({
+      nombre: solicitud.nombre,
+      direccion: solicitud.direccion,
+      tipo: solicitud.tipo,
+      descripcion: solicitud.descripcion ?? '',
+      latitud: String(solicitud.latitud),
+      longitud: String(solicitud.longitud),
+    })
+  }, [solicitud])
+
+  useEffect(() => {
+    if (!position || form.latitud || form.longitud) return
+    setForm((prev) => ({
+      ...prev,
+      latitud: position.lat.toFixed(6),
+      longitud: position.lng.toFixed(6),
+    }))
+  }, [form.latitud, form.longitud, position])
+
+  const crearSolicitud = useMutation({
+    mutationFn: () => {
+      const latitud = parseFloat(form.latitud)
+      const longitud = parseFloat(form.longitud)
+      if (!form.nombre.trim()) throw new Error('El nombre del puesto es obligatorio')
+      if (!form.direccion.trim()) throw new Error('La direccion es obligatoria')
+      if (!form.tipo.trim()) throw new Error('Indica el tipo de instalacion')
+      if (Number.isNaN(latitud) || latitud < -90 || latitud > 90) throw new Error('Latitud invalida')
+      if (Number.isNaN(longitud) || longitud < -180 || longitud > 180) throw new Error('Longitud invalida')
+
+      return apiClient.post('/api/puestos/solicitudes', {
+        nombre: form.nombre.trim(),
+        direccion: form.direccion.trim(),
+        tipo: form.tipo.trim(),
+        descripcion: form.descripcion.trim() || undefined,
+        latitud,
+        longitud,
+      })
+    },
+    onSuccess: () => {
+      setError('')
+      setForm({
+        nombre: '',
+        direccion: '',
+        tipo: '',
+        descripcion: '',
+        latitud: '',
+        longitud: '',
+      })
+      qc.invalidateQueries({ queryKey: ['mi-solicitud-puesto'] })
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? 'No se pudo enviar la solicitud')
+    },
+  })
+
+  const set = (field: keyof typeof form) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setForm((prev) => ({ ...prev, [field]: e.target.value }))
+      setError('')
+    }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full pt-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+      </div>
+    )
+  }
+
+  if (solicitud?.estado === 'PENDIENTE') {
+    return (
+      <div className="px-5 pt-12 pb-6">
+        <div className="bg-white border border-amber-200 rounded-xl p-5 text-center">
+          <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Pendiente</p>
+          <p className="font-semibold text-gray-900 mt-2">Solicitud enviada</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {solicitud.nombre} esta esperando revision de coordinacion.
+          </p>
+          <div className="mt-4 text-left bg-amber-50 rounded-lg p-3 text-sm text-amber-900">
+            <p className="font-medium">{solicitud.direccion}</p>
+            <p className="text-xs mt-1">{solicitud.latitud}, {solicitud.longitud}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-5 pt-8 pb-6">
+      <div className="mb-5">
+        <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Puesto</p>
+        <h1 className="text-xl font-bold text-gray-900 mt-1">Crear solicitud de puesto</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Completa los datos del puesto para que coordinacion pueda revisarlo y activarlo.
+        </p>
+      </div>
+
+      {solicitud?.estado === 'RECHAZADA' && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+          <p className="font-medium">Solicitud rechazada</p>
+          {solicitud.motivoRechazo && <p className="mt-1">{solicitud.motivoRechazo}</p>}
+        </div>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          crearSolicitud.mutate()
+        }}
+        className="bg-white border border-gray-200 rounded-xl p-4 space-y-3"
+      >
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del puesto</label>
+          <input value={form.nombre} onChange={set('nombre')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Calle o direccion</label>
+          <input value={form.direccion} onChange={set('direccion')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de instalacion</label>
+          <input value={form.tipo} onChange={set('tipo')} placeholder="Colegio, pabellon, almacen..." className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Latitud</label>
+            <input type="number" step="0.000001" value={form.latitud} onChange={set('latitud')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Longitud</label>
+            <input type="number" step="0.000001" value={form.longitud} onChange={set('longitud')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          fullWidth
+          loading={loadingLocation}
+          onClick={() => {
+            if (position) {
+              setForm((prev) => ({
+                ...prev,
+                latitud: position.lat.toFixed(6),
+                longitud: position.lng.toFixed(6),
+              }))
+              return
+            }
+            requestLocation()
+          }}
+        >
+          Usar ubicacion actual
+        </Button>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Descripcion</label>
+          <textarea value={form.descripcion} onChange={set('descripcion')} rows={3} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none" />
+        </div>
+
+        {error && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+
+        <Button type="submit" fullWidth loading={crearSolicitud.isPending} className="bg-amber-500 hover:bg-amber-600">
+          Enviar solicitud
+        </Button>
+      </form>
+    </div>
+  )
+}
+
 export default function PuestoDashboard() {
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [showQr, setShowQr] = useState(false)
@@ -472,7 +683,7 @@ export default function PuestoDashboard() {
   // y verificamos comparando con el campo adminId cuando la API lo devuelva.
   // Por ahora: es admin si fue quien creó el puesto (tiene puestoId en el store).
   // Los trabajadores acceden vía /mio pero no tienen storedPuestoId por defecto.
-  const isAdmin = !!storedPuestoId && storedPuestoId === puesto?.id
+  const isAdmin = puesto?.esAdmin === true || (!!storedPuestoId && storedPuestoId === puesto?.id)
 
   // Cargar inventario
   const { data: invData, isLoading: loadingInv } = useQuery({
@@ -524,6 +735,8 @@ export default function PuestoDashboard() {
       </div>
     )
   }
+
+  if (!puesto) return <SolicitudPuestoForm />
 
   if (!puesto) {
     return (

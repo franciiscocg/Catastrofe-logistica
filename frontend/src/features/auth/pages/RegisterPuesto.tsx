@@ -187,7 +187,7 @@ export default function RegisterPuesto() {
     try {
       const { data } = await apiClient.post<{
         user: { id: string; email: string; nombre: string; apellidos: string; roles: string[] }
-        puesto?: { id: string; nombre: string }
+        solicitud?: { id: string; nombre: string; estado: string }
         accessToken: string
       }>('/api/auth/register', {
         email: form.email,
@@ -207,8 +207,8 @@ export default function RegisterPuesto() {
         },
       })
 
-      // Guardar sesión y el puestoId en el store para acceso inmediato
-      storeLogin(data.user as any, data.accessToken, data.puesto?.id)
+      // El puesto queda pendiente hasta que lo acepte un coordinador.
+      storeLogin(data.user as any, data.accessToken)
       navigate('/auth/registro-exitoso?role=puesto')
     } catch (err: unknown) {
       const response = (err as { response?: { data?: { error?: string; details?: { field: string; message: string }[] } } })?.response
@@ -468,7 +468,7 @@ export default function RegisterPuesto() {
             )}
 
             <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800">
-              <strong>Acceso inmediato:</strong> Tu cuenta quedará activa al instante. Podrás iniciar sesión y gestionar tu puesto en cuanto completes el registro.
+              <strong>Revision del coordinador:</strong> Tu cuenta quedara activa, pero el puesto no se abrira hasta que un coordinador acepte la solicitud.
             </div>
 
             <Button type="submit" fullWidth loading={loading} className="bg-amber-500 hover:bg-amber-600 focus-visible:ring-amber-500">

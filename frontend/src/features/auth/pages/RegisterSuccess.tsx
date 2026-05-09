@@ -8,9 +8,9 @@ export default function RegisterSuccess() {
 
   const messages: Record<string, { icon: string; title: string; body: string }> = {
     puesto: {
-      icon: '🏪',
-      title: '¡Puesto registrado!',
-      body: 'Tu cuenta y puesto de emergencia están activos. Ya puedes iniciar sesión y empezar a gestionar el inventario y los voluntarios.',
+      icon: 'Puesto',
+      title: 'Solicitud enviada',
+      body: 'Tu cuenta esta activa. El puesto quedara pendiente hasta que un coordinador revise y acepte la solicitud.',
     },
   }
 

@@ -71,33 +71,24 @@ export async function registerUser(input: RegisterInput) {
     }
 
     let puesto = null
+    let solicitud = null
 
     if (esPuesto && input.puesto) {
-      const catastrofe = await tx.catastrofe.findFirst({
-        orderBy: [{ activa: 'desc' }, { createdAt: 'desc' }],
-      })
-
-      if (!catastrofe) {
-        throw appError('No hay ninguna catastrofe registrada en el sistema. Contacta con un coordinador.', 422)
-      }
-
-      puesto = await tx.puestoEmergencia.create({
+      solicitud = await tx.solicitudPuesto.create({
         data: {
+          usuarioId: created.id,
           nombre: input.puesto.nombre,
           tipo: input.puesto.tipo,
           direccion: input.puesto.direccion,
           descripcion: input.puesto.descripcion,
           latitud: input.puesto.latitud,
           longitud: input.puesto.longitud,
-          activo: true,
-          catastrofeId: catastrofe.id,
-          adminId: created.id,
         },
-        select: { id: true, nombre: true, direccion: true, tipo: true },
+        select: { id: true, nombre: true, estado: true },
       })
     }
 
-    return { user: created, puesto }
+    return { user: created, puesto, solicitud }
   })
 
   return result
