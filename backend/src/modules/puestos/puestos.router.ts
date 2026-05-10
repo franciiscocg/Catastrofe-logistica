@@ -214,7 +214,7 @@ export async function puestosRouter(app: FastifyInstance) {
   })
 
   app.get('/solicitudes/mia', {
-    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+    preHandler: [requireAuth],
   }, async (req, reply) => {
     const userId = (req.user as { id: string }).id
     const solicitud = await prisma.solicitudPuesto.findFirst({
