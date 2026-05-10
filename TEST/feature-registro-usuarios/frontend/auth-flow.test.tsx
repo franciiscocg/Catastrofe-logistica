@@ -169,7 +169,7 @@ describe('registro e inicio de sesion', () => {
       renderWithRouter(<Login />)
 
       fireEvent.change(screen.getByPlaceholderText(/tu@email.com o 12345678A/), { target: { value: identifier } })
-      fireEvent.change(screen.getByPlaceholderText(/••••••••/), { target: { value: 'Password123' } })
+      fireEvent.change(screen.getByPlaceholderText('********'), { target: { value: 'Password123' } })
       fireEvent.click(screen.getByRole('button', { name: /Entrar/i }))
 
       await waitFor(() => {
@@ -178,7 +178,7 @@ describe('registro e inicio de sesion', () => {
           password: 'Password123',
         })
       })
-      expect(mockNavigate).toHaveBeenCalledWith('/seleccionar-rol')
+      expect(mockNavigate).toHaveBeenCalledWith('/')
     },
   )
 })
@@ -193,14 +193,14 @@ describe('seleccion de rol y solicitud de puesto', () => {
     renderWithRouter(<RoleSelection />)
 
     expect(screen.getByText('Ciudadano')).toBeInTheDocument()
-    expect(screen.getByText('Voluntario / Donante')).toBeInTheDocument()
-    expect(screen.queryByText('Puesto de Emergencia')).not.toBeInTheDocument()
+    expect(screen.getByText('Voluntario')).toBeInTheDocument()
+    expect(screen.getByText('Puesto de Emergencia')).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Ciudadano'))
     expect(mockSelectRole).toHaveBeenCalledWith('ciudadano')
     expect(mockNavigate).toHaveBeenCalledWith('/ciudadano')
 
-    fireEvent.click(screen.getByText('Registrar puesto de emergencia'))
+    fireEvent.click(screen.getByRole('button', { name: /Acceder como Puesto de Emergencia/i }))
     expect(mockNavigate).toHaveBeenCalledWith('/auth/registro-puesto')
   })
 
@@ -211,7 +211,7 @@ describe('seleccion de rol y solicitud de puesto', () => {
 
     fireEvent.click(screen.getByText('Puesto de Emergencia'))
 
-    expect(mockSelectRole).not.toHaveBeenCalledWith('puesto')
+    expect(mockSelectRole).toHaveBeenCalledWith('puesto')
     expect(mockNavigate).toHaveBeenCalledWith('/auth/registro-puesto')
     expect(mockNavigate).not.toHaveBeenCalledWith('/puesto')
   })
@@ -220,19 +220,21 @@ describe('seleccion de rol y solicitud de puesto', () => {
     authenticatedUser()
     mockApiGet.mockResolvedValue({
       data: {
-        puesto: {
-          id: 'puesto-1',
+        solicitud: {
+          id: 'solicitud-1',
           nombre: 'CEIP La Paz',
           tipo: 'colegio',
           direccion: 'Calle Mayor 12',
-          activo: false,
-          estadoSolicitud: 'RECHAZADO',
+          descripcion: null,
+          latitud: 39.4254,
+          longitud: -0.4178,
+          estado: 'RECHAZADA',
           motivoRechazo: 'Falta documentacion del responsable',
           createdAt: '2026-05-09T10:00:00.000Z',
         },
       },
     })
-    mockApiPost.mockResolvedValue({ data: { puesto: { id: 'puesto-1' } } })
+    mockApiPost.mockResolvedValue({ data: { solicitud: { id: 'solicitud-1' } } })
 
     renderWithQuery(<RegisterPuesto />)
 
@@ -248,7 +250,7 @@ describe('seleccion de rol y solicitud de puesto', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Enviar solicitud$/i }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitar', {
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes', {
         nombre: 'CEIP La Paz',
         tipo: 'colegio',
         direccion: 'Calle Mayor 12',
@@ -264,40 +266,45 @@ describe('coordinador', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authenticatedUser(['COORDINADOR'])
-    mockApiGet.mockResolvedValue({
-      data: {
-        puestos: [
-          {
-            id: 'puesto-1',
-            nombre: 'CEIP La Paz',
-            tipo: 'colegio',
-            direccion: 'Calle Mayor 12',
-            descripcion: 'Aula de apoyo',
-            latitud: 39.4254,
-            longitud: -0.4178,
-            createdAt: '2026-05-09T10:00:00.000Z',
-            admin: {
-              id: 'user-1',
-              nombre: 'Maria',
-              apellidos: 'Garcia',
-              email: 'maria@example.com',
-              dni: '12345678A',
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/api/puestos') return Promise.resolve({ data: { puestos: [{ id: 'puesto-activo-1' }] } })
+      return Promise.resolve({
+        data: {
+          solicitudes: [
+            {
+              id: 'solicitud-1',
+              nombre: 'CEIP La Paz',
+              tipo: 'colegio',
+              direccion: 'Calle Mayor 12',
+              descripcion: 'Aula de apoyo',
+              latitud: 39.4254,
+              longitud: -0.4178,
+              estado: 'PENDIENTE',
+              motivoRechazo: null,
+              createdAt: '2026-05-09T10:00:00.000Z',
+              usuario: {
+                nombre: 'Maria',
+                apellidos: 'Garcia',
+                email: 'maria@example.com',
+                telefono: null,
+                dni: '12345678A',
+              },
             },
-          },
-        ],
-      },
+          ],
+        },
+      })
     })
-    mockApiPatch.mockResolvedValue({ data: {} })
+    mockApiPost.mockResolvedValue({ data: {} })
   })
 
   it('puede aprobar una solicitud de puesto pendiente', async () => {
     renderWithQuery(<CoordinadorDashboard />)
 
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Aprobar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Aceptar/i }))
 
     await waitFor(() => {
-      expect(mockApiPatch).toHaveBeenCalledWith('/api/puestos/puesto-1/aprobar')
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes/solicitud-1/aceptar')
     })
   })
 
@@ -306,13 +313,14 @@ describe('coordinador', () => {
 
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
-    fireEvent.change(screen.getByPlaceholderText(/motivo del rechazo/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Faltan datos de ubicacion/i), {
       target: { value: 'Falta documentacion' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Confirmar rechazo/i }))
+    const rechazarButtons = screen.getAllByRole('button', { name: /^Rechazar$/i })
+    fireEvent.click(rechazarButtons[rechazarButtons.length - 1])
 
     await waitFor(() => {
-      expect(mockApiPatch).toHaveBeenCalledWith('/api/puestos/puesto-1/rechazar', {
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes/solicitud-1/rechazar', {
         motivo: 'Falta documentacion',
       })
     })

@@ -14,17 +14,17 @@ export default function RegisterSuccess() {
 
   const messages: Record<string, SuccessMessage> = {
     puesto: {
-      icon: '⏳',
+      icon: '...',
       title: 'Solicitud enviada',
-      body: 'Tu cuenta y solicitud de puesto de emergencia han sido recibidas correctamente. Un coordinador revisara tu solicitud y activara el acceso cuando sea aprobada.',
+      body: 'Tu cuenta y solicitud de puesto de emergencia han sido recibidas correctamente. Un coordinador revisara la solicitud y activara el acceso cuando sea aprobada.',
       linkText: 'Volver al inicio',
       linkTo: '/',
     },
   }
 
   const fallbackMessage: SuccessMessage = {
-    icon: '✅',
-    title: 'Cuenta creada!',
+    icon: 'OK',
+    title: 'Cuenta creada',
     body: 'Tu cuenta ha sido creada correctamente. Ya puedes acceder a la aplicacion.',
     linkText: 'Iniciar sesion',
     linkTo: '/auth/login',

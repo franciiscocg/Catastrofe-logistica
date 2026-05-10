@@ -7,9 +7,14 @@ const { mockAuthUser, prismaMock } = vi.hoisted(() => {
       findMany: vi.fn(),
       findFirst: vi.fn(),
       findUnique: vi.fn(),
-      update: vi.fn(),
       create: vi.fn(),
-      count: vi.fn(),
+    },
+    solicitudPuesto: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
     },
     catastrofe: {
       findFirst: vi.fn(),
@@ -21,6 +26,7 @@ const { mockAuthUser, prismaMock } = vi.hoisted(() => {
     $transaction: vi.fn((cb) =>
       cb({
         puestoEmergencia: prismaMock.puestoEmergencia,
+        solicitudPuesto: prismaMock.solicitudPuesto,
         catastrofe: prismaMock.catastrofe,
         usuario: prismaMock.usuario,
       }),
@@ -76,112 +82,127 @@ describe('aprobacion de solicitudes de puesto', () => {
     mockAuthUser.roles = ['COORDINADOR']
   })
 
-  it('lista las solicitudes pendientes para el coordinador', async () => {
+  it('lista las solicitudes para el coordinador', async () => {
     const app = await buildTestApp()
-    mp.puestoEmergencia.findMany.mockResolvedValue([
+    mp.solicitudPuesto.findMany.mockResolvedValue([
       {
-        id: 'puesto-1',
+        id: 'solicitud-1',
         nombre: 'CEIP La Paz',
         tipo: 'colegio',
         direccion: 'Calle Mayor 12',
         descripcion: null,
         latitud: 39.4254,
         longitud: -0.4178,
+        estado: 'PENDIENTE',
         createdAt: new Date('2026-05-09T10:00:00.000Z'),
-        admin: {
+        usuario: {
           id: 'user-1',
           nombre: 'Maria',
           apellidos: 'Garcia',
           email: 'maria@example.com',
+          telefono: null,
           dni: '12345678A',
         },
+        coordinador: null,
       },
     ])
 
-    const response = await app.inject({ method: 'GET', url: '/api/puestos/pendientes' })
+    const response = await app.inject({ method: 'GET', url: '/api/puestos/solicitudes' })
 
     expect(response.statusCode).toBe(200)
-    expect(response.json().puestos).toHaveLength(1)
-    expect(mp.puestoEmergencia.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { estadoSolicitud: 'PENDIENTE' },
+    expect(response.json().solicitudes).toHaveLength(1)
+    expect(mp.solicitudPuesto.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
     }))
     await app.close()
   })
 
-  it('aprueba un puesto y lo activa', async () => {
+  it('acepta una solicitud y crea el puesto activo', async () => {
     const app = await buildTestApp()
-    mp.puestoEmergencia.findUnique.mockResolvedValue({ id: 'puesto-1' })
-    mp.puestoEmergencia.update.mockResolvedValue({
+    mp.solicitudPuesto.findUnique.mockResolvedValue({
+      id: 'solicitud-1',
+      usuarioId: 'user-1',
+      nombre: 'CEIP La Paz',
+      descripcion: null,
+      direccion: 'Calle Mayor 12',
+      latitud: 39.4254,
+      longitud: -0.4178,
+      tipo: 'colegio',
+      estado: 'PENDIENTE',
+    })
+    mp.catastrofe.findFirst.mockResolvedValue({ id: 'cat-1' })
+    mp.puestoEmergencia.findFirst.mockResolvedValue(null)
+    mp.puestoEmergencia.create.mockResolvedValue({
       id: 'puesto-1',
       nombre: 'CEIP La Paz',
       activo: true,
-      estadoSolicitud: 'APROBADO',
     })
+    mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'ACEPTADA' })
 
-    const response = await app.inject({ method: 'PATCH', url: '/api/puestos/puesto-1/aprobar' })
+    const response = await app.inject({ method: 'POST', url: '/api/puestos/solicitudes/solicitud-1/aceptar' })
 
     expect(response.statusCode).toBe(200)
-    expect(response.json().puesto).toMatchObject({ activo: true, estadoSolicitud: 'APROBADO' })
-    expect(mp.puestoEmergencia.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'puesto-1' },
-      data: { activo: true, estadoSolicitud: 'APROBADO', motivoRechazo: null },
-    }))
-    await app.close()
-  })
-
-  it('rechaza un puesto, guarda el motivo y retira el rol si no quedan solicitudes vivas', async () => {
-    const app = await buildTestApp()
-    mp.puestoEmergencia.findUnique.mockResolvedValue({ adminId: 'user-1' })
-    mp.puestoEmergencia.count.mockResolvedValue(0)
-    mp.usuario.findUnique.mockResolvedValue({
-      id: 'user-1',
-      roles: ['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'],
-    })
-
-    const response = await app.inject({
-      method: 'PATCH',
-      url: '/api/puestos/puesto-1/rechazar',
-      payload: { motivo: 'Falta documentacion' },
-    })
-
-    expect(response.statusCode).toBe(204)
-    expect(mp.puestoEmergencia.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'puesto-1' },
+    expect(response.json().puesto).toMatchObject({ id: 'puesto-1', activo: true })
+    expect(mp.puestoEmergencia.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        activo: false,
-        estadoSolicitud: 'RECHAZADO',
-        motivoRechazo: 'Falta documentacion',
+        adminId: 'user-1',
+        catastrofeId: 'cat-1',
+        activo: true,
       }),
     }))
-    expect(mp.usuario.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: { roles: ['CIUDADANO', 'VOLUNTARIO'] },
-    })
+    expect(mp.solicitudPuesto.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'solicitud-1' },
+      data: expect.objectContaining({ estado: 'ACEPTADA', coordinadorId: 'coord-1' }),
+    }))
     await app.close()
   })
 
-  it('reutiliza una solicitud rechazada cuando el usuario envia otra', async () => {
+  it('rechaza una solicitud indicando motivo', async () => {
     const app = await buildTestApp()
-    mockAuthUser.id = 'user-1'
-    mockAuthUser.sub = 'user-1'
-    mockAuthUser.roles = ['CIUDADANO', 'VOLUNTARIO']
-    mp.catastrofe.findFirst.mockResolvedValue({ id: 'cat-1' })
-    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'VOLUNTARIO'] })
-    mp.usuario.update.mockResolvedValue({})
-    mp.puestoEmergencia.findFirst.mockResolvedValue({
-      id: 'puesto-1',
-      estadoSolicitud: 'RECHAZADO',
-    })
-    mp.puestoEmergencia.update.mockResolvedValue({
-      id: 'puesto-1',
-      nombre: 'CEIP La Paz',
-      direccion: 'Calle Mayor 12',
-      tipo: 'colegio',
+    mp.solicitudPuesto.findUnique.mockResolvedValue({ estado: 'PENDIENTE' })
+    mp.solicitudPuesto.update.mockResolvedValue({
+      id: 'solicitud-1',
+      estado: 'RECHAZADA',
+      motivoRechazo: 'Falta documentacion',
     })
 
     const response = await app.inject({
       method: 'POST',
-      url: '/api/puestos/solicitar',
+      url: '/api/puestos/solicitudes/solicitud-1/rechazar',
+      payload: { motivo: 'Falta documentacion' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().solicitud).toMatchObject({ estado: 'RECHAZADA' })
+    expect(mp.solicitudPuesto.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'solicitud-1' },
+      data: expect.objectContaining({
+        estado: 'RECHAZADA',
+        motivoRechazo: 'Falta documentacion',
+        coordinadorId: 'coord-1',
+      }),
+    }))
+    await app.close()
+  })
+
+  it('crea una solicitud para un usuario autenticado y le anade el rol de puesto', async () => {
+    const app = await buildTestApp()
+    mockAuthUser.id = 'user-1'
+    mockAuthUser.sub = 'user-1'
+    mockAuthUser.roles = ['CIUDADANO', 'VOLUNTARIO']
+    mp.puestoEmergencia.findFirst.mockResolvedValue(null)
+    mp.solicitudPuesto.findFirst.mockResolvedValue(null)
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'VOLUNTARIO'] })
+    mp.usuario.update.mockResolvedValue({})
+    mp.solicitudPuesto.create.mockResolvedValue({
+      id: 'solicitud-1',
+      nombre: 'CEIP La Paz',
+      estado: 'PENDIENTE',
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/puestos/solicitudes',
       payload: {
         nombre: 'CEIP La Paz',
         tipo: 'colegio',
@@ -192,17 +213,13 @@ describe('aprobacion de solicitudes de puesto', () => {
     })
 
     expect(response.statusCode).toBe(201)
+    expect(response.json().solicitud).toMatchObject({ id: 'solicitud-1' })
     expect(mp.usuario.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
       data: { roles: ['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'] },
     })
-    expect(mp.puestoEmergencia.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'puesto-1' },
-      data: expect.objectContaining({
-        estadoSolicitud: 'PENDIENTE',
-        motivoRechazo: null,
-        activo: false,
-      }),
+    expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ usuarioId: 'user-1', nombre: 'CEIP La Paz' }),
     }))
     await app.close()
   })

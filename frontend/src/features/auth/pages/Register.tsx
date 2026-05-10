@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
@@ -32,6 +32,8 @@ function FieldError({ message }: { message?: string }) {
 
 export default function Register() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const roleParam = params.get('role')
   const { login } = useAuthStore()
 
   const [form, setForm] = useState<StandardForm>({
@@ -82,7 +84,7 @@ export default function Register() {
       })
 
       login(data.user, data.accessToken)
-      navigate('/seleccionar-rol')
+      navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { message?: string; error?: string } } }).response?.data

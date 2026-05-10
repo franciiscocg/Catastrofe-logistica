@@ -1,10 +1,18 @@
 import type { FastifyInstance } from 'fastify'
-import { z } from 'zod'
 import { RolUsuario } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
 import { listTrabajadores, addTrabajador, removeTrabajador } from './trabajadores.service.js'
+
+type SolicitudPuestoInput = {
+  nombre: string
+  direccion: string
+  tipo: string
+  descripcion?: string
+  latitud: number
+  longitud: number
+}
 
 function badRequest(message: string) {
   return Object.assign(new Error(message), { statusCode: 400 })
@@ -55,6 +63,27 @@ function formatPuesto(puesto: {
     necesidades: puesto._count.inventario,
     voluntariosTrabajando: puesto._count.asignacionesVoluntarios,
     catastrofeId: puesto.catastrofeId,
+  }
+}
+
+function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
+  if (!body.nombre?.trim()) throw badRequest('El nombre del puesto es obligatorio')
+  if (!body.direccion?.trim()) throw badRequest('La direccion del puesto es obligatoria')
+  if (!body.tipo?.trim()) throw badRequest('El tipo de instalacion es obligatorio')
+  if (typeof body.latitud !== 'number' || body.latitud < -90 || body.latitud > 90) {
+    throw badRequest('La latitud no es valida')
+  }
+  if (typeof body.longitud !== 'number' || body.longitud < -180 || body.longitud > 180) {
+    throw badRequest('La longitud no es valida')
+  }
+
+  return {
+    nombre: body.nombre.trim(),
+    direccion: body.direccion.trim(),
+    tipo: body.tipo.trim(),
+    descripcion: body.descripcion?.trim() || undefined,
+    latitud: body.latitud,
+    longitud: body.longitud,
   }
 }
 
@@ -127,11 +156,177 @@ export async function puestosRouter(app: FastifyInstance) {
 
     const adminIds = new Set(comoAdmin.map((p) => p.id))
     const puestos = [
-      ...comoAdmin,
-      ...comoTrabajador.filter((p) => !adminIds.has(p.id)),
+      ...comoAdmin.map((puesto) => ({ ...puesto, esAdmin: true })),
+      ...comoTrabajador
+        .filter((p) => !adminIds.has(p.id))
+        .map((puesto) => ({ ...puesto, esAdmin: false })),
     ]
 
     return reply.send({ puestos })
+  })
+
+  app.post('/solicitudes', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const userId = (req.user as { id: string }).id
+    const input = validateSolicitudPuesto(req.body as Partial<SolicitudPuestoInput>)
+
+    const solicitud = await prisma.$transaction(async (tx) => {
+      const puestoExistente = await tx.puestoEmergencia.findFirst({
+        where: {
+          OR: [
+            { adminId: userId },
+            { trabajadores: { some: { usuarioId: userId } } },
+          ],
+        },
+        select: { id: true },
+      })
+      if (puestoExistente) throw badRequest('Ya tienes un puesto asociado')
+
+      const pendiente = await tx.solicitudPuesto.findFirst({
+        where: { usuarioId: userId, estado: 'PENDIENTE' },
+        select: { id: true },
+      })
+      if (pendiente) throw badRequest('Ya tienes una solicitud pendiente')
+
+      const usuario = await tx.usuario.findUnique({
+        where: { id: userId },
+        select: { roles: true },
+      })
+      if (!usuario) throw notFound('Usuario no encontrado')
+
+      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
+        await tx.usuario.update({
+          where: { id: userId },
+          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
+        })
+      }
+
+      return tx.solicitudPuesto.create({
+        data: { ...input, usuarioId: userId },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+        },
+      })
+    })
+
+    return reply.status(201).send({ solicitud })
+  })
+
+  app.get('/solicitudes/mia', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const userId = (req.user as { id: string }).id
+    const solicitud = await prisma.solicitudPuesto.findFirst({
+      where: { usuarioId: userId },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return reply.send({ solicitud })
+  })
+
+  app.get('/solicitudes', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (_req, reply) => {
+    const solicitudes = await prisma.solicitudPuesto.findMany({
+      orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true, dni: true } },
+        coordinador: { select: { id: true, nombre: true, apellidos: true } },
+      },
+    })
+
+    return reply.send({ solicitudes })
+  })
+
+  app.post('/solicitudes/:id/aceptar', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const coordinadorId = (req.user as { id: string }).id
+
+    const result = await prisma.$transaction(async (tx) => {
+      const solicitud = await tx.solicitudPuesto.findUnique({ where: { id } })
+      if (!solicitud) throw notFound('Solicitud no encontrada')
+      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+
+      const catastrofe = await tx.catastrofe.findFirst({
+        where: { activa: true },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (!catastrofe) throw badRequest('No hay ninguna catastrofe activa para asociar el puesto')
+
+      const puestoExistente = await tx.puestoEmergencia.findFirst({
+        where: {
+          OR: [
+            { adminId: solicitud.usuarioId },
+            { trabajadores: { some: { usuarioId: solicitud.usuarioId } } },
+          ],
+        },
+        select: { id: true },
+      })
+      if (puestoExistente) throw badRequest('El solicitante ya tiene un puesto asociado')
+
+      const puesto = await tx.puestoEmergencia.create({
+        data: {
+          nombre: solicitud.nombre,
+          descripcion: solicitud.descripcion,
+          direccion: solicitud.direccion,
+          latitud: solicitud.latitud,
+          longitud: solicitud.longitud,
+          tipo: solicitud.tipo,
+          activo: true,
+          catastrofeId: catastrofe.id,
+          adminId: solicitud.usuarioId,
+        },
+        select: puestoSelect,
+      })
+
+      const revisada = await tx.solicitudPuesto.update({
+        where: { id },
+        data: {
+          estado: 'ACEPTADA',
+          coordinadorId,
+          decidedAt: new Date(),
+        },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+          coordinador: { select: { id: true, nombre: true, apellidos: true } },
+        },
+      })
+
+      return { solicitud: revisada, puesto }
+    })
+
+    return reply.send(result)
+  })
+
+  app.post('/solicitudes/:id/rechazar', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { motivo } = req.body as { motivo?: string }
+    const coordinadorId = (req.user as { id: string }).id
+
+    const actual = await prisma.solicitudPuesto.findUnique({ where: { id }, select: { estado: true } })
+    if (!actual) throw notFound('Solicitud no encontrada')
+    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+
+    const solicitud = await prisma.solicitudPuesto.update({
+      where: { id },
+      data: {
+        estado: 'RECHAZADA',
+        motivoRechazo: motivo?.trim() || undefined,
+        coordinadorId,
+        decidedAt: new Date(),
+      },
+      include: {
+        usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+        coordinador: { select: { id: true, nombre: true, apellidos: true } },
+      },
+    })
+
+    return reply.send({ solicitud })
   })
 
   app.post('/:id/asignaciones', {
@@ -264,197 +459,6 @@ export async function puestosRouter(app: FastifyInstance) {
     reply.status(201).send({ message: 'Pendiente de implementar' })
   })
 
-  // Estado de la solicitud del usuario autenticado
-  app.get('/mi-solicitud', {
-    preHandler: [requireAuth],
-  }, async (req, reply) => {
-    const userId = (req.user as { id: string }).id
-    const puesto = await prisma.puestoEmergencia.findFirst({
-      where: { adminId: userId },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        nombre: true,
-        tipo: true,
-        direccion: true,
-        activo: true,
-        estadoSolicitud: true,
-        motivoRechazo: true,
-        createdAt: true,
-      },
-    })
-    return reply.send({ puesto })
-  })
-
-  // Puestos pendientes de aprobación (coordinador)
-  app.get('/pendientes', {
-    preHandler: [requireAuth, requireRole('COORDINADOR')],
-  }, async (_req, reply) => {
-    const puestos = await prisma.puestoEmergencia.findMany({
-      where: { estadoSolicitud: 'PENDIENTE' },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        nombre: true,
-        tipo: true,
-        direccion: true,
-        descripcion: true,
-        latitud: true,
-        longitud: true,
-        createdAt: true,
-        admin: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true } },
-      },
-    })
-    return reply.send({ puestos })
-  })
-
-  // Aprobar puesto (coordinador)
-  app.patch('/:id/aprobar', {
-    preHandler: [requireAuth, requireRole('COORDINADOR')],
-  }, async (req, reply) => {
-    const { id } = req.params as { id: string }
-    const puesto = await prisma.puestoEmergencia.findUnique({ where: { id } })
-    if (!puesto) return reply.status(404).send({ error: 'Puesto no encontrado' })
-
-    const updated = await prisma.puestoEmergencia.update({
-      where: { id },
-      data: { activo: true, estadoSolicitud: 'APROBADO', motivoRechazo: null },
-      select: { id: true, nombre: true, activo: true, estadoSolicitud: true },
-    })
-    return reply.send({ puesto: updated })
-  })
-
-  // Rechazar puesto (coordinador) — guarda el motivo y quita el rol al usuario
-  app.patch('/:id/rechazar', {
-    preHandler: [requireAuth, requireRole('COORDINADOR')],
-  }, async (req, reply) => {
-    const { id } = req.params as { id: string }
-    const { motivo } = (req.body ?? {}) as { motivo?: string }
-
-    const puesto = await prisma.puestoEmergencia.findUnique({
-      where: { id },
-      select: { adminId: true },
-    })
-    if (!puesto) return reply.status(404).send({ error: 'Puesto no encontrado' })
-
-    await prisma.$transaction(async (tx) => {
-      await tx.puestoEmergencia.update({
-        where: { id },
-        data: {
-          activo: false,
-          estadoSolicitud: 'RECHAZADO',
-          motivoRechazo: motivo?.trim() || null,
-        },
-      })
-
-      // Quitar rol PUESTO_EMERGENCIA si no tiene otros puestos aprobados o pendientes
-      const otrosPuestos = await tx.puestoEmergencia.count({
-        where: {
-          adminId: puesto.adminId,
-          estadoSolicitud: { in: ['PENDIENTE', 'APROBADO'] },
-        },
-      })
-      if (otrosPuestos === 0) {
-        const usuario = await tx.usuario.findUnique({
-          where: { id: puesto.adminId },
-          select: { roles: true },
-        })
-        if (usuario) {
-          await tx.usuario.update({
-            where: { id: puesto.adminId },
-            data: { roles: usuario.roles.filter((r) => r !== 'PUESTO_EMERGENCIA') },
-          })
-        }
-      }
-    })
-
-    return reply.status(204).send()
-  })
-
-  // Solicitud de puesto para usuario ya autenticado
-  app.post('/solicitar', {
-    preHandler: [requireAuth],
-  }, async (req, reply) => {
-    const solicitarSchema = z.object({
-      nombre: z.string().min(2, 'El nombre del puesto es obligatorio'),
-      tipo: z.string().min(1, 'El tipo de instalación es obligatorio'),
-      direccion: z.string().min(5, 'La dirección es obligatoria'),
-      descripcion: z.string().max(500).optional(),
-      latitud: z.number().min(-90).max(90),
-      longitud: z.number().min(-180).max(180),
-    })
-
-    const input = solicitarSchema.parse(req.body)
-    const userId = (req.user as { id: string }).id
-
-    const catastrofe = await prisma.catastrofe.findFirst({
-      orderBy: [{ activa: 'desc' }, { createdAt: 'desc' }],
-    })
-
-    if (!catastrofe) {
-      return reply.status(422).send({
-        error: 'No hay ninguna catástrofe registrada en el sistema. Contacta con un coordinador.',
-      })
-    }
-
-    const puesto = await prisma.$transaction(async (tx) => {
-      const usuario = await tx.usuario.findUnique({
-        where: { id: userId },
-        select: { roles: true },
-      })
-      if (!usuario) throw Object.assign(new Error('Usuario no encontrado'), { statusCode: 404 })
-
-      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
-        await tx.usuario.update({
-          where: { id: userId },
-          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
-        })
-      }
-
-      // Reutilizar solicitud rechazada si existe
-      const rechazado = await tx.puestoEmergencia.findFirst({
-        where: { adminId: userId, estadoSolicitud: 'RECHAZADO' },
-        orderBy: { createdAt: 'desc' },
-      })
-
-      if (rechazado) {
-        return tx.puestoEmergencia.update({
-          where: { id: rechazado.id },
-          data: {
-            nombre: input.nombre,
-            tipo: input.tipo,
-            direccion: input.direccion,
-            descripcion: input.descripcion,
-            latitud: input.latitud,
-            longitud: input.longitud,
-            activo: false,
-            estadoSolicitud: 'PENDIENTE',
-            motivoRechazo: null,
-            catastrofeId: catastrofe.id,
-          },
-          select: { id: true, nombre: true, direccion: true, tipo: true },
-        })
-      }
-
-      return tx.puestoEmergencia.create({
-        data: {
-          nombre: input.nombre,
-          tipo: input.tipo,
-          direccion: input.direccion,
-          descripcion: input.descripcion,
-          latitud: input.latitud,
-          longitud: input.longitud,
-          activo: false,
-          estadoSolicitud: 'PENDIENTE',
-          catastrofeId: catastrofe.id,
-          adminId: userId,
-        },
-        select: { id: true, nombre: true, direccion: true, tipo: true },
-      })
-    })
-
-    return reply.status(201).send({ puesto })
-  })
 }
 
 const puestoSelect = {

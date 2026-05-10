@@ -89,6 +89,8 @@ export default function RoleSelection() {
     selectRole(role)
     if (ROLE_REQUIRES_AUTH[role] && !isAuthenticated) {
       navigate(`/auth/login?role=${role}`)
+    } else if (role === Role.PUESTO) {
+      navigate('/auth/registro-puesto')
     } else {
       navigate(ROLE_ROUTES[role])
     }

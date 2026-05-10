@@ -55,6 +55,12 @@ enum EstadoAsignacionIncidencia {
   CANCELADA
 }
 
+enum EstadoSolicitudPuesto {
+  PENDIENTE
+  ACEPTADA
+  RECHAZADA
+}
+
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
@@ -74,6 +80,8 @@ model Usuario {
   auditLogs          AuditLog[]
   incidenciasReportadas IncidenciaVia[] @relation("ReportanteIncidencia")
   comentariosIncidencias ComentarioIncidenciaVia[] @relation("AutorComentarioIncidencia")
+  solicitudesPuesto  SolicitudPuesto[] @relation("SolicitantePuesto")
+  solicitudesPuestoRevisadas SolicitudPuesto[] @relation("CoordinadorSolicitudPuesto")
 
   @@map("usuarios")
 }
@@ -172,6 +180,30 @@ model PuestoTrabajador {
 
   @@unique([puestoId, usuarioId])
   @@map("puesto_trabajadores")
+}
+
+model SolicitudPuesto {
+  id             String                @id @default(cuid())
+  usuarioId      String
+  coordinadorId  String?
+  nombre         String
+  descripcion    String?
+  direccion      String
+  latitud        Float
+  longitud       Float
+  tipo           String
+  estado         EstadoSolicitudPuesto @default(PENDIENTE)
+  motivoRechazo  String?
+  decidedAt      DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  usuario     Usuario  @relation("SolicitantePuesto", fields: [usuarioId], references: [id])
+  coordinador Usuario? @relation("CoordinadorSolicitudPuesto", fields: [coordinadorId], references: [id])
+
+  @@index([estado, createdAt])
+  @@index([usuarioId, estado])
+  @@map("solicitudes_puesto")
 }
 
 model Producto {

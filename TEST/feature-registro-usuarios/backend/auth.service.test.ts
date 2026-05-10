@@ -9,7 +9,7 @@ const { prismaMock } = vi.hoisted(() => {
     catastrofe: {
       findFirst: vi.fn(),
     },
-    puestoEmergencia: {
+    solicitudPuesto: {
       create: vi.fn(),
     },
     $transaction: vi.fn((cb) =>
@@ -20,8 +20,8 @@ const { prismaMock } = vi.hoisted(() => {
         catastrofe: {
           findFirst: prismaMock.catastrofe.findFirst,
         },
-        puestoEmergencia: {
-          create: prismaMock.puestoEmergencia.create,
+        solicitudPuesto: {
+          create: prismaMock.solicitudPuesto.create,
         },
       }),
     ),
@@ -124,11 +124,10 @@ describe('auth.service', () => {
       roles: ['PUESTO_EMERGENCIA'],
     })
     mp.catastrofe.findFirst.mockResolvedValue({ id: 'cat-1' })
-    mp.puestoEmergencia.create.mockResolvedValue({
-      id: 'puesto-1',
+    mp.solicitudPuesto.create.mockResolvedValue({
+      id: 'solicitud-1',
       nombre: 'CEIP La Paz',
-      direccion: 'Calle Mayor 12',
-      tipo: 'colegio',
+      estado: 'PENDIENTE',
     })
 
     const result = await registerUser({
@@ -147,12 +146,13 @@ describe('auth.service', () => {
       },
     })
 
-    expect(result.puesto).toMatchObject({ id: 'puesto-1' })
-    expect(mp.puestoEmergencia.create).toHaveBeenCalledWith(expect.objectContaining({
+    expect(result.puesto).toBeNull()
+    expect(result.solicitud).toMatchObject({ id: 'solicitud-1', estado: 'PENDIENTE' })
+    expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        activo: false,
-        adminId: 'user-1',
-        catastrofeId: 'cat-1',
+        usuarioId: 'user-1',
+        nombre: 'CEIP La Paz',
+        direccion: 'Calle Mayor 12',
       }),
     }))
   })
