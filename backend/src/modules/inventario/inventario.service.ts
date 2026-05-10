@@ -74,14 +74,22 @@ async function assertPuestoAccess(puestoId: string, userId: string) {
     select: {
       adminId: true,
       trabajadores: { where: { usuarioId: userId }, select: { id: true } },
+      asignacionesVoluntarios: {
+        where: {
+          estado: 'ACTIVA',
+          voluntario: { usuarioId: userId },
+        },
+        select: { id: true },
+      },
     },
   })
   if (!puesto) throw Object.assign(new Error('Puesto no encontrado'), { statusCode: 404 })
 
   const esAdmin = puesto.adminId === userId
   const esTrabajador = puesto.trabajadores.length > 0
+  const esVoluntarioActivo = puesto.asignacionesVoluntarios.length > 0
 
-  if (!esAdmin && !esTrabajador) {
+  if (!esAdmin && !esTrabajador && !esVoluntarioActivo) {
     throw Object.assign(new Error('No tienes permiso para gestionar este inventario'), { statusCode: 403 })
   }
 }

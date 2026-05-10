@@ -6,6 +6,7 @@ import { apiClient } from '@/lib/api/client'
 import type { PuestoEmergencia } from '@/types/catastrofe.types'
 import type { ItemInventario } from '@/types/inventario.types'
 import Map, { type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
+import QrScanner from '@/components/shared/QrScanner'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useConnectivity } from '@/hooks/useConnectivity'
 import { useSyncStore } from '@/store/sync.store'
@@ -76,6 +77,16 @@ type AsignacionPuestoActiva = {
   estado: 'ACTIVA' | 'FINALIZADA' | 'CANCELADA'
   startedAt?: string
   endedAt?: string | null
+  puesto: PuestoEmergencia
+}
+
+type SolicitudParticipacionPuesto = {
+  id: string
+  puestoId: string
+  usuarioId: string
+  estado: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'
+  motivoRechazo?: string | null
+  createdAt: string
   puesto: PuestoEmergencia
 }
 
@@ -394,6 +405,11 @@ export default function VoluntarioDashboard() {
   const [misDonaciones, setMisDonaciones] = useState<Donacion[]>([])
   const [misAsignacionesPuesto, setMisAsignacionesPuesto] = useState<AsignacionPuestoActiva[]>([])
   const [misAsignacionesIncidencia, setMisAsignacionesIncidencia] = useState<AsignacionIncidenciaActiva[]>([])
+  const [misSolicitudesParticipacion, setMisSolicitudesParticipacion] = useState<SolicitudParticipacionPuesto[]>([])
+  const [inventarioPuestoActivo, setInventarioPuestoActivo] = useState<ItemInventario[]>([])
+  const [inventarioPuestoActivoLoading, setInventarioPuestoActivoLoading] = useState(false)
+  const [showPuestoQr, setShowPuestoQr] = useState(false)
+  const [puestoQrResult, setPuestoQrResult] = useState('')
   const [loading, setLoading] = useState(true)
   const [seleccion, setSeleccion] = useState('')
   const [seleccionObjetosDonacion, setSeleccionObjetosDonacion] = useState<Record<string, SeleccionObjetoDonacion>>({})
@@ -467,6 +483,7 @@ export default function VoluntarioDashboard() {
           asignacionIncidenciaResult,
           misAsignacionesPuestoResult,
           misAsignacionesIncidenciaResult,
+          solicitudesParticipacionResult,
         ] = await Promise.all([
           apiClient.get('/api/puestos'),
           apiClient.get('/api/incidencias'),
@@ -476,6 +493,7 @@ export default function VoluntarioDashboard() {
           apiClient.get('/api/incidencias/mis-asignaciones/activa').catch(() => ({ data: { asignacion: null } })),
           apiClient.get('/api/puestos/mis-asignaciones').catch(() => ({ data: { asignaciones: [] } })),
           apiClient.get('/api/incidencias/mis-asignaciones').catch(() => ({ data: { asignaciones: [] } })),
+          apiClient.get('/api/puestos/mis-solicitudes-participacion').catch(() => ({ data: { solicitudes: [] } })),
         ])
 
         const apiNecesidades: NecesidadDonacionApi[] = necesidadesResult.data.necesidades ?? []
@@ -535,6 +553,7 @@ export default function VoluntarioDashboard() {
           setMisDonaciones(misDonacionesResult.data.donaciones ?? [])
           setMisAsignacionesPuesto(misAsignacionesPuestoResult.data.asignaciones ?? [])
           setMisAsignacionesIncidencia(misAsignacionesIncidenciaResult.data.asignaciones ?? [])
+          setMisSolicitudesParticipacion(solicitudesParticipacionResult.data.solicitudes ?? [])
         }
       } catch {
         if (!cancelled) {
@@ -647,6 +666,13 @@ export default function VoluntarioDashboard() {
   const donacionesHistorial = misDonaciones.filter((donacion) => !isDonacionActiva(donacion))
   const historialPuestos = misAsignacionesPuesto.filter((asignacion) => asignacion.estado !== 'ACTIVA')
   const historialIncidencias = misAsignacionesIncidencia.filter((asignacion) => asignacion.estado !== 'ACTIVA')
+  const solicitudesParticipacionPorPuesto = useMemo(() => {
+    const byPuesto = new globalThis.Map<string, SolicitudParticipacionPuesto>()
+    misSolicitudesParticipacion.forEach((solicitud) => {
+      if (!byPuesto.has(solicitud.puestoId)) byPuesto.set(solicitud.puestoId, solicitud)
+    })
+    return byPuesto
+  }, [misSolicitudesParticipacion])
   const incidenciasCortadas = useMemo(() => {
     const cortadas = incidencias.filter((incidencia) => incidencia.estado === 'CORTADA')
     return userPosition ? sortByDistance(cortadas, userPosition[0], userPosition[1]) : cortadas
@@ -716,35 +742,35 @@ export default function VoluntarioDashboard() {
     try {
       if (!isOnline && !puesto.id.startsWith('demo-')) {
         await enqueueSync({
-          entity: 'asignacion-puesto',
+          entity: 'solicitud-participacion-puesto',
           method: 'POST',
-          url: `/api/puestos/${puesto.id}/asignaciones`,
+          url: `/api/puestos/${puesto.id}/participaciones`,
           priority: 'high',
         })
       }
 
       if (!puesto.id.startsWith('demo-')) {
-        if (isOnline) await apiClient.post(`/api/puestos/${puesto.id}/asignaciones`)
+        if (isOnline) {
+          const { data } = await apiClient.post(`/api/puestos/${puesto.id}/participaciones`)
+          if (data.solicitud) {
+            setMisSolicitudesParticipacion((current) => [
+              data.solicitud,
+              ...current.filter((item) => item.id !== data.solicitud.id && item.puestoId !== data.solicitud.puestoId),
+            ])
+          }
+        }
       }
 
-      setOcupacionPorPuesto((current) => ({
-        ...current,
-        [puesto.id]: {
-          capacidad: ocupacion.capacidad,
-          trabajando: Math.min(ocupacion.trabajando + 1, ocupacion.capacidad),
-        },
-      }))
-      setActividadManualActiva({
-        tipo: 'puesto',
-        id: puesto.id,
-        nombre: puesto.nombre,
-      })
-      if (!isOnline) setMensajeDonacion('Sin conexion: asignacion al puesto guardada para sincronizar.')
+      setMensajeDonacion(
+        isOnline
+          ? `Solicitud enviada a ${puesto.nombre}. El responsable debe aceptarla para que puedas entrar al equipo.`
+          : 'Sin conexion: solicitud de participacion guardada para sincronizar.',
+      )
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
         : undefined
-      setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo reservar el hueco en el puesto.')
+      setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo enviar la solicitud al puesto.')
     }
   }
 
@@ -955,6 +981,33 @@ export default function VoluntarioDashboard() {
         necesidades: 0,
       }]
     : []
+
+  const cargarInventarioPuestoActivo = async (puestoId: string) => {
+    setInventarioPuestoActivoLoading(true)
+    try {
+      const { data } = await apiClient.get(`/api/inventario/puesto/${puestoId}`)
+      setInventarioPuestoActivo(data.inventario ?? [])
+    } catch {
+      setInventarioPuestoActivo([])
+    } finally {
+      setInventarioPuestoActivoLoading(false)
+    }
+  }
+
+  const actualizarCantidadPuestoActivo = async (itemId: string, delta: number) => {
+    const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
+    if (!puestoId) return
+    await apiClient.patch(`/api/inventario/items/${itemId}/cantidad`, { delta })
+    await cargarInventarioPuestoActivo(puestoId)
+  }
+
+  useEffect(() => {
+    if (actividadManualActiva?.tipo !== 'puesto' || actividadManualActiva.id.startsWith('demo-')) {
+      setInventarioPuestoActivo([])
+      return
+    }
+    void cargarInventarioPuestoActivo(actividadManualActiva.id)
+  }, [actividadManualActiva?.id, actividadManualActiva?.tipo])
 
   const toggleObjetoDonacion = (objeto: ObjetoDonable) => {
     setSeleccionObjetosDonacion((current) => {
@@ -1567,6 +1620,64 @@ export default function VoluntarioDashboard() {
                   <p className="text-sm font-semibold text-cyan-950">Codigo de entrega activo</p>
                   <p className="mt-1 text-sm text-cyan-900">Enseña este QR en el puesto para confirmar la recepcion.</p>
                 </div>
+              </div>
+            )}
+            {puestoActividad && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">Inventario del puesto</p>
+                    <p className="mt-1 text-xs text-slate-500">Puedes actualizar cantidades y escanear codigos QR mientras sigas aceptado en el equipo.</p>
+                  </div>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setShowPuestoQr(true)}>
+                    Escanear QR
+                  </Button>
+                </div>
+                {puestoQrResult && (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    QR leido: <span className="font-medium break-all">{puestoQrResult}</span>
+                  </div>
+                )}
+                {inventarioPuestoActivoLoading ? (
+                  <p className="mt-4 text-sm text-slate-500">Cargando inventario...</p>
+                ) : inventarioPuestoActivo.length === 0 ? (
+                  <p className="mt-4 text-sm text-slate-500">No hay productos registrados todavia.</p>
+                ) : (
+                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                    {inventarioPuestoActivo.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{item.producto.nombre}</p>
+                            <p className="mt-1 text-xs text-slate-500">{item.producto.categoria} · {item.tipo}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-slate-950">
+                            {item.cantidad} {item.producto.unidad}
+                          </p>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={item.cantidad <= 0}
+                            onClick={() => void actualizarCantidadPuestoActivo(item.id, -1)}
+                          >
+                            -1
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void actualizarCantidadPuestoActivo(item.id, 1)}
+                          >
+                            +1
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {rutaError && rutaErrorDonacionId === actividadRutaId && (
@@ -2524,6 +2635,8 @@ export default function VoluntarioDashboard() {
                       const porcentaje = Math.min((ocupacion.trabajando / ocupacion.capacidad) * 100, 100)
                       const selected = seleccion === puesto.id
                       const puestoActivo = actividadManualActiva?.tipo === 'puesto' && actividadManualActiva.id === puesto.id
+                      const solicitudParticipacion = solicitudesParticipacionPorPuesto.get(puesto.id)
+                      const solicitudPendiente = solicitudParticipacion?.estado === 'PENDIENTE'
 
                       return (
                         <div key={puesto.id} className={cardClass(selected)}>
@@ -2559,7 +2672,11 @@ export default function VoluntarioDashboard() {
                           {selected && (
                             <div className="border-t border-slate-200 bg-slate-50 p-4">
                               <p className={`text-xs ${lleno ? 'text-red-600' : 'text-slate-600'}`}>
-                                {lleno
+                                {solicitudPendiente
+                                  ? 'Tu solicitud esta pendiente de revision por el responsable del puesto.'
+                                  : solicitudParticipacion?.estado === 'RECHAZADA'
+                                    ? `Solicitud rechazada${solicitudParticipacion.motivoRechazo ? `: ${solicitudParticipacion.motivoRechazo}` : '.'}`
+                                    : lleno
                                   ? 'Este puesto esta lleno ahora mismo.'
                                   : `Quedan ${huecosLibres} hueco${huecosLibres === 1 ? '' : 's'} disponible${huecosLibres === 1 ? '' : 's'}.`}
                               </p>
@@ -2640,10 +2757,10 @@ export default function VoluntarioDashboard() {
                                 <Button
                                   fullWidth
                                   className="mt-3"
-                                  disabled={Boolean(actividadActiva) || lleno}
+                                  disabled={Boolean(actividadActiva) || lleno || solicitudPendiente}
                                   onClick={() => void iniciarAyudaPuesto(puesto)}
                                 >
-                                  {lleno ? 'Puesto lleno' : 'Entrar a ayudar en este puesto'}
+                                  {solicitudPendiente ? 'Solicitud pendiente' : lleno ? 'Puesto lleno' : 'Participar'}
                                 </Button>
                               )}
                             </div>
@@ -2778,6 +2895,15 @@ export default function VoluntarioDashboard() {
             </div>
           </form>
         </div>
+      )}
+      {showPuestoQr && (
+        <QrScanner
+          onResult={(text) => {
+            setPuestoQrResult(text)
+            setShowPuestoQr(false)
+          }}
+          onClose={() => setShowPuestoQr(false)}
+        />
       )}
     </div>
   )
