@@ -240,6 +240,14 @@ function ReportPointSelector({
 
 const VALENCIA: [number, number] = [39.4250, -0.4000]
 
+function isValidLatLng(position: [number, number] | null | undefined): position is [number, number] {
+  return Array.isArray(position) && position.length === 2 && Number.isFinite(position[0]) && Number.isFinite(position[1])
+}
+
+function hasValidMarkerPosition(marker: { latitud: number; longitud: number }) {
+  return Number.isFinite(marker.latitud) && Number.isFinite(marker.longitud)
+}
+
 export default function Map({
   center = VALENCIA,
   zoom = 13,
@@ -259,12 +267,18 @@ export default function Map({
   markerVariant = 'urgency',
   className = 'h-64',
 }: MapProps) {
-  const selectedPuesto = puestos.find((p) => p.id === selectedPuestoId)
+  const safeCenter = isValidLatLng(center) ? center : VALENCIA
+  const safeUserPosition = isValidLatLng(userPosition) ? userPosition : null
+  const safeReportPoint = isValidLatLng(reportPoint) ? reportPoint : null
+  const safePuestos = puestos.filter(hasValidMarkerPosition)
+  const safeIncidencias = incidencias.filter(hasValidMarkerPosition)
+  const safeRoute = route?.filter(isValidLatLng) ?? null
+  const selectedPuesto = safePuestos.find((p) => p.id === selectedPuestoId)
 
   return (
     <div className={className}>
       <MapContainer
-        center={center}
+        center={safeCenter}
         zoom={zoom}
         style={{ height: '100%', width: '100%' }}
       >
@@ -275,37 +289,37 @@ export default function Map({
         />
 
         {/* Ruta — polyline azul */}
-        {route && route.length > 1 && (
+        {safeRoute && safeRoute.length > 1 && (
           <>
             <Polyline
-              positions={route}
+              positions={safeRoute}
               pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.85, lineCap: 'round', lineJoin: 'round' }}
             />
-            <FitRoute points={route} />
+            <FitRoute points={safeRoute} />
           </>
         )}
 
         {/* Fly al puesto seleccionado (solo cuando no hay ruta activa) */}
-        {!route && selectedPuesto && (
+        {!safeRoute && selectedPuesto && (
           <FlyTo position={[selectedPuesto.latitud, selectedPuesto.longitud]} zoom={16} />
         )}
 
         {/* Marcador de usuario */}
-        {userPosition && (
-          <Marker position={userPosition} icon={userIcon()}>
+        {safeUserPosition && (
+          <Marker position={safeUserPosition} icon={userIcon()}>
             <Popup>
               <span style={{ fontWeight: 600 }}>Tu ubicación</span>
             </Popup>
           </Marker>
         )}
 
-        {userPosition && focusUserPositionKey > 0 && (
-          <FocusUserPosition position={userPosition} triggerKey={focusUserPositionKey} />
+        {safeUserPosition && focusUserPositionKey > 0 && (
+          <FocusUserPosition position={safeUserPosition} triggerKey={focusUserPositionKey} />
         )}
 
         {/* Punto de incidencia seleccionado */}
-        {reportPoint && (
-          <Marker position={reportPoint} icon={reportIcon()}>
+        {safeReportPoint && (
+          <Marker position={safeReportPoint} icon={reportIcon()}>
             <Popup>
               <div style={{ minWidth: 190, maxWidth: 230 }}>
                 <p style={{ fontWeight: 700, marginBottom: 4 }}>Nuevo reporte</p>
@@ -316,7 +330,7 @@ export default function Map({
         )}
 
         {/* Incidencias reportadas */}
-        {incidencias.map((inc) => (
+        {safeIncidencias.map((inc) => (
           <Marker
             key={inc.id}
             position={[inc.latitud, inc.longitud]}
@@ -425,7 +439,7 @@ export default function Map({
         ))}
 
         {/* Marcadores de puestos */}
-        {puestos.map((p) => (
+        {safePuestos.map((p) => (
           <Marker
             key={p.id}
             position={[p.latitud, p.longitud]}
