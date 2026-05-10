@@ -28,6 +28,8 @@ type OcupacionPuesto = {
 
 type Incidencia = {
   id: string
+  titulo?: string | null
+  categoria?: string | null
   latitud: number
   longitud: number
   estado: 'CORTADA' | 'TRANSITABLE'
@@ -98,6 +100,37 @@ type AsignacionIncidenciaActiva = {
   endedAt?: string | null
   incidencia: Incidencia
 }
+
+type CategoriaIncidenciaConfig = {
+  label: string
+  equipment: string[]
+  keywords: string[]
+}
+
+const CATEGORIAS_INCIDENCIA: Record<string, CategoriaIncidenciaConfig> = {
+  inundacion: {
+    label: 'Inundacion',
+    equipment: ['Cubo', 'Guantes impermeables', 'Botas de agua', 'Chaleco reflectante'],
+    keywords: ['agua', 'inundacion', 'inundado', 'lluvia', 'barro', 'balsa'],
+  },
+  obstaculos_via: {
+    label: 'Obstaculos en via',
+    equipment: ['Guantes', 'Palanca o herramienta de carga', 'Carretilla', 'Chaleco reflectante'],
+    keywords: ['obstaculo', 'escombro', 'arbol', 'rama', 'coche', 'bloqueo', 'cortada', 'calle'],
+  },
+  limpieza: {
+    label: 'Limpieza y retirada',
+    equipment: ['Guantes', 'Mascarilla', 'Escoba o pala', 'Bolsas resistentes'],
+    keywords: ['limpieza', 'basura', 'lodo', 'residuo', 'retirada'],
+  },
+  asistencia: {
+    label: 'Asistencia a personas',
+    equipment: ['Botiquin basico', 'Agua', 'Manta termica', 'Telefono con bateria'],
+    keywords: ['persona', 'herido', 'ayuda', 'asistencia', 'vecino', 'mayor'],
+  },
+}
+
+const DEFAULT_CATEGORIA_INCIDENCIA = 'obstaculos_via'
 
 const PUESTOS_FALLBACK: PuestoEmergencia[] = [
   {
@@ -375,6 +408,42 @@ function formatDateTime(value?: string | null) {
   return new Date(value).toLocaleString()
 }
 
+function normalizeIncidenciaText(value?: string | null) {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+}
+
+function getIncidenciaCategoriaKey(incidencia: Incidencia) {
+  const explicitCategory = normalizeIncidenciaText(incidencia.categoria)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+  if (explicitCategory && CATEGORIAS_INCIDENCIA[explicitCategory]) return explicitCategory
+
+  const text = normalizeIncidenciaText(`${incidencia.titulo ?? ''} ${incidencia.descripcion ?? ''}`)
+  const match = Object.entries(CATEGORIAS_INCIDENCIA).find(([, config]) => (
+    config.keywords.some((keyword) => text.includes(normalizeIncidenciaText(keyword)))
+  ))
+
+  return match?.[0] ?? DEFAULT_CATEGORIA_INCIDENCIA
+}
+
+function getIncidenciaCategoria(incidencia: Incidencia) {
+  return CATEGORIAS_INCIDENCIA[getIncidenciaCategoriaKey(incidencia)]
+}
+
+function getIncidenciaTitulo(incidencia: Incidencia) {
+  if (incidencia.titulo?.trim()) return incidencia.titulo.trim()
+  const categoria = getIncidenciaCategoria(incidencia).label
+  return `${categoria} #${incidencia.id.slice(-4).toUpperCase()}`
+}
+
+function getIncidenciaResumen(incidencia: Incidencia) {
+  return incidencia.descripcion?.trim() || 'Sin descripcion disponible.'
+}
+
 function productoDonableKey(producto: ItemInventario['producto']) {
   return `${producto.id}:${producto.nombre}:${producto.unidad}`
 }
@@ -451,6 +520,9 @@ export default function VoluntarioDashboard() {
   const [comentarioIncidenciaFinal, setComentarioIncidenciaFinal] = useState('')
   const [finalizacionIncidenciaError, setFinalizacionIncidenciaError] = useState('')
   const [finalizacionIncidenciaLoading, setFinalizacionIncidenciaLoading] = useState(false)
+  const [incidenciaConfirmacion, setIncidenciaConfirmacion] = useState<Incidencia | null>(null)
+  const [recomendacionesLeidas, setRecomendacionesLeidas] = useState(false)
+  const [ayudaIncidenciaLoadingId, setAyudaIncidenciaLoadingId] = useState('')
   const { position, request: requestGeo } = useGeolocation()
   const { mode, isOnline } = useConnectivity()
   const enqueueSync = useSyncStore((store) => store.enqueue)
@@ -529,7 +601,7 @@ export default function VoluntarioDashboard() {
             setActividadManualActiva({
               tipo: 'incidencia',
               id: asignacionIncidenciaActiva.incidenciaId,
-              nombre: asignacionIncidenciaActiva.incidencia.descripcion || 'Incidencia sin descripcion',
+              nombre: getIncidenciaTitulo(asignacionIncidenciaActiva.incidencia),
             })
           }
           setInventarioPorPuesto(Object.fromEntries(inventarios))
@@ -734,6 +806,19 @@ export default function VoluntarioDashboard() {
     setFinalizacionIncidenciaError('')
   }
 
+  const abrirConfirmacionAyudaIncidencia = (incidencia: Incidencia) => {
+    if (actividadActiva) return
+    setIncidenciaConfirmacion(incidencia)
+    setRecomendacionesLeidas(false)
+    setErrorDonacion('')
+  }
+
+  const cerrarConfirmacionAyudaIncidencia = () => {
+    if (ayudaIncidenciaLoadingId) return
+    setIncidenciaConfirmacion(null)
+    setRecomendacionesLeidas(false)
+  }
+
   const iniciarAyudaPuesto = async (puesto: PuestoEmergencia) => {
     const ocupacion = ocupacionPorPuesto[puesto.id] ?? ocupacionInicialPuesto(puesto, 0)
     if (ocupacion.trabajando >= ocupacion.capacidad || actividadActiva) return
@@ -897,6 +982,7 @@ export default function VoluntarioDashboard() {
     if (actividadActiva) return
 
     setErrorDonacion('')
+    setAyudaIncidenciaLoadingId(incidencia.id)
     try {
       if (!isOnline) {
         await enqueueSync({
@@ -912,14 +998,18 @@ export default function VoluntarioDashboard() {
       setActividadManualActiva({
         tipo: 'incidencia',
         id: incidencia.id,
-        nombre: incidencia.descripcion || 'Incidencia sin descripcion',
+        nombre: getIncidenciaTitulo(incidencia),
       })
+      setIncidenciaConfirmacion(null)
+      setRecomendacionesLeidas(false)
       if (!isOnline) setMensajeDonacion('Sin conexion: asignacion a incidencia guardada para sincronizar.')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
         : undefined
       setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo reservar la ayuda en la incidencia.')
+    } finally {
+      setAyudaIncidenciaLoadingId('')
     }
   }
 
@@ -2452,6 +2542,9 @@ export default function VoluntarioDashboard() {
                     {incidenciasCortadas.map((incidencia) => {
                       const selected = seleccion === incidencia.id
                       const incidenciaActiva = actividadManualActiva?.tipo === 'incidencia' && actividadManualActiva.id === incidencia.id
+                      const categoria = getIncidenciaCategoria(incidencia)
+                      const titulo = getIncidenciaTitulo(incidencia)
+                      const resumen = getIncidenciaResumen(incidencia)
 
                       return (
                         <div key={incidencia.id} className={cardClass(selected)}>
@@ -2462,10 +2555,9 @@ export default function VoluntarioDashboard() {
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <p className="font-semibold text-slate-900">{incidencia.descripcion || 'Incidencia sin descripcion'}</p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {incidencia.latitud.toFixed(5)}, {incidencia.longitud.toFixed(5)}
-                                </p>
+                                <p className="font-semibold text-slate-900">{titulo}</p>
+                                <p className="mt-1 line-clamp-2 text-sm text-slate-600">{resumen}</p>
+                                <p className="mt-1 text-xs font-medium text-amber-700">{categoria.label}</p>
                                 {incidencia.distanciaKm !== undefined && (
                                   <p className="mt-1 text-xs font-medium text-cyan-700">
                                     {incidencia.distanciaKm.toFixed(1)} km de tu ubicacion
@@ -2489,7 +2581,29 @@ export default function VoluntarioDashboard() {
                           {selected && (
                             <div className="border-t border-slate-200 bg-slate-50 p-4">
                               <p className="text-sm font-semibold text-slate-900">Incidencia seleccionada</p>
-                              <p className="mt-1 text-sm text-slate-600">{incidencia.descripcion || 'Sin descripcion'}</p>
+                              <p className="mt-1 text-sm text-slate-600">{resumen}</p>
+                              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                                <div className="rounded-md bg-white px-3 py-2 ring-1 ring-slate-200">
+                                  <p className="font-medium text-slate-500">Categoria</p>
+                                  <p className="mt-1 font-semibold text-slate-800">{categoria.label}</p>
+                                </div>
+                                <div className="rounded-md bg-white px-3 py-2 ring-1 ring-slate-200">
+                                  <p className="font-medium text-slate-500">Ubicacion</p>
+                                  <p className="mt-1 font-semibold text-slate-800">
+                                    {incidencia.latitud.toFixed(5)}, {incidencia.longitud.toFixed(5)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="mt-3 rounded-lg border border-amber-200 bg-white px-3 py-3">
+                                <p className="text-xs font-semibold uppercase text-amber-700">Equipamiento recomendado</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {categoria.equipment.map((item) => (
+                                    <span key={item} className="rounded-md bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-100">
+                                      {item}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
                               <button
                                 type="button"
                                 onClick={() => handleComoLlegarIncidencia(incidencia)}
@@ -2566,9 +2680,9 @@ export default function VoluntarioDashboard() {
                                   fullWidth
                                   className="mt-3"
                                   disabled={Boolean(actividadActiva)}
-                                  onClick={() => void iniciarAyudaIncidencia(incidencia)}
+                                  onClick={() => abrirConfirmacionAyudaIncidencia(incidencia)}
                                 >
-                                  Apuntarme para ayudar
+                                  Ayudar
                                 </Button>
                               )}
                             </div>
@@ -2803,6 +2917,91 @@ export default function VoluntarioDashboard() {
         )}
       </main>
       )}
+      {incidenciaConfirmacion && (() => {
+        const categoria = getIncidenciaCategoria(incidenciaConfirmacion)
+        const titulo = getIncidenciaTitulo(incidenciaConfirmacion)
+        const resumen = getIncidenciaResumen(incidenciaConfirmacion)
+        const loading = ayudaIncidenciaLoadingId === incidenciaConfirmacion.id
+
+        return (
+          <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+            <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-amber-700">Recomendaciones de seguridad</p>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-950">{titulo}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{categoria.label}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={cerrarConfirmacionAyudaIncidencia}
+                  disabled={loading}
+                  className="text-sm font-medium text-slate-500 hover:text-slate-950 disabled:opacity-60"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm text-slate-700">{resumen}</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Ubicacion: {incidenciaConfirmacion.latitud.toFixed(5)}, {incidenciaConfirmacion.longitud.toFixed(5)}
+                </p>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm text-amber-950">
+                  Para poder realizar esta actividad de ayuda, se recomienda disponer del siguiente equipamiento por seguridad y eficiencia.
+                </p>
+                <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {categoria.equipment.map((item) => (
+                    <li key={item} className="rounded-md bg-white px-3 py-2 text-sm font-medium text-amber-950 ring-1 ring-amber-100">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <label className="mt-4 flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={recomendacionesLeidas}
+                  onChange={(event) => setRecomendacionesLeidas(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-cyan-700 focus:ring-cyan-600"
+                />
+                <span>He leido y entiendo las recomendaciones de seguridad y equipamiento</span>
+              </label>
+
+              {errorDonacion && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {errorDonacion}
+                </div>
+              )}
+
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  onClick={cerrarConfirmacionAyudaIncidencia}
+                  disabled={loading}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  fullWidth
+                  loading={loading}
+                  disabled={!recomendacionesLeidas || loading}
+                  onClick={() => void iniciarAyudaIncidencia(incidenciaConfirmacion)}
+                >
+                  Confirmar ayuda
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       {incidenciaFinalizacion && (
         <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
           <form

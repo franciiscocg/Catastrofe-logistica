@@ -1,9 +1,17 @@
 import { z } from 'zod'
 
 export const estadoViaSchema = z.enum(['CORTADA', 'TRANSITABLE'])
+export const categoriaIncidenciaSchema = z.enum([
+  'inundacion',
+  'obstaculos_via',
+  'limpieza',
+  'asistencia',
+])
 
 export const createIncidenciaSchema = z.object({
   catastrofeId: z.string().min(1).optional(),
+  titulo: z.string().trim().min(3).max(120).optional(),
+  categoria: categoriaIncidenciaSchema.optional(),
   latitud: z.number().min(-90).max(90),
   longitud: z.number().min(-180).max(180),
   estado: estadoViaSchema,

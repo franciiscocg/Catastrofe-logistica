@@ -24,6 +24,8 @@ export interface PuestoMarker {
 
 export interface IncidenciaMarker {
   id: string
+  titulo?: string | null
+  categoria?: string | null
   latitud: number
   longitud: number
   estado: 'CORTADA' | 'TRANSITABLE'

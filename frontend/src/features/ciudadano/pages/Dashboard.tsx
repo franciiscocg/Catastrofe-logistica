@@ -23,6 +23,35 @@ import { fetchRutaEvitandoIncidencias as fetchRutaSegura } from '@/utils/routing
 type ItemInventario = { nombre: string; categoria: string; cantidad: number; unidad: string }
 // Re-export alias para compatibilidad con el resto del fichero
 
+type CategoriaIncidenciaKey = 'inundacion' | 'obstaculos_via' | 'limpieza' | 'asistencia'
+
+const CATEGORIAS_INCIDENCIA: Array<{
+  value: CategoriaIncidenciaKey
+  label: string
+  equipment: string[]
+}> = [
+  {
+    value: 'inundacion',
+    label: 'Inundacion',
+    equipment: ['Cubo', 'Guantes impermeables', 'Botas de agua', 'Chaleco reflectante'],
+  },
+  {
+    value: 'obstaculos_via',
+    label: 'Obstaculos en via',
+    equipment: ['Guantes', 'Palanca o herramienta de carga', 'Carretilla', 'Chaleco reflectante'],
+  },
+  {
+    value: 'limpieza',
+    label: 'Limpieza y retirada',
+    equipment: ['Guantes', 'Mascarilla', 'Escoba o pala', 'Bolsas resistentes'],
+  },
+  {
+    value: 'asistencia',
+    label: 'Asistencia a personas',
+    equipment: ['Botiquin basico', 'Agua', 'Manta termica', 'Telefono con bateria'],
+  },
+]
+
 const INVENTARIO: Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }> = {
   '1': {
     disponible: [
@@ -827,6 +856,8 @@ export default function CiudadanoDashboard() {
   } | null>(null)
   const [routeLoading, setRouteLoading] = useState(false)
   const [routeError, setRouteError]   = useState<string | null>(null)
+  const [reportTitulo, setReportTitulo] = useState('')
+  const [reportCategoria, setReportCategoria] = useState<CategoriaIncidenciaKey>('obstaculos_via')
   const [reportDescripcion, setReportDescripcion] = useState('')
   const [reportPosition, setReportPosition] = useState<[number, number] | null>(null)
   const [isPickingLocation, setIsPickingLocation] = useState(false)
@@ -865,6 +896,9 @@ export default function CiudadanoDashboard() {
       ? nextPosition
       : null
   }, [position, userPosition])
+  const selectedReportCategory = useMemo(() => (
+    CATEGORIAS_INCIDENCIA.find((categoria) => categoria.value === reportCategoria) ?? CATEGORIAS_INCIDENCIA[1]
+  ), [reportCategoria])
 
   const destinoPuesto = useMemo<Omit<PuestoMarker, 'distanciaKm'> | null>(() => {
     const id = searchParams.get('destinoId')
@@ -1067,8 +1101,16 @@ export default function CiudadanoDashboard() {
       return
     }
 
+    const titulo = reportTitulo.trim()
+    if (titulo.length < 3) {
+      setReportError('Indica un titulo breve para la incidencia.')
+      return
+    }
+
     const body = {
       catastrofeId: CATASTROFE_ID || undefined,
+      titulo,
+      categoria: reportCategoria,
       latitud: reportPosition[0],
       longitud: reportPosition[1],
       estado: 'CORTADA' as const,
@@ -1087,6 +1129,8 @@ export default function CiudadanoDashboard() {
 
       const pendingIncidencia: IncidenciaMarker = {
         id: `offline-${crypto.randomUUID()}`,
+        titulo: body.titulo,
+        categoria: body.categoria,
         latitud: body.latitud,
         longitud: body.longitud,
         estado: body.estado,
@@ -1098,6 +1142,8 @@ export default function CiudadanoDashboard() {
       setIncidencias((prev) => [pendingIncidencia, ...prev])
       setReportSuccess('Reporte guardado offline. Se enviara cuando vuelva la conexion.')
       setPendingDuplicate(null)
+      setReportTitulo('')
+      setReportCategoria('obstaculos_via')
       setReportDescripcion('')
       setReportPosition(null)
       setIsPickingLocation(false)
@@ -1121,6 +1167,8 @@ export default function CiudadanoDashboard() {
       }
       setReportSuccess('Incidencia enviada correctamente.')
       setPendingDuplicate(null)
+      setReportTitulo('')
+      setReportCategoria('obstaculos_via')
       setReportDescripcion('')
       setReportPosition(null)
       setIsPickingLocation(false)
@@ -1161,6 +1209,8 @@ export default function CiudadanoDashboard() {
   const abrirReporte = (position: [number, number] | null = null) => {
     setPanelReturnVista(getCurrentPanelReturnVista())
     setVista('reportar')
+    setReportTitulo('')
+    setReportCategoria('obstaculos_via')
     setReportDescripcion('')
     setReportError(null)
     setReportSuccess(null)
@@ -1880,11 +1930,59 @@ export default function CiudadanoDashboard() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Información del problema (opcional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Titulo de la incidencia</label>
+              <input
+                type="text"
+                value={reportTitulo}
+                onChange={(e) => {
+                  setReportTitulo(e.target.value)
+                  setReportError(null)
+                }}
+                maxLength={120}
+                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
+                aria-label="Titulo de la incidencia"
+                placeholder="Ejemplo: Agua acumulada bloqueando la calle"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+              <select
+                value={reportCategoria}
+                onChange={(e) => {
+                  setReportCategoria(e.target.value as CategoriaIncidenciaKey)
+                  setReportError(null)
+                }}
+                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
+              >
+                {CATEGORIAS_INCIDENCIA.map((categoria) => (
+                  <option key={categoria.value} value={categoria.value}>
+                    {categoria.label}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs font-semibold uppercase text-amber-800">Equipamiento recomendado</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedReportCategory.equipment.map((item) => (
+                    <span key={item} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-100">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripcion breve</label>
               <textarea
                 rows={3}
                 value={reportDescripcion}
-                onChange={(e) => setReportDescripcion(e.target.value)}
+                onChange={(e) => {
+                  setReportDescripcion(e.target.value)
+                  setReportError(null)
+                }}
+                maxLength={500}
                 className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
                 placeholder="Ejemplo: Hay agua acumulada y coches bloqueando el paso"
               />
@@ -1938,6 +2036,8 @@ export default function CiudadanoDashboard() {
                 setReportError(null)
                 setReportSuccess(null)
                 setPendingDuplicate(null)
+                setReportTitulo('')
+                setReportCategoria('obstaculos_via')
                 setReportPosition(null)
               }}
               className="mx-auto flex min-w-40 items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"

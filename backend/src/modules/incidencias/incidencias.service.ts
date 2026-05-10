@@ -88,6 +88,8 @@ async function assertNotDuplicateIncidencia(input: CreateIncidenciaInput, catast
     },
     select: {
       id: true,
+      titulo: true,
+      categoria: true,
       latitud: true,
       longitud: true,
       estado: true,
@@ -162,6 +164,8 @@ export async function createIncidencia(input: CreateIncidenciaInput, reportanteI
     data: {
       catastrofeId,
       reportanteId,
+      titulo: input.titulo,
+      categoria: input.categoria,
       latitud: input.latitud,
       longitud: input.longitud,
       estado: 'CORTADA',
