@@ -52,15 +52,17 @@ export default function AppShell() {
           )}
         </div>
 
-        <button
-          onClick={handleChangeRole}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-full transition-all"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-          </svg>
-          Cambiar rol
-        </button>
+        {selectedRole !== 'coordinador' && (
+          <button
+            onClick={handleChangeRole}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-full transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+            </svg>
+            Cambiar rol
+          </button>
+        )}
 
       </header>
 

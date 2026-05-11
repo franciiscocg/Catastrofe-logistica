@@ -8,6 +8,7 @@ export interface RoleCardConfig {
   icon: string
   color: 'blue' | 'green' | 'amber'
   requiresAuth: boolean
+  badge?: { text: string; className: string }
 }
 
 const colorMap = {
@@ -79,9 +80,9 @@ export default function RoleCard({ config, onSelect, onInfo }: RoleCardProps) {
         <div className="flex-1 min-w-0">
           <p className={clsx('text-xl font-bold leading-tight', c.title)}>{config.title}</p>
           <p className="text-gray-600 text-base mt-1 leading-snug">{config.subtitle}</p>
-          {!config.requiresAuth && (
-            <span className="inline-block mt-2 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-              Sin registro necesario
+          {config.badge && (
+            <span className={clsx('inline-block mt-2 text-xs font-semibold px-2.5 py-1 rounded-full', config.badge.className)}>
+              {config.badge.text}
             </span>
           )}
         </div>

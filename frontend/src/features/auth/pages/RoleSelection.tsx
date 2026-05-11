@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
-import { Role, ROLE_ROUTES, ROLE_REQUIRES_AUTH } from '@/types/auth.types'
+import { Role, ROLE_ROUTES } from '@/types/auth.types'
 import RoleCard, { type RoleCardConfig } from '../components/RoleCard'
 import RoleInfoModal, { type RoleInfoData } from '../components/RoleInfoModal'
 
@@ -9,7 +9,7 @@ interface RoleConfig extends RoleCardConfig {
   info: RoleInfoData
 }
 
-const ROLES: RoleConfig[] = [
+const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
   {
     role: Role.CIUDADANO,
     title: 'Ciudadano',
@@ -28,8 +28,7 @@ const ROLES: RoleConfig[] = [
         'Reportar si una calle esta cortada o accesible',
         'Calcular rutas seguras para desplazarte',
       ],
-      whenToUse:
-        'Usalo si eres vecino de la zona afectada y necesitas encontrar ayuda o informarte sobre la situacion. Necesitaras crear una cuenta para acceder.',
+      whenToUse: 'Usalo si eres vecino de la zona afectada y necesitas encontrar ayuda o informarte sobre la situacion.',
     },
   },
   {
@@ -50,8 +49,7 @@ const ROLES: RoleConfig[] = [
         'Verificar entregas con codigo QR',
         'Apuntarte a tareas de limpieza y apoyo fisico',
       ],
-      whenToUse:
-        'Usalo si tienes tiempo libre y ganas de ayudar, con o sin vehiculo. Necesitaras crear una cuenta para coordinar las tareas contigo.',
+      whenToUse: 'Usalo si tienes tiempo libre y ganas de ayudar, con o sin vehiculo.',
     },
   },
   {
@@ -72,28 +70,45 @@ const ROLES: RoleConfig[] = [
         'Verificar la llegada de donaciones mediante codigo QR',
         'Coordinar a los voluntarios que trabajan en tu puesto',
       ],
-      whenToUse:
-        'Usalo si estas a cargo de un punto de reparto de ayuda y necesitas gestionar el stock y coordinar voluntarios. Requiere registro previo.',
+      whenToUse: 'Requiere solicitud previa aprobada por el coordinador.',
     },
   },
 ]
 
 export default function RoleSelection() {
   const navigate = useNavigate()
-  const { isAuthenticated, user, selectRole, logout } = useAuthStore()
+  const { isAuthenticated, user, puestoId, selectRole, logout } = useAuthStore()
   const [infoRole, setInfoRole] = useState<Role | null>(null)
 
-  const activeInfo = infoRole ? (ROLES.find((r) => r.role === infoRole)?.info ?? null) : null
+  // puestoId solo existe cuando el coordinador ha aprobado la solicitud y se ha creado el puesto
+  const hasPuesto = Boolean(puestoId)
+
+  const roles: RoleConfig[] = ROLES_BASE.map((r) => {
+    if (r.role === Role.PUESTO) {
+      return {
+        ...r,
+        badge: hasPuesto
+          ? { text: 'Acceso aprobado', className: 'bg-green-100 text-green-700' }
+          : { text: 'Requiere aprobacion del coordinador', className: 'bg-amber-100 text-amber-700' },
+      }
+    }
+    return r
+  })
+
+  const activeInfo = infoRole ? (roles.find((r) => r.role === infoRole)?.info ?? null) : null
 
   const handleSelect = (role: Role) => {
-    selectRole(role)
-    if (ROLE_REQUIRES_AUTH[role] && !isAuthenticated) {
-      navigate(`/auth/login?role=${role}`)
-    } else if (role === Role.PUESTO) {
-      navigate('/auth/registro-puesto')
-    } else {
-      navigate(ROLE_ROUTES[role])
+    if (role === Role.PUESTO) {
+      if (hasPuesto) {
+        selectRole(role)
+        navigate(ROLE_ROUTES[role])
+      } else {
+        navigate('/auth/registro-puesto')
+      }
+      return
     }
+    selectRole(role)
+    navigate(ROLE_ROUTES[role])
   }
 
   return (
@@ -122,7 +137,7 @@ export default function RoleSelection() {
           </div>
 
           <div className="space-y-4" role="list" aria-label="Roles disponibles">
-            {ROLES.map((config) => (
+            {roles.map((config) => (
               <div key={config.role} role="listitem">
                 <RoleCard
                   config={config}

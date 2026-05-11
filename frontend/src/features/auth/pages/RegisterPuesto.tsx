@@ -163,15 +163,17 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
   const [submitError, setSubmitError] = useState('')
   const [loading, setLoading] = useState(false)
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
+  const [locationRequested, setLocationRequested] = useState(false)
 
   useEffect(() => {
-    if (!position || form.latitud === position.lat.toFixed(6)) return
+    if (!locationRequested || !position) return
     setForm((prev) => ({
       ...prev,
       latitud: position.lat.toFixed(6),
       longitud: position.lng.toFixed(6),
     }))
-  }, [form.latitud, position])
+    setLocationRequested(false)
+  }, [locationRequested, position])
 
   const set = (field: keyof PuestoForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -180,13 +182,15 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
     }
 
   const handleUseMyLocation = () => {
-    requestGeo()
     if (position) {
       setForm((prev) => ({
         ...prev,
         latitud: position.lat.toFixed(6),
         longitud: position.lng.toFixed(6),
       }))
+    } else {
+      setLocationRequested(true)
+      requestGeo()
     }
   }
 
