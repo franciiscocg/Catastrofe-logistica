@@ -1,0 +1,8 @@
+{
+  "name": "tests-coordinar-puesto-19-estados-puesto",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.46.0",
+    "vitest": "^2.0.5"
+  }
+}
