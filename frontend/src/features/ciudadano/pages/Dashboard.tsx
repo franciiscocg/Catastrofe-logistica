@@ -1434,12 +1434,6 @@ export default function CiudadanoDashboard() {
   return (
     <div className="flex flex-col h-full">
 
-      {/* Banner catástrofe */}
-      <div className="bg-red-600 text-white px-4 py-2 flex-shrink-0">
-        <p className="text-xs font-medium uppercase tracking-wide">Catástrofe activa</p>
-        <p className="font-semibold text-sm">DANA Valencia — Fase: Limpieza</p>
-      </div>
-
       {/* Banner de ruta activa */}
       {vista === 'ruta' && routeInfo && (
         <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
@@ -1515,14 +1509,6 @@ export default function CiudadanoDashboard() {
           Volver
         </button>
 
-        {vista === 'reportar' && (
-          <div className="absolute top-3 left-24 right-20 z-[1000] bg-red-600/90 text-white rounded-xl px-3 py-2 text-xs shadow-lg">
-            {isPickingLocation
-              ? 'Toca el mapa para marcar la calle de la incidencia.'
-              : 'Punto marcado. Puedes cambiarlo pulsando "Cambiar punto".'}
-          </div>
-        )}
-
         {routeLoading && (
           <div className="absolute inset-0 z-[1100] flex items-center justify-center bg-slate-900/20 backdrop-blur-[1px]">
             <div className="bg-white rounded-xl shadow-xl border border-gray-200 px-4 py-3 flex items-center gap-3 max-w-[280px]">
@@ -1535,37 +1521,6 @@ export default function CiudadanoDashboard() {
           </div>
         )}
 
-        <div className="absolute bottom-3 left-3 z-[1000] bg-white/95 backdrop-blur rounded-xl shadow-md border border-gray-200 px-3 py-2">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Incidencias</p>
-            <button
-              type="button"
-              onClick={() => void refreshIncidencias()}
-              disabled={incidenciasLoading}
-              className="text-[11px] font-medium text-blue-700 disabled:text-gray-400"
-            >
-              {incidenciasLoading ? '...' : 'Actualizar'}
-            </button>
-          </div>
-          <div className="flex items-center gap-3 text-[11px] text-gray-600">
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
-              {totalCortadas} cortada{totalCortadas === 1 ? '' : 's'}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-600" />
-              {totalTransitables} resuelta{totalTransitables === 1 ? '' : 's'}
-            </span>
-          </div>
-          {totalPendientes > 0 && (
-            <p className="text-[11px] text-amber-700 mt-1">
-              {totalPendientes} pendiente{totalPendientes === 1 ? '' : 's'} de sincronizar
-            </p>
-          )}
-          {incidenciasError && (
-            <p className="text-[11px] text-amber-700 mt-1 max-w-56">{incidenciasError}</p>
-          )}
-        </div>
 
         {/* Botón localizarme */}
         <button
@@ -1575,6 +1530,14 @@ export default function CiudadanoDashboard() {
         >
           {geoLoading ? '🔄 Localizando…' : '📍 Localizarme'}
         </button>
+
+        {vista === 'reportar' && (
+          <div className="absolute top-12 right-3 z-[1000] bg-red-600/90 text-white rounded-xl px-3 py-2 text-xs shadow-lg max-w-[180px] text-center">
+            {isPickingLocation
+              ? 'Toca el mapa para marcar la calle de la incidencia.'
+              : 'Punto marcado. Puedes cambiarlo pulsando "Cambiar punto".'}
+          </div>
+        )}
 
       </div>
       )}

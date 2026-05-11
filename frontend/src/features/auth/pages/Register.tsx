@@ -180,19 +180,13 @@ export default function Register() {
           </Button>
         </form>
 
-        <div className="mt-4 text-center space-y-2">
+        <div className="mt-4 text-center">
           <p className="text-sm text-gray-500">
             ¿Ya tienes cuenta?{' '}
             <Link to="/auth/login" className="text-blue-600 font-medium hover:underline">
               Inicia sesión
             </Link>
           </p>
-          <button
-            onClick={() => navigate('/')}
-            className="text-sm text-gray-400 hover:text-gray-600"
-          >
-            ← Volver al inicio
-          </button>
         </div>
       </div>
     </div>

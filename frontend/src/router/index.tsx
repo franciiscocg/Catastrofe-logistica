@@ -31,11 +31,11 @@ const roleSelectionElement = (
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: roleSelectionElement,
+    element: <AuthGuard>{roleSelectionElement}</AuthGuard>,
   },
   {
     path: '/seleccionar-rol',
-    element: roleSelectionElement,
+    element: <AuthGuard>{roleSelectionElement}</AuthGuard>,
   },
   {
     path: '/auth',

@@ -94,7 +94,7 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contrasena</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
             <input
               type="password"
               required
@@ -111,7 +111,7 @@ export default function Login() {
           </Button>
         </form>
 
-        <div className="mt-4 text-center space-y-2">
+        <div className="mt-4 text-center">
           <p className="text-sm text-gray-500">
             No tienes cuenta?{' '}
             <Link
@@ -121,12 +121,6 @@ export default function Login() {
               Registrate
             </Link>
           </p>
-          <button
-            onClick={() => navigate('/')}
-            className="text-sm text-gray-400 hover:text-gray-600"
-          >
-            Volver a seleccion de rol
-          </button>
         </div>
       </div>
     </div>

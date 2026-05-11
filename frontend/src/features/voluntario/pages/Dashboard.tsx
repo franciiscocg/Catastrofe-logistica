@@ -1580,40 +1580,6 @@ export default function VoluntarioDashboard() {
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-slate-50 pb-24 text-slate-900 safe-bottom">
-      <div className="border-b border-cyan-100 bg-white px-4 py-6 shadow-sm">
-        <div className="mx-auto max-w-6xl">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase text-cyan-700">Panel de voluntario</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950 sm:text-4xl">Centro de actividad</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Coordina donaciones, incidencias y apoyo en puestos manteniendo una unica actividad operativa.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
-              <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase text-cyan-700">Estado</p>
-                <p className="mt-1 text-sm font-semibold text-slate-950">{estadoOperativo}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase text-slate-500">Conexion</p>
-                <p className={`mt-1 text-sm font-semibold ${mode === 'offline' ? 'text-amber-700' : 'text-emerald-700'}`}>
-                  {connectionLabel}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase text-slate-500">Activas</p>
-                <p className="mt-1 text-sm font-semibold text-slate-950">{donacionesActivas.length}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase text-slate-500">Sincronizacion</p>
-                <p className="mt-1 text-sm font-semibold text-slate-950">{pendingSync}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <main className="mx-auto max-w-6xl px-4 pt-5">
         {actividadActiva && (
           <section className="rounded-lg border border-cyan-200 bg-white p-5 shadow-sm">
@@ -1876,6 +1842,7 @@ export default function VoluntarioDashboard() {
           </section>
         )}
       </main>
+
 
       {accion && (
       <main className="mx-auto max-w-6xl px-4 pt-5">
