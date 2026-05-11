@@ -42,6 +42,12 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260502120000_add_puesto_asignaciones/migration.sql
 !backend/prisma/migrations/20260502211500_add_volunteer_delivery_codes_and_incident_assignments/
 !backend/prisma/migrations/20260502211500_add_volunteer_delivery_codes_and_incident_assignments/migration.sql
+!backend/prisma/migrations/20260506182000_add_solicitudes_puesto/
+!backend/prisma/migrations/20260506182000_add_solicitudes_puesto/migration.sql
+!backend/prisma/migrations/20260509191000_add_solicitudes_participacion_puesto/
+!backend/prisma/migrations/20260509191000_add_solicitudes_participacion_puesto/migration.sql
+!backend/prisma/migrations/20260509193000_add_puesto_trabajadores/
+!backend/prisma/migrations/20260509193000_add_puesto_trabajadores/migration.sql
 
 # Coverage
 coverage/

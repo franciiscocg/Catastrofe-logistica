@@ -12,7 +12,10 @@ export async function listTrabajadores(puestoId: string) {
 
 export async function addTrabajador(puestoId: string, email: string, adminId: string) {
   // Solo el admin del puesto puede añadir trabajadores
-  const puesto = await prisma.puestoEmergencia.findUnique({ where: { id: puestoId } })
+  const puesto = await prisma.puestoEmergencia.findUnique({
+    where: { id: puestoId },
+    select: { id: true, adminId: true },
+  })
   if (!puesto) throw Object.assign(new Error('Puesto no encontrado'), { statusCode: 404 })
   if (puesto.adminId !== adminId) throw Object.assign(new Error('Solo el admin puede añadir trabajadores'), { statusCode: 403 })
 
@@ -37,7 +40,10 @@ export async function addTrabajador(puestoId: string, email: string, adminId: st
 }
 
 export async function removeTrabajador(puestoId: string, userId: string, adminId: string) {
-  const puesto = await prisma.puestoEmergencia.findUnique({ where: { id: puestoId } })
+  const puesto = await prisma.puestoEmergencia.findUnique({
+    where: { id: puestoId },
+    select: { id: true, adminId: true },
+  })
   if (!puesto) throw Object.assign(new Error('Puesto no encontrado'), { statusCode: 404 })
   if (puesto.adminId !== adminId) throw Object.assign(new Error('Solo el admin puede eliminar trabajadores'), { statusCode: 403 })
 

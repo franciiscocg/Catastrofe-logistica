@@ -30,12 +30,57 @@ function getUsuarioId(user: unknown) {
 async function getVoluntarioByUsuario(usuarioId: string) {
   const voluntario = await prisma.voluntario.findUnique({
     where: { usuarioId },
-    select: { id: true },
+    select: { id: true, usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true } } },
   })
 
   if (!voluntario) throw badRequest('El usuario no tiene perfil de voluntario')
   return voluntario
 }
+
+async function assertPuestoResponsable(puestoId: string, userId: string) {
+  const puesto = await prisma.puestoEmergencia.findUnique({
+    where: { id: puestoId },
+    select: {
+      id: true,
+      adminId: true,
+      trabajadores: { where: { usuarioId: userId }, select: { id: true } },
+    },
+  })
+
+  if (!puesto) throw notFound('Puesto no encontrado')
+  if (puesto.adminId !== userId && puesto.trabajadores.length === 0) {
+    throw Object.assign(new Error('Solo el responsable del puesto puede gestionar voluntarios'), { statusCode: 403 })
+  }
+
+  return puesto
+}
+
+function formatParticipante(asignacion: {
+  id: string
+  startedAt: Date
+  voluntario: {
+    id: string
+    usuario: { id: string; nombre: string; apellidos: string; email: string; dni: string | null; telefono: string | null }
+  }
+}) {
+  return {
+    id: asignacion.id,
+    voluntarioId: asignacion.voluntario.id,
+    usuario: asignacion.voluntario.usuario,
+    startedAt: asignacion.startedAt,
+  }
+}
+
+const puestoPublicSelect = {
+  id: true,
+  nombre: true,
+  direccion: true,
+  latitud: true,
+  longitud: true,
+  tipo: true,
+  activo: true,
+  catastrofeId: true,
+} as const
 
 function formatPuesto(puesto: {
   id: string
@@ -92,7 +137,17 @@ export async function puestosRouter(app: FastifyInstance) {
     const puestos = await prisma.puestoEmergencia.findMany({
       where: { activo: true },
       orderBy: { nombre: 'asc' },
-      include: {
+      select: {
+        id: true,
+        nombre: true,
+        descripcion: true,
+        direccion: true,
+        latitud: true,
+        longitud: true,
+        tipo: true,
+        activo: true,
+        capacidadTrabajo: true,
+        catastrofeId: true,
         _count: {
           select: {
             inventario: { where: { tipo: 'NECESARIO' } },
@@ -115,7 +170,7 @@ export async function puestosRouter(app: FastifyInstance) {
     const asignacion = await prisma.asignacionPuesto.findFirst({
       where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
       orderBy: { startedAt: 'desc' },
-      include: { puesto: true },
+      include: { puesto: { select: puestoPublicSelect } },
     })
 
     reply.send({ asignacion })
@@ -132,10 +187,39 @@ export async function puestosRouter(app: FastifyInstance) {
       where: { voluntarioId: voluntario.id },
       orderBy: { startedAt: 'desc' },
       take: 20,
-      include: { puesto: true },
+      include: { puesto: { select: puestoPublicSelect } },
     })
 
     reply.send({ asignaciones })
+  })
+
+  app.get('/mis-solicitudes-participacion', {
+    preHandler: [requireAuth, requireRole('VOLUNTARIO')],
+  }, async (request, reply) => {
+    const usuarioId = getUsuarioId(request.user)
+    if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+    const solicitudes = await prisma.solicitudParticipacionPuesto.findMany({
+      where: { usuarioId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: {
+        puesto: {
+          select: {
+            id: true,
+            nombre: true,
+            direccion: true,
+            latitud: true,
+            longitud: true,
+            tipo: true,
+            activo: true,
+            catastrofeId: true,
+          },
+        },
+      },
+    })
+
+    reply.send({ solicitudes })
   })
 
   app.get('/mio', {
@@ -329,7 +413,7 @@ export async function puestosRouter(app: FastifyInstance) {
     return reply.send({ solicitud })
   })
 
-  app.post('/:id/asignaciones', {
+  app.post('/:id/participaciones', {
     preHandler: [requireAuth, requireRole('VOLUNTARIO')],
   }, async (request, reply) => {
     const usuarioId = getUsuarioId(request.user)
@@ -338,7 +422,13 @@ export async function puestosRouter(app: FastifyInstance) {
     const { id: puestoId } = request.params as { id: string }
     const voluntario = await getVoluntarioByUsuario(usuarioId)
 
-    const asignacion = await prisma.$transaction(async (tx) => {
+    const solicitud = await prisma.$transaction(async (tx) => {
+      const puesto = await tx.puestoEmergencia.findFirst({
+        where: { id: puestoId, activo: true },
+        select: { id: true, capacidadTrabajo: true, nombre: true },
+      })
+      if (!puesto) throw notFound('Puesto no encontrado')
+
       const donacionActiva = await tx.donacion.findFirst({
         where: {
           voluntarioId: voluntario.id,
@@ -346,45 +436,219 @@ export async function puestosRouter(app: FastifyInstance) {
         },
         select: { id: true },
       })
-
       if (donacionActiva) {
         throw badRequest('Ya tienes una donacion activa. Finalizala o cancelala antes de ayudar en un puesto.')
       }
 
       const asignacionActiva = await tx.asignacionPuesto.findFirst({
         where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
-        include: { puesto: true },
+        include: { puesto: { select: puestoPublicSelect } },
       })
-
       if (asignacionActiva) {
-        if (asignacionActiva.puestoId === puestoId) return asignacionActiva
-        throw badRequest(`Ya estas ayudando en ${asignacionActiva.puesto.nombre}. Termina esa tarea antes de elegir otro puesto.`)
+        if (asignacionActiva.puestoId === puestoId) throw badRequest('Ya formas parte activa de este puesto.')
+        throw badRequest(`Ya estas ayudando en ${asignacionActiva.puesto.nombre}. Abandona ese puesto antes de solicitar otro.`)
       }
 
-      const puesto = await tx.puestoEmergencia.findFirst({
-        where: { id: puestoId, activo: true },
-        select: { id: true, capacidadTrabajo: true },
-      })
-      if (!puesto) throw notFound('Puesto no encontrado')
+      const trabajando = await tx.asignacionPuesto.count({ where: { puestoId, estado: 'ACTIVA' } })
+      if (trabajando >= puesto.capacidadTrabajo) throw badRequest('Este puesto esta lleno ahora mismo.')
 
-      const trabajando = await tx.asignacionPuesto.count({
-        where: { puestoId, estado: 'ACTIVA' },
-      })
-
-      if (trabajando >= puesto.capacidadTrabajo) {
-        throw badRequest('Este puesto esta lleno ahora mismo.')
-      }
-
-      return tx.asignacionPuesto.create({
-        data: {
-          voluntarioId: voluntario.id,
-          puestoId,
+      const pendiente = await tx.solicitudParticipacionPuesto.findFirst({
+        where: { puestoId, usuarioId, estado: 'PENDIENTE' },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+          puesto: { select: { id: true, nombre: true, direccion: true } },
         },
-        include: { puesto: true },
+      })
+      if (pendiente) return pendiente
+
+      return tx.solicitudParticipacionPuesto.create({
+        data: { puestoId, usuarioId },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+          puesto: { select: { id: true, nombre: true, direccion: true } },
+        },
       })
     })
 
-    reply.status(201).send({ asignacion })
+    reply.status(201).send({ solicitud })
+  })
+
+  app.get('/:id/solicitudes-participacion', {
+    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+  }, async (request, reply) => {
+    const { id: puestoId } = request.params as { id: string }
+    const userId = (request.user as { id: string }).id
+    await assertPuestoResponsable(puestoId, userId)
+
+    const solicitudes = await prisma.solicitudParticipacionPuesto.findMany({
+      where: { puestoId },
+      orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+        responsable: { select: { id: true, nombre: true, apellidos: true } },
+      },
+    })
+
+    reply.send({ solicitudes })
+  })
+
+  app.post('/participaciones/:solicitudId/aceptar', {
+    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+  }, async (request, reply) => {
+    const { solicitudId } = request.params as { solicitudId: string }
+    const responsableId = (request.user as { id: string }).id
+
+    const result = await prisma.$transaction(async (tx) => {
+      const solicitud = await tx.solicitudParticipacionPuesto.findUnique({
+        where: { id: solicitudId },
+        include: { puesto: { select: { id: true, capacidadTrabajo: true, adminId: true } } },
+      })
+      if (!solicitud) throw notFound('Solicitud de participacion no encontrada')
+      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+
+      const puestoAcceso = await tx.puestoEmergencia.findUnique({
+        where: { id: solicitud.puestoId },
+        select: {
+          adminId: true,
+          trabajadores: { where: { usuarioId: responsableId }, select: { id: true } },
+        },
+      })
+      if (!puestoAcceso) throw notFound('Puesto no encontrado')
+      if (puestoAcceso.adminId !== responsableId && puestoAcceso.trabajadores.length === 0) {
+        throw Object.assign(new Error('Solo el responsable del puesto puede aceptar solicitudes'), { statusCode: 403 })
+      }
+
+      const voluntario = await tx.voluntario.findUnique({
+        where: { usuarioId: solicitud.usuarioId },
+        select: { id: true },
+      })
+      if (!voluntario) throw badRequest('El usuario ya no tiene perfil de voluntario')
+
+      const activa = await tx.asignacionPuesto.findFirst({
+        where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
+        include: { puesto: { select: puestoPublicSelect } },
+      })
+      if (activa) {
+        throw badRequest(`El voluntario ya esta participando en ${activa.puesto.nombre}`)
+      }
+
+      const trabajando = await tx.asignacionPuesto.count({
+        where: { puestoId: solicitud.puestoId, estado: 'ACTIVA' },
+      })
+      if (trabajando >= solicitud.puesto.capacidadTrabajo) {
+        throw badRequest('Este puesto esta lleno ahora mismo.')
+      }
+
+      const asignacion = await tx.asignacionPuesto.create({
+        data: { voluntarioId: voluntario.id, puestoId: solicitud.puestoId },
+        include: {
+          puesto: { select: puestoPublicSelect },
+          voluntario: {
+            include: {
+              usuario: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true, telefono: true } },
+            },
+          },
+        },
+      })
+
+      const revisada = await tx.solicitudParticipacionPuesto.update({
+        where: { id: solicitudId },
+        data: { estado: 'ACEPTADA', responsableId, decidedAt: new Date() },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+          responsable: { select: { id: true, nombre: true, apellidos: true } },
+        },
+      })
+
+      return { solicitud: revisada, asignacion }
+    })
+
+    reply.send(result)
+  })
+
+  app.post('/participaciones/:solicitudId/rechazar', {
+    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+  }, async (request, reply) => {
+    const { solicitudId } = request.params as { solicitudId: string }
+    const { motivo } = request.body as { motivo?: string }
+    const responsableId = (request.user as { id: string }).id
+
+    const actual = await prisma.solicitudParticipacionPuesto.findUnique({
+      where: { id: solicitudId },
+      select: { estado: true, puestoId: true },
+    })
+    if (!actual) throw notFound('Solicitud de participacion no encontrada')
+    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+
+    await assertPuestoResponsable(actual.puestoId, responsableId)
+
+    const solicitud = await prisma.solicitudParticipacionPuesto.update({
+      where: { id: solicitudId },
+      data: {
+        estado: 'RECHAZADA',
+        motivoRechazo: motivo?.trim() || undefined,
+        responsableId,
+        decidedAt: new Date(),
+      },
+      include: {
+        usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+        responsable: { select: { id: true, nombre: true, apellidos: true } },
+      },
+    })
+
+    reply.send({ solicitud })
+  })
+
+  app.get('/:id/participantes', {
+    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+  }, async (request, reply) => {
+    const { id: puestoId } = request.params as { id: string }
+    const responsableId = (request.user as { id: string }).id
+    await assertPuestoResponsable(puestoId, responsableId)
+
+    const participantes = await prisma.asignacionPuesto.findMany({
+      where: { puestoId, estado: 'ACTIVA' },
+      orderBy: { startedAt: 'asc' },
+      include: {
+        voluntario: {
+          include: {
+            usuario: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true, telefono: true } },
+          },
+        },
+      },
+    })
+
+    reply.send({ participantes: participantes.map(formatParticipante) })
+  })
+
+  app.delete('/:id/participantes/:asignacionId', {
+    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+  }, async (request, reply) => {
+    const { id: puestoId, asignacionId } = request.params as { id: string; asignacionId: string }
+    const responsableId = (request.user as { id: string }).id
+    await assertPuestoResponsable(puestoId, responsableId)
+
+    const asignacion = await prisma.asignacionPuesto.findFirst({
+      where: { id: asignacionId, puestoId, estado: 'ACTIVA' },
+      select: { id: true },
+    })
+    if (!asignacion) throw notFound('Voluntario activo no encontrado en este puesto')
+
+    await prisma.asignacionPuesto.update({
+      where: { id: asignacion.id },
+      data: { estado: 'CANCELADA', endedAt: new Date() },
+    })
+
+    reply.status(204).send()
+  })
+
+  app.post('/:id/asignaciones', {
+    preHandler: [requireAuth, requireRole('VOLUNTARIO')],
+  }, async (_request, _reply) => {
+    throw Object.assign(
+      new Error('La incorporacion directa a puestos ya no esta disponible. Envia una solicitud de participacion.'),
+      { statusCode: 410 },
+    )
   })
 
   app.post('/:id/asignaciones/finalizar', {
@@ -409,7 +673,7 @@ export async function puestosRouter(app: FastifyInstance) {
         estado: 'FINALIZADA',
         endedAt: new Date(),
       },
-      include: { puesto: true },
+      include: { puesto: { select: puestoPublicSelect } },
     })
 
     reply.send({ asignacion: finalizada })

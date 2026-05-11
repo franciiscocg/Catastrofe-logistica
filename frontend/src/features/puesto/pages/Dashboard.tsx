@@ -333,6 +333,20 @@ interface Trabajador {
   usuario: { id: string; nombre: string; apellidos: string; email: string }
 }
 
+interface SolicitudParticipacion {
+  id: string
+  estado: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'
+  motivoRechazo?: string | null
+  createdAt: string
+  usuario: { id: string; nombre: string; apellidos: string; email: string; dni?: string | null; telefono?: string | null }
+}
+
+interface ParticipantePuesto {
+  id: string
+  startedAt: string
+  usuario: { id: string; nombre: string; apellidos: string; email: string; dni?: string | null; telefono?: string | null }
+}
+
 function WorkersSheet({
   puestoId,
   isAdmin,
@@ -353,6 +367,22 @@ function WorkersSheet({
       apiClient
         .get<{ trabajadores: Trabajador[] }>(`/api/puestos/${puestoId}/trabajadores`)
         .then((r) => r.data.trabajadores),
+  })
+
+  const { data: solicitudes, isLoading: loadingSolicitudes } = useQuery({
+    queryKey: ['solicitudes-participacion', puestoId],
+    queryFn: () =>
+      apiClient
+        .get<{ solicitudes: SolicitudParticipacion[] }>(`/api/puestos/${puestoId}/solicitudes-participacion`)
+        .then((r) => r.data.solicitudes),
+  })
+
+  const { data: participantes, isLoading: loadingParticipantes } = useQuery({
+    queryKey: ['participantes-puesto', puestoId],
+    queryFn: () =>
+      apiClient
+        .get<{ participantes: ParticipantePuesto[] }>(`/api/puestos/${puestoId}/participantes`)
+        .then((r) => r.data.participantes),
   })
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -377,6 +407,18 @@ function WorkersSheet({
     qc.invalidateQueries({ queryKey: ['trabajadores', puestoId] })
   }
 
+  const handleDecisionSolicitud = async (solicitudId: string, decision: 'aceptar' | 'rechazar') => {
+    await apiClient.post(`/api/puestos/participaciones/${solicitudId}/${decision}`, {})
+    qc.invalidateQueries({ queryKey: ['solicitudes-participacion', puestoId] })
+    qc.invalidateQueries({ queryKey: ['participantes-puesto', puestoId] })
+    qc.invalidateQueries({ queryKey: ['inventario', puestoId] })
+  }
+
+  const handleRemoveParticipante = async (asignacionId: string) => {
+    await apiClient.delete(`/api/puestos/${puestoId}/participantes/${asignacionId}`)
+    qc.invalidateQueries({ queryKey: ['participantes-puesto', puestoId] })
+  }
+
   return (
     <div className="fixed inset-x-0 bottom-0 z-[2000] bg-white rounded-t-2xl shadow-2xl max-h-[80vh] flex flex-col">
       <div className="flex justify-center pt-3 pb-1">
@@ -391,6 +433,78 @@ function WorkersSheet({
       </div>
 
       <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
+        <div>
+          <p className="text-xs font-medium text-gray-700 mb-2">
+            {loadingSolicitudes ? 'Cargando solicitudes...' : `${solicitudes?.filter((s) => s.estado === 'PENDIENTE').length ?? 0} solicitud${(solicitudes?.filter((s) => s.estado === 'PENDIENTE').length ?? 0) !== 1 ? 'es' : ''} pendiente${(solicitudes?.filter((s) => s.estado === 'PENDIENTE').length ?? 0) !== 1 ? 's' : ''}`}
+          </p>
+          {loadingSolicitudes ? (
+            <div className="flex justify-center py-4">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-amber-500" />
+            </div>
+          ) : solicitudes?.filter((s) => s.estado === 'PENDIENTE').length ? (
+            <div className="space-y-2">
+              {solicitudes.filter((s) => s.estado === 'PENDIENTE').map((solicitud) => (
+                <div key={solicitud.id} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {solicitud.usuario.nombre} {solicitud.usuario.apellidos}
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-600">DNI: {solicitud.usuario.dni ?? 'No informado'}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{solicitud.usuario.email}</p>
+                    </div>
+                    <Badge variant="warning">Pendiente</Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button size="sm" onClick={() => handleDecisionSolicitud(solicitud.id, 'aceptar')} className="bg-emerald-600 hover:bg-emerald-700">
+                      Aceptar
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleDecisionSolicitud(solicitud.id, 'rechazar')}>
+                      Rechazar
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 italic text-center py-3">No hay solicitudes pendientes</p>
+          )}
+        </div>
+
+        <div>
+          <p className="text-xs font-medium text-gray-700 mb-2">
+            {loadingParticipantes ? 'Cargando participantes...' : `${participantes?.length ?? 0} voluntario${(participantes?.length ?? 0) !== 1 ? 's' : ''} activo${(participantes?.length ?? 0) !== 1 ? 's' : ''}`}
+          </p>
+          {loadingParticipantes ? (
+            <div className="flex justify-center py-4">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-amber-500" />
+            </div>
+          ) : !participantes?.length ? (
+            <p className="text-sm text-gray-400 italic text-center py-3">Aun no hay voluntarios activos</p>
+          ) : (
+            <div className="space-y-2">
+              {participantes.map((participante) => (
+                <div key={participante.id} className="flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {participante.usuario.nombre} {participante.usuario.apellidos}
+                    </p>
+                    <p className="text-xs text-gray-500">DNI: {participante.usuario.dni ?? 'No informado'}</p>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleRemoveParticipante(participante.id)}
+                      className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                    >
+                      Eliminar
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Añadir trabajador — solo el admin */}
         {isAdmin && (
           <form onSubmit={handleAdd} className="space-y-2">

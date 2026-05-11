@@ -11,6 +11,17 @@ function notFound(message: string) {
   return Object.assign(new Error(message), { statusCode: 404 })
 }
 
+const puestoDonacionSelect = {
+  id: true,
+  nombre: true,
+  direccion: true,
+  latitud: true,
+  longitud: true,
+  tipo: true,
+  activo: true,
+  catastrofeId: true,
+} as const
+
 async function getVoluntarioByUsuario(usuarioId: string) {
   const voluntario = await prisma.voluntario.findUnique({
     where: { usuarioId },
@@ -89,7 +100,7 @@ export async function createDonacion(usuarioId: string, input: CreateDonacionInp
       tipo: 'NECESARIO',
       puesto: { activo: true },
     },
-    include: { producto: true, puesto: true },
+    include: { producto: true, puesto: { select: puestoDonacionSelect } },
   })
 
   if (!necesidad) throw notFound('Necesidad no encontrada para este puesto')
@@ -125,7 +136,7 @@ export async function createDonacion(usuarioId: string, input: CreateDonacionInp
     },
     include: {
       producto: true,
-      puesto: true,
+      puesto: { select: puestoDonacionSelect },
     },
   })
 }
@@ -138,7 +149,7 @@ export async function listMisDonaciones(usuarioId: string) {
     orderBy: { createdAt: 'desc' },
     include: {
       producto: true,
-      puesto: true,
+      puesto: { select: puestoDonacionSelect },
     },
   })
 }
@@ -158,7 +169,7 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
     data: { estado },
     include: {
       producto: true,
-      puesto: true,
+      puesto: { select: puestoDonacionSelect },
     },
   })
 }
@@ -170,7 +181,7 @@ export async function generarCodigoEntrega(usuarioId: string, donacionId: string
     where: { id: donacionId, voluntarioId: voluntario.id },
     include: {
       producto: true,
-      puesto: true,
+      puesto: { select: puestoDonacionSelect },
     },
   })
 
@@ -191,7 +202,7 @@ export async function generarCodigoEntrega(usuarioId: string, donacionId: string
     },
     include: {
       producto: true,
-      puesto: true,
+      puesto: { select: puestoDonacionSelect },
     },
   })
 }

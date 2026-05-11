@@ -61,6 +61,12 @@ enum EstadoSolicitudPuesto {
   RECHAZADA
 }
 
+enum EstadoSolicitudParticipacionPuesto {
+  PENDIENTE
+  ACEPTADA
+  RECHAZADA
+}
+
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
@@ -82,6 +88,8 @@ model Usuario {
   comentariosIncidencias ComentarioIncidenciaVia[] @relation("AutorComentarioIncidencia")
   solicitudesPuesto  SolicitudPuesto[] @relation("SolicitantePuesto")
   solicitudesPuestoRevisadas SolicitudPuesto[] @relation("CoordinadorSolicitudPuesto")
+  solicitudesParticipacionPuesto SolicitudParticipacionPuesto[] @relation("SolicitanteParticipacionPuesto")
+  solicitudesParticipacionPuestoRevisadas SolicitudParticipacionPuesto[] @relation("ResponsableParticipacionPuesto")
 
   @@map("usuarios")
 }
@@ -164,8 +172,29 @@ model PuestoEmergencia {
   donaciones   Donacion[]
   asignacionesVoluntarios AsignacionPuesto[]
   trabajadores PuestoTrabajador[]
+  solicitudesParticipacion SolicitudParticipacionPuesto[]
 
   @@map("puestos_emergencia")
+}
+
+model SolicitudParticipacionPuesto {
+  id             String                              @id @default(cuid())
+  puestoId       String
+  usuarioId      String
+  responsableId  String?
+  estado         EstadoSolicitudParticipacionPuesto  @default(PENDIENTE)
+  motivoRechazo  String?
+  decidedAt      DateTime?
+  createdAt      DateTime                            @default(now())
+  updatedAt      DateTime                            @updatedAt
+
+  puesto      PuestoEmergencia @relation(fields: [puestoId], references: [id], onDelete: Cascade)
+  usuario     Usuario          @relation("SolicitanteParticipacionPuesto", fields: [usuarioId], references: [id])
+  responsable Usuario?         @relation("ResponsableParticipacionPuesto", fields: [responsableId], references: [id])
+
+  @@index([puestoId, estado, createdAt])
+  @@index([usuarioId, estado])
+  @@map("solicitudes_participacion_puesto")
 }
 
 model PuestoTrabajador {

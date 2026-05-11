@@ -1354,7 +1354,15 @@ export default function CiudadanoDashboard() {
     : textoProductoNormalizado && productoOptionsFiltradas.length === 1
       ? productoOptionsFiltradas[0].nombre
     : ''
-  const resultadosProducto = productosDisponibles.filter((item) => item.nombre === productoSeleccionado)
+  const resultadosProducto = productosDisponibles.filter((item) => {
+    if (productoSeleccionado) return item.nombre === productoSeleccionado
+    if (!textoProductoNormalizado) return false
+
+    return (
+      item.nombre.toLocaleLowerCase('es').includes(textoProductoNormalizado) ||
+      item.categoria.toLocaleLowerCase('es').includes(textoProductoNormalizado)
+    )
+  })
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
   const selectedPuestoBusqueda = busquedaPuestoId ? puestos.find((p) => p.id === busquedaPuestoId) ?? null : null
   const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
