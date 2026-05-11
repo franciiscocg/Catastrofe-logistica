@@ -48,6 +48,8 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260509191000_add_solicitudes_participacion_puesto/migration.sql
 !backend/prisma/migrations/20260509193000_add_puesto_trabajadores/
 !backend/prisma/migrations/20260509193000_add_puesto_trabajadores/migration.sql
+!backend/prisma/migrations/20260510180000_add_estado_puesto/
+!backend/prisma/migrations/20260510180000_add_estado_puesto/migration.sql
 
 # Coverage
 coverage/

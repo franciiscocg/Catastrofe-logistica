@@ -49,7 +49,7 @@ export default function AppShell() {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+      <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
         <Outlet />
       </main>
     </div>

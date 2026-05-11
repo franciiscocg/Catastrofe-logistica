@@ -14,6 +14,11 @@ type SolicitudPuestoInput = {
   longitud: number
 }
 
+type PuestoUpdateInput = Partial<SolicitudPuestoInput> & {
+  activo?: boolean
+  capacidadTrabajo?: number
+}
+
 function badRequest(message: string) {
   return Object.assign(new Error(message), { statusCode: 400 })
 }
@@ -111,6 +116,68 @@ function formatPuesto(puesto: {
   }
 }
 
+function formatPuestoCoordinador(puesto: {
+  id: string
+  nombre: string
+  descripcion: string | null
+  direccion: string
+  latitud: number
+  longitud: number
+  tipo: string
+  activo: boolean
+  estadoSolicitud: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
+  motivoRechazo: string | null
+  capacidadTrabajo: number
+  createdAt: Date
+  updatedAt: Date
+  catastrofe: { id: string; nombre: string; fase: string }
+  admin: { id: string; nombre: string; apellidos: string; email: string; telefono: string | null }
+  _count: {
+    asignacionesVoluntarios: number
+    trabajadores: number
+    solicitudesParticipacion: number
+    inventario: number
+  }
+}) {
+  const responsables = puesto._count.trabajadores + 1
+  const voluntariosActivos = puesto._count.asignacionesVoluntarios
+  const solicitudesPendientes = puesto._count.solicitudesParticipacion
+  const necesidades = puesto._count.inventario
+  const estadoOperativo = !puesto.activo
+    ? 'CERRADO'
+    : voluntariosActivos >= puesto.capacidadTrabajo
+      ? 'SATURADO'
+      : necesidades > 0 && voluntariosActivos === 0
+        ? 'SIN_RECURSOS'
+        : solicitudesPendientes > 0 || voluntariosActivos < Math.ceil(puesto.capacidadTrabajo * 0.5)
+          ? 'NECESITA_VOLUNTARIOS'
+          : 'OPERATIVO'
+
+  return {
+    id: puesto.id,
+    nombre: puesto.nombre,
+    descripcion: puesto.descripcion,
+    direccion: puesto.direccion,
+    latitud: puesto.latitud,
+    longitud: puesto.longitud,
+    tipo: puesto.tipo,
+    activo: puesto.activo,
+    estadoSolicitud: puesto.estadoSolicitud,
+    motivoRechazo: puesto.motivoRechazo,
+    capacidadTrabajo: puesto.capacidadTrabajo,
+    voluntariosActivos,
+    responsables,
+    personasTotales: responsables + voluntariosActivos,
+    solicitudesPendientes,
+    necesidades,
+    estadoOperativo,
+    createdAt: puesto.createdAt,
+    updatedAt: puesto.updatedAt,
+    catastrofe: puesto.catastrofe,
+    admin: puesto.admin,
+  }
+}
+
 function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
   if (!body.nombre?.trim()) throw badRequest('El nombre del puesto es obligatorio')
   if (!body.direccion?.trim()) throw badRequest('La direccion del puesto es obligatoria')
@@ -130,6 +197,81 @@ function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
     latitud: body.latitud,
     longitud: body.longitud,
   }
+}
+
+function validatePuestoUpdate(body: PuestoUpdateInput) {
+  const data: {
+    nombre?: string
+    direccion?: string
+    tipo?: string
+    descripcion?: string | null
+    latitud?: number
+    longitud?: number
+    activo?: boolean
+    capacidadTrabajo?: number
+  } = {}
+
+  if (body.nombre !== undefined) {
+    if (!body.nombre.trim()) throw badRequest('El nombre del puesto es obligatorio')
+    data.nombre = body.nombre.trim()
+  }
+  if (body.direccion !== undefined) {
+    if (!body.direccion.trim()) throw badRequest('La direccion del puesto es obligatoria')
+    data.direccion = body.direccion.trim()
+  }
+  if (body.tipo !== undefined) {
+    if (!body.tipo.trim()) throw badRequest('El tipo de instalacion es obligatorio')
+    data.tipo = body.tipo.trim()
+  }
+  if (body.descripcion !== undefined) {
+    data.descripcion = body.descripcion?.trim() || null
+  }
+  if (body.latitud !== undefined) {
+    if (typeof body.latitud !== 'number' || body.latitud < -90 || body.latitud > 90) {
+      throw badRequest('La latitud no es valida')
+    }
+    data.latitud = body.latitud
+  }
+  if (body.longitud !== undefined) {
+    if (typeof body.longitud !== 'number' || body.longitud < -180 || body.longitud > 180) {
+      throw badRequest('La longitud no es valida')
+    }
+    data.longitud = body.longitud
+  }
+  if (body.activo !== undefined) {
+    if (typeof body.activo !== 'boolean') throw badRequest('El estado activo debe ser verdadero o falso')
+    data.activo = body.activo
+  }
+  if (body.capacidadTrabajo !== undefined) {
+    if (!Number.isInteger(body.capacidadTrabajo) || body.capacidadTrabajo < 1 || body.capacidadTrabajo > 500) {
+      throw badRequest('La capacidad debe ser un numero entero entre 1 y 500')
+    }
+    data.capacidadTrabajo = body.capacidadTrabajo
+  }
+
+  if (Object.keys(data).length === 0) throw badRequest('No hay cambios para guardar')
+  return data
+}
+
+async function findPuestoCoordinador(id: string) {
+  const puesto = await prisma.puestoEmergencia.findUnique({
+    where: { id },
+    include: {
+      catastrofe: { select: { id: true, nombre: true, fase: true } },
+      admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+      _count: {
+        select: {
+          inventario: { where: { tipo: 'NECESARIO' } },
+          asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
+          trabajadores: true,
+          solicitudesParticipacion: { where: { estado: 'PENDIENTE' } },
+        },
+      },
+    },
+  })
+
+  if (!puesto) throw notFound('Puesto no encontrado')
+  return formatPuestoCoordinador(puesto)
 }
 
 export async function puestosRouter(app: FastifyInstance) {
@@ -323,6 +465,309 @@ export async function puestosRouter(app: FastifyInstance) {
     return reply.send({ solicitudes })
   })
 
+  app.get('/coordinador', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (_req, reply) => {
+    const puestos = await prisma.puestoEmergencia.findMany({
+      orderBy: [{ activo: 'desc' }, { updatedAt: 'desc' }],
+      include: {
+        catastrofe: { select: { id: true, nombre: true, fase: true } },
+        admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+        _count: {
+          select: {
+            inventario: { where: { tipo: 'NECESARIO' } },
+            asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
+            trabajadores: true,
+            solicitudesParticipacion: { where: { estado: 'PENDIENTE' } },
+          },
+        },
+      },
+    })
+
+    return reply.send({ puestos: puestos.map(formatPuestoCoordinador) })
+  })
+
+  app.patch('/coordinador/:id', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const coordinadorId = (req.user as { id: string }).id
+    const data = validatePuestoUpdate(req.body as PuestoUpdateInput)
+
+    const existe = await prisma.puestoEmergencia.findUnique({ where: { id }, select: { id: true } })
+    if (!existe) throw notFound('Puesto no encontrado')
+
+    await prisma.$transaction(async (tx) => {
+      await tx.puestoEmergencia.update({ where: { id }, data })
+
+      if (data.activo === false) {
+        await tx.asignacionPuesto.updateMany({
+          where: { puestoId: id, estado: 'ACTIVA' },
+          data: { estado: 'CANCELADA', endedAt: new Date() },
+        })
+      }
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: data.activo === false ? 'DESACTIVAR_PUESTO' : 'EDITAR_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: id,
+          datos: data,
+        },
+      })
+    })
+
+    return reply.send({ puesto: await findPuestoCoordinador(id) })
+  })
+
+  app.delete('/coordinador/:id', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const coordinadorId = (req.user as { id: string }).id
+    const existe = await prisma.puestoEmergencia.findUnique({ where: { id }, select: { id: true } })
+    if (!existe) throw notFound('Puesto no encontrado')
+
+    await prisma.$transaction(async (tx) => {
+      await tx.asignacionPuesto.updateMany({
+        where: { puestoId: id, estado: 'ACTIVA' },
+        data: { estado: 'CANCELADA', endedAt: new Date() },
+      })
+      await tx.solicitudParticipacionPuesto.updateMany({
+        where: { puestoId: id, estado: 'PENDIENTE' },
+        data: {
+          estado: 'RECHAZADA',
+          motivoRechazo: 'Puesto eliminado por coordinacion',
+          decidedAt: new Date(),
+        },
+      })
+      await tx.puestoEmergencia.update({
+        where: { id },
+        data: {
+          activo: false,
+          motivoRechazo: 'Puesto eliminado por coordinacion',
+        },
+      })
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'ELIMINAR_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: id,
+          datos: { activo: false },
+        },
+      })
+    })
+
+    return reply.send({ puesto: await findPuestoCoordinador(id) })
+  })
+
+  app.get('/coordinador/:id/detalle', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const puesto = await prisma.puestoEmergencia.findUnique({
+      where: { id },
+      include: {
+        catastrofe: { select: { id: true, nombre: true, fase: true } },
+        admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+        inventario: {
+          orderBy: [{ tipo: 'asc' }, { producto: { nombre: 'asc' } }],
+          include: { producto: true },
+        },
+        asignacionesVoluntarios: {
+          where: { estado: 'ACTIVA' },
+          orderBy: { startedAt: 'asc' },
+          include: {
+            voluntario: {
+              include: {
+                usuario: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true, telefono: true } },
+              },
+            },
+          },
+        },
+        solicitudesParticipacion: {
+          orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
+          include: {
+            usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+            responsable: { select: { id: true, nombre: true, apellidos: true } },
+          },
+        },
+        donaciones: {
+          where: { estado: { in: ['PENDIENTE', 'EN_CAMINO'] } },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            producto: true,
+            voluntario: {
+              include: {
+                usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+              },
+            },
+          },
+        },
+        _count: {
+          select: {
+            inventario: { where: { tipo: 'NECESARIO' } },
+            asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
+            trabajadores: true,
+            solicitudesParticipacion: { where: { estado: 'PENDIENTE' } },
+          },
+        },
+      },
+    })
+
+    if (!puesto) throw notFound('Puesto no encontrado')
+
+    const actividad = await prisma.auditLog.findMany({
+      where: { entidad: 'PUESTO', entidadId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: { usuario: { select: { nombre: true, apellidos: true, email: true } } },
+    })
+
+    return reply.send({
+      puesto: formatPuestoCoordinador(puesto),
+      inventario: puesto.inventario,
+      participantes: puesto.asignacionesVoluntarios.map(formatParticipante),
+      solicitudesParticipacion: puesto.solicitudesParticipacion,
+      donaciones: puesto.donaciones,
+      actividad,
+    })
+  })
+
+  app.post('/coordinador/participaciones/:solicitudId/aceptar', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (request, reply) => {
+    const { solicitudId } = request.params as { solicitudId: string }
+    const responsableId = (request.user as { id: string }).id
+
+    const result = await prisma.$transaction(async (tx) => {
+      const solicitud = await tx.solicitudParticipacionPuesto.findUnique({
+        where: { id: solicitudId },
+        include: { puesto: { select: { id: true, capacidadTrabajo: true, activo: true } } },
+      })
+      if (!solicitud) throw notFound('Solicitud de participacion no encontrada')
+      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+      if (!solicitud.puesto.activo) throw badRequest('El puesto no esta activo')
+
+      const voluntario = await tx.voluntario.findUnique({ where: { usuarioId: solicitud.usuarioId }, select: { id: true } })
+      if (!voluntario) throw badRequest('El usuario ya no tiene perfil de voluntario')
+
+      const activa = await tx.asignacionPuesto.findFirst({
+        where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
+        include: { puesto: { select: puestoPublicSelect } },
+      })
+
+      const trabajando = await tx.asignacionPuesto.count({
+        where: { puestoId: solicitud.puestoId, estado: 'ACTIVA' },
+      })
+      const yaEstaEnEstePuesto = activa?.puestoId === solicitud.puestoId
+      if (!yaEstaEnEstePuesto && trabajando >= solicitud.puesto.capacidadTrabajo) {
+        throw badRequest('Este puesto esta lleno ahora mismo.')
+      }
+
+      if (activa && !yaEstaEnEstePuesto) {
+        await tx.asignacionPuesto.update({
+          where: { id: activa.id },
+          data: { estado: 'FINALIZADA', endedAt: new Date() },
+        })
+      }
+
+      const asignacion = yaEstaEnEstePuesto
+        ? await tx.asignacionPuesto.findUniqueOrThrow({
+            where: { id: activa.id },
+            include: {
+              puesto: { select: puestoPublicSelect },
+              voluntario: {
+                include: {
+                  usuario: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true, telefono: true } },
+                },
+              },
+            },
+          })
+        : await tx.asignacionPuesto.create({
+            data: { voluntarioId: voluntario.id, puestoId: solicitud.puestoId },
+            include: {
+              puesto: { select: puestoPublicSelect },
+              voluntario: {
+                include: {
+                  usuario: { select: { id: true, nombre: true, apellidos: true, email: true, dni: true, telefono: true } },
+                },
+              },
+            },
+          })
+
+      const revisada = await tx.solicitudParticipacionPuesto.update({
+        where: { id: solicitudId },
+        data: { estado: 'ACEPTADA', responsableId, decidedAt: new Date() },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+          responsable: { select: { id: true, nombre: true, apellidos: true } },
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId: responsableId,
+          accion: 'ACEPTAR_PARTICIPACION_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: solicitud.puestoId,
+          datos: { solicitudId, puestoAnteriorId: yaEstaEnEstePuesto ? null : activa?.puestoId ?? null },
+        },
+      })
+
+      return { solicitud: revisada, asignacion }
+    })
+
+    reply.send(result)
+  })
+
+  app.post('/coordinador/participaciones/:solicitudId/rechazar', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (request, reply) => {
+    const { solicitudId } = request.params as { solicitudId: string }
+    const { motivo } = (request.body ?? {}) as { motivo?: string }
+    const responsableId = (request.user as { id: string }).id
+
+    const actual = await prisma.solicitudParticipacionPuesto.findUnique({
+      where: { id: solicitudId },
+      select: { estado: true },
+    })
+    if (!actual) throw notFound('Solicitud de participacion no encontrada')
+    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+
+    const solicitud = await prisma.$transaction(async (tx) => {
+      const revisada = await tx.solicitudParticipacionPuesto.update({
+        where: { id: solicitudId },
+        data: {
+          estado: 'RECHAZADA',
+          motivoRechazo: motivo?.trim() || undefined,
+          responsableId,
+          decidedAt: new Date(),
+        },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
+          responsable: { select: { id: true, nombre: true, apellidos: true } },
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId: responsableId,
+          accion: 'RECHAZAR_PARTICIPACION_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: revisada.puestoId,
+          datos: { solicitudId, motivo: motivo?.trim() || null },
+        },
+      })
+
+      return revisada
+    })
+
+    reply.send({ solicitud })
+  })
+
   app.post('/solicitudes/:id/aceptar', {
     preHandler: [requireAuth, requireRole('COORDINADOR')],
   }, async (req, reply) => {
@@ -360,6 +805,7 @@ export async function puestosRouter(app: FastifyInstance) {
           longitud: solicitud.longitud,
           tipo: solicitud.tipo,
           activo: true,
+          estadoSolicitud: 'APROBADO',
           catastrofeId: catastrofe.id,
           adminId: solicitud.usuarioId,
         },
