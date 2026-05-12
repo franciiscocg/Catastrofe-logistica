@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -15,6 +16,19 @@ import { fetchRutaEvitandoIncidencias } from '@/utils/routing'
 
 type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
 type VistaDonacion = 'objetos' | 'necesidades' | 'mis-donaciones'
+type FiltroInventarioPuesto = 'todos' | 'disponible' | 'necesario' | 'critico'
+type OperacionInventarioPuesto = 'entrada' | 'salida' | 'ajuste' | 'necesidad'
+type InventarioPuestoCard = {
+  key: string
+  producto: ItemInventario['producto']
+  disponible?: ItemInventario
+  necesario?: ItemInventario
+  virtual?: ItemInventario
+  cantidadDisponible: number
+  cantidadNecesaria: number
+  estado: 'disponible' | 'sin-stock' | 'necesario'
+  isBasico: boolean
+}
 type ActividadManualActiva = {
   tipo: 'incidencia' | 'puesto'
   id: string
@@ -131,6 +145,17 @@ const CATEGORIAS_INCIDENCIA: Record<string, CategoriaIncidenciaConfig> = {
 }
 
 const DEFAULT_CATEGORIA_INCIDENCIA = 'obstaculos_via'
+
+const SUGERENCIAS_INVENTARIO_PUESTO = [
+  { nombre: 'Agua embotellada', categoria: 'Bebidas', unidad: 'litros' },
+  { nombre: 'Alimentos no perecederos', categoria: 'Alimentacion', unidad: 'kg' },
+  { nombre: 'Mantas', categoria: 'Abrigo', unidad: 'unidades' },
+  { nombre: 'Medicamentos basicos', categoria: 'Sanidad', unidad: 'kits' },
+  { nombre: 'Productos de higiene', categoria: 'Higiene', unidad: 'kits' },
+  { nombre: 'Panales', categoria: 'Bebes', unidad: 'paquetes' },
+  { nombre: 'Linternas y pilas', categoria: 'Equipamiento', unidad: 'unidades' },
+  { nombre: 'Ropa de abrigo', categoria: 'Ropa', unidad: 'prendas' },
+]
 
 const PUESTOS_FALLBACK: PuestoEmergencia[] = [
   {
@@ -444,6 +469,49 @@ function getIncidenciaResumen(incidencia: Incidencia) {
   return incidencia.descripcion?.trim() || 'Sin descripcion disponible.'
 }
 
+function normalizeTipoInventario(tipo: string): 'disponible' | 'necesario' {
+  return tipo.toLocaleLowerCase('es') === 'necesario' ? 'necesario' : 'disponible'
+}
+
+function getNivelInventario(item: ItemInventario) {
+  if (normalizeTipoInventario(item.tipo) === 'necesario') return 'necesario'
+  if (item.cantidad <= 5 || item.nivelStock === 'critico') return 'critico'
+  if (item.cantidad <= 20 || item.nivelStock === 'bajo') return 'bajo'
+  return item.nivelStock
+}
+
+function getInventarioProductoKey(producto: Pick<ItemInventario['producto'], 'nombre' | 'unidad'>) {
+  return `${producto.nombre.toLocaleLowerCase('es')}:${producto.unidad.toLocaleLowerCase('es')}`
+}
+
+function isInventarioVirtual(item: ItemInventario) {
+  return item.id.startsWith('basico:')
+}
+
+function isProductoBasico(producto: Pick<ItemInventario['producto'], 'nombre' | 'unidad'>) {
+  const key = getInventarioProductoKey(producto)
+  return SUGERENCIAS_INVENTARIO_PUESTO.some((item) => getInventarioProductoKey(item) === key)
+}
+
+function createInventarioBasico(item: typeof SUGERENCIAS_INVENTARIO_PUESTO[number]): ItemInventario {
+  const id = `basico:${item.nombre.toLocaleLowerCase('es').replace(/[^a-z0-9]+/g, '-')}`
+
+  return {
+    id,
+    puestoId: 'virtual',
+    producto: {
+      id,
+      nombre: item.nombre,
+      categoria: item.categoria,
+      unidad: item.unidad,
+    },
+    cantidad: 0,
+    tipo: 'disponible',
+    nivelStock: 'critico',
+    updatedAt: new Date(0).toISOString(),
+  }
+}
+
 function productoDonableKey(producto: ItemInventario['producto']) {
   return `${producto.id}:${producto.nombre}:${producto.unidad}`
 }
@@ -465,7 +533,387 @@ function ocupacionInicialPuesto(puesto: PuestoEmergencia, index: number): Ocupac
   }
 }
 
+function AddInventarioPuestoSheet({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void
+  onCreate: (input: {
+    nombre: string
+    categoria: string
+    unidad: string
+    cantidad: number
+    tipo: 'DISPONIBLE' | 'NECESARIO'
+  }) => Promise<void>
+}) {
+  const [nombre, setNombre] = useState('')
+  const [categoria, setCategoria] = useState('')
+  const [unidad, setUnidad] = useState('')
+  const [cantidad, setCantidad] = useState('')
+  const [tipo, setTipo] = useState<'DISPONIBLE' | 'NECESARIO'>('DISPONIBLE')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const sugerencias = nombre.trim()
+    ? SUGERENCIAS_INVENTARIO_PUESTO.filter((item) => (
+        item.nombre.toLocaleLowerCase('es').includes(nombre.toLocaleLowerCase('es'))
+      ))
+    : SUGERENCIAS_INVENTARIO_PUESTO
+
+  const seleccionar = (item: typeof SUGERENCIAS_INVENTARIO_PUESTO[number]) => {
+    setNombre(item.nombre)
+    setCategoria(item.categoria)
+    setUnidad(item.unidad)
+    setError('')
+  }
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const parsedCantidad = Number(cantidad.replace(',', '.'))
+
+    if (!nombre.trim()) {
+      setError('El nombre es obligatorio.')
+      return
+    }
+    if (!categoria.trim()) {
+      setError('La categoria es obligatoria.')
+      return
+    }
+    if (!unidad.trim()) {
+      setError('La unidad es obligatoria.')
+      return
+    }
+    if (Number.isNaN(parsedCantidad) || parsedCantidad < 0) {
+      setError('Introduce una cantidad valida.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      await onCreate({
+        nombre: nombre.trim(),
+        categoria: categoria.trim(),
+        unidad: unidad.trim(),
+        cantidad: parsedCantidad,
+        tipo,
+      })
+      onClose()
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+        : undefined
+      setError(message?.error ?? message?.message ?? 'No se pudo anadir el producto.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+      <div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase text-cyan-700">Inventario del puesto</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">Anadir producto</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="text-sm font-medium text-slate-500 hover:text-slate-950 disabled:opacity-60"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-slate-500">Sugerencias rapidas</p>
+          <div className="flex flex-wrap gap-2">
+            {sugerencias.slice(0, 8).map((item) => (
+              <button
+                key={item.nombre}
+                type="button"
+                onClick={() => seleccionar(item)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-cyan-400 hover:text-cyan-800"
+              >
+                {item.nombre}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Nombre</label>
+            <input
+              value={nombre}
+              onChange={(event) => setNombre(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
+              placeholder="Agua, mantas, medicamentos..."
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Categoria</label>
+              <input
+                value={categoria}
+                onChange={(event) => setCategoria(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                placeholder="Bebidas, Sanidad..."
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Unidad</label>
+              <input
+                value={unidad}
+                onChange={(event) => setUnidad(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                placeholder="unidades, kg, litros..."
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Cantidad</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={cantidad}
+                onChange={(event) => setCantidad(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Tipo</label>
+              <select
+                value={tipo}
+                onChange={(event) => setTipo(event.target.value as 'DISPONIBLE' | 'NECESARIO')}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
+              >
+                <option value="DISPONIBLE">Disponible en el puesto</option>
+                <option value="NECESARIO">Necesario / hace falta</option>
+              </select>
+            </div>
+          </div>
+
+          {error && <Notice tone="danger">{error}</Notice>}
+
+          <Button type="submit" fullWidth loading={loading}>
+            Guardar producto
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function OperacionInventarioPuestoSheet({
+  card,
+  operacion,
+  onClose,
+  onApply,
+  onAdjust,
+}: {
+  card: InventarioPuestoCard
+  operacion: OperacionInventarioPuesto
+  onClose: () => void
+  onApply: (card: InventarioPuestoCard, operacion: OperacionInventarioPuesto, cantidad: number) => Promise<void>
+  onAdjust: (card: InventarioPuestoCard, disponible: number, necesario: number) => Promise<void>
+}) {
+  const isNecesario = card.estado === 'necesario'
+  const cantidadActual = isNecesario ? card.cantidadNecesaria : card.cantidadDisponible
+  const unidad = card.producto.unidad
+  const [cantidad, setCantidad] = useState(operacion === 'ajuste' ? String(cantidadActual) : '')
+  const [cantidadDisponible, setCantidadDisponible] = useState(String(card.cantidadDisponible))
+  const [cantidadNecesaria, setCantidadNecesaria] = useState(String(card.cantidadNecesaria))
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const title = operacion === 'entrada'
+    ? isNecesario ? 'Registrar llegada' : 'Entrada de stock'
+    : operacion === 'salida'
+      ? isNecesario ? 'Aumentar falta' : 'Salida de stock'
+      : operacion === 'necesidad'
+        ? 'Marcar como necesario'
+        : 'Ajustar inventario'
+  const help = operacion === 'entrada'
+    ? isNecesario
+      ? 'Resta de lo que falta. Si llega mas de lo pendiente, el sobrante pasa a disponible.'
+      : 'Suma material que acaba de entrar al puesto.'
+    : operacion === 'salida'
+      ? isNecesario
+        ? 'Aumenta la cantidad que falta.'
+        : 'Resta material entregado o retirado del puesto.'
+      : operacion === 'necesidad'
+        ? 'Publica o aumenta la cantidad que hace falta de este producto.'
+        : 'Fija por separado lo que hay fisicamente y lo que hace falta pedir.'
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (operacion === 'ajuste') {
+      const parsedDisponible = Number(cantidadDisponible.replace(',', '.'))
+      const parsedNecesario = Number(cantidadNecesaria.replace(',', '.'))
+      if (
+        Number.isNaN(parsedDisponible) ||
+        Number.isNaN(parsedNecesario) ||
+        parsedDisponible < 0 ||
+        parsedNecesario < 0
+      ) {
+        setError('Introduce cantidades validas.')
+        return
+      }
+      if (parsedDisponible > 0 && parsedNecesario > 0) {
+        setError('No puedes guardar stock disponible y necesidad a la vez. Deja una de las dos cantidades a 0.')
+        return
+      }
+
+      setLoading(true)
+      setError('')
+      try {
+        await onAdjust(card, parsedDisponible, parsedNecesario)
+        onClose()
+      } catch (err: unknown) {
+        const message = err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+          : undefined
+        setError(message?.error ?? message?.message ?? (err instanceof Error ? err.message : 'No se pudo ajustar el inventario.'))
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
+    const parsed = Number(cantidad.replace(',', '.'))
+    if (Number.isNaN(parsed) || parsed < 0) {
+      setError('Introduce una cantidad valida.')
+      return
+    }
+    if (parsed === 0) {
+      setError('La cantidad debe ser mayor que cero.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      await onApply(card, operacion, parsed)
+      onClose()
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'response' in err
+        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+        : undefined
+      setError(message?.error ?? message?.message ?? (err instanceof Error ? err.message : 'No se pudo actualizar el inventario.'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase text-cyan-700">{title}</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">{card.producto.nombre}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {operacion === 'ajuste'
+                ? `Actual: ${card.cantidadDisponible} ${unidad} disponibles y ${card.cantidadNecesaria} ${unidad} necesarios.`
+                : `Actual: ${cantidadActual} ${unidad}.`} {help}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="text-sm font-medium text-slate-500 hover:text-slate-950 disabled:opacity-60"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          {operacion === 'ajuste' ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Stock disponible</label>
+                <input
+                  autoFocus
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={cantidadDisponible}
+                  onChange={(event) => {
+                    setCantidadDisponible(event.target.value)
+                    setError('')
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-3 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                  placeholder={`0 ${unidad}`}
+                />
+                <p className="mt-2 text-xs text-slate-500">Lo que hay ahora mismo en el puesto.</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Necesidad</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={cantidadNecesaria}
+                  onChange={(event) => {
+                    setCantidadNecesaria(event.target.value)
+                    setError('')
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-3 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                  placeholder={`0 ${unidad}`}
+                />
+                <p className="mt-2 text-xs text-slate-500">Lo que hace falta pedir o reponer.</p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Cantidad</label>
+              <input
+                autoFocus
+                type="number"
+                min="0"
+                step="0.1"
+                value={cantidad}
+                onChange={(event) => {
+                  setCantidad(event.target.value)
+                  setError('')
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-3 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                placeholder={`0 ${unidad}`}
+              />
+            </div>
+          )}
+          {operacion !== 'ajuste' && (
+            <div className="grid grid-cols-4 gap-2">
+              {[1, 2, 5, 10].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setCantidad(String(value))}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-cyan-400 hover:text-cyan-800"
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          )}
+          {error && <Notice tone="danger">{error}</Notice>}
+          <Button type="submit" fullWidth loading={loading}>
+            Aplicar
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function VoluntarioDashboard() {
+  const queryClient = useQueryClient()
   const [accion, setAccion] = useState<AccionVoluntario | null>(null)
   const [puestos, setPuestos] = useState<PuestoEmergencia[]>([])
   const [inventarioPorPuesto, setInventarioPorPuesto] = useState<Record<string, ItemInventario[]>>({})
@@ -475,8 +923,17 @@ export default function VoluntarioDashboard() {
   const [misAsignacionesPuesto, setMisAsignacionesPuesto] = useState<AsignacionPuestoActiva[]>([])
   const [misAsignacionesIncidencia, setMisAsignacionesIncidencia] = useState<AsignacionIncidenciaActiva[]>([])
   const [misSolicitudesParticipacion, setMisSolicitudesParticipacion] = useState<SolicitudParticipacionPuesto[]>([])
+  const [puestoActivoAsignado, setPuestoActivoAsignado] = useState<PuestoEmergencia | null>(null)
   const [inventarioPuestoActivo, setInventarioPuestoActivo] = useState<ItemInventario[]>([])
   const [inventarioPuestoActivoLoading, setInventarioPuestoActivoLoading] = useState(false)
+  const [inventarioPuestoQuery, setInventarioPuestoQuery] = useState('')
+  const [inventarioPuestoFiltro, setInventarioPuestoFiltro] = useState<FiltroInventarioPuesto>('todos')
+  const [showAddInventarioPuesto, setShowAddInventarioPuesto] = useState(false)
+  const [inventarioPuestoError, setInventarioPuestoError] = useState('')
+  const [operacionInventarioPuesto, setOperacionInventarioPuesto] = useState<{
+    card: InventarioPuestoCard
+    operacion: OperacionInventarioPuesto
+  } | null>(null)
   const [showPuestoQr, setShowPuestoQr] = useState(false)
   const [puestoQrResult, setPuestoQrResult] = useState('')
   const [loading, setLoading] = useState(true)
@@ -557,8 +1014,8 @@ export default function VoluntarioDashboard() {
           misAsignacionesIncidenciaResult,
           solicitudesParticipacionResult,
         ] = await Promise.all([
-          apiClient.get('/api/puestos'),
-          apiClient.get('/api/incidencias'),
+          apiClient.get('/api/puestos').catch(() => ({ data: { puestos: [] } })),
+          apiClient.get('/api/incidencias').catch(() => ({ data: { incidencias: [] } })),
           apiClient.get('/api/donaciones/necesidades').catch(() => ({ data: { necesidades: [] } })),
           apiClient.get('/api/donaciones/mis-donaciones').catch(() => ({ data: { donaciones: [] } })),
           apiClient.get('/api/puestos/mis-asignaciones/activa').catch(() => ({ data: { asignacion: null } })),
@@ -569,9 +1026,13 @@ export default function VoluntarioDashboard() {
         ])
 
         const apiNecesidades: NecesidadDonacionApi[] = necesidadesResult.data.necesidades ?? []
-        const loadedPuestos: PuestoEmergencia[] = puestosData.puestos?.length || apiNecesidades.length > 0
+        const asignacionActiva = asignacionPuestoResult.data.asignacion as AsignacionPuestoActiva | null
+        const puestosBase: PuestoEmergencia[] = puestosData.puestos?.length || apiNecesidades.length > 0
           ? puestosData.puestos ?? []
           : PUESTOS_FALLBACK
+        const loadedPuestos: PuestoEmergencia[] = asignacionActiva?.puesto && !puestosBase.some((puesto) => puesto.id === asignacionActiva.puestoId)
+          ? [asignacionActiva.puesto, ...puestosBase]
+          : puestosBase
 
         const inventarios = await Promise.all(
           loadedPuestos.map(async (puesto) => {
@@ -588,13 +1049,15 @@ export default function VoluntarioDashboard() {
             ...Object.fromEntries(loadedPuestos.map((puesto, index) => [puesto.id, ocupacionInicialPuesto(puesto, index)] as const)),
             ...current,
           }))
-          const asignacionActiva = asignacionPuestoResult.data.asignacion as AsignacionPuestoActiva | null
           if (asignacionActiva?.puesto) {
+            setPuestoActivoAsignado(asignacionActiva.puesto)
             setActividadManualActiva({
               tipo: 'puesto',
               id: asignacionActiva.puestoId,
               nombre: asignacionActiva.puesto.nombre,
             })
+          } else {
+            setPuestoActivoAsignado(null)
           }
           const asignacionIncidenciaActiva = asignacionIncidenciaResult.data.asignacion as AsignacionIncidenciaActiva | null
           if (asignacionIncidenciaActiva?.incidencia) {
@@ -759,6 +1222,7 @@ export default function VoluntarioDashboard() {
     : actividadManualActiva
   const estadoOperativo = actividadActiva ? 'En servicio' : 'Disponible'
   const connectionLabel = mode === 'offline' ? 'Offline' : mode === 'slow' ? 'Conexion lenta' : 'Online'
+  const estaGestionandoPuesto = actividadActiva?.tipo === 'puesto'
 
   const resetSelection = (next: AccionVoluntario) => {
     if (actividadActiva && actividadActiva.tipo !== next) return
@@ -772,6 +1236,11 @@ export default function VoluntarioDashboard() {
     setRutaDonacionPlan(null)
     if (next === 'donacion') setVistaDonacion('objetos')
   }
+
+  useEffect(() => {
+    if (!actividadActiva) return
+    setAccion((current) => (current === actividadActiva.tipo ? current : actividadActiva.tipo))
+  }, [actividadActiva?.id, actividadActiva?.tipo])
 
   useEffect(() => {
     if (!donacionActiva) return
@@ -905,6 +1374,7 @@ export default function VoluntarioDashboard() {
       return
     }
     setActividadManualActiva(null)
+    setPuestoActivoAsignado(null)
   }
 
   const finalizarAyudaIncidenciaConActualizacion = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1074,21 +1544,217 @@ export default function VoluntarioDashboard() {
 
   const cargarInventarioPuestoActivo = async (puestoId: string) => {
     setInventarioPuestoActivoLoading(true)
+    setInventarioPuestoError('')
     try {
       const { data } = await apiClient.get(`/api/inventario/puesto/${puestoId}`)
       setInventarioPuestoActivo(data.inventario ?? [])
     } catch {
       setInventarioPuestoActivo([])
+      setInventarioPuestoError('No se pudo cargar el inventario del puesto.')
     } finally {
       setInventarioPuestoActivoLoading(false)
     }
   }
 
-  const actualizarCantidadPuestoActivo = async (itemId: string, delta: number) => {
+  const publicarDisponiblePuestoActivo = async (puestoId: string, item: ItemInventario, cantidad: number) => {
+    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
+      nombre: item.producto.nombre,
+      categoria: item.producto.categoria,
+      unidad: item.producto.unidad,
+      cantidad,
+      tipo: 'DISPONIBLE',
+    })
+  }
+
+  const publicarNecesidadPuestoActivo = async (puestoId: string, item: ItemInventario, cantidad: number) => {
+    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
+      nombre: item.producto.nombre,
+      categoria: item.producto.categoria,
+      unidad: item.producto.unidad,
+      cantidad,
+      tipo: 'NECESARIO',
+    })
+  }
+
+  const crearItemDesdeBasico = async (puestoId: string, item: ItemInventario, cantidad: number, tipo: 'DISPONIBLE' | 'NECESARIO') => {
+    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
+      nombre: item.producto.nombre,
+      categoria: item.producto.categoria,
+      unidad: item.producto.unidad,
+      cantidad,
+      tipo,
+    })
+  }
+
+  const actualizarDisponiblePuestoActivo = async (item: ItemInventario, cantidadDisponible: number) => {
+    await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
+      cantidad: Math.max(cantidadDisponible, 0),
+    })
+  }
+
+  const registrarLlegadaNecesarioPuestoActivo = async (puestoId: string, item: ItemInventario, cantidadRecibida: number) => {
+    if (cantidadRecibida <= 0) return
+
+    const pendiente = item.cantidad - cantidadRecibida
+    await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
+      cantidad: Math.max(pendiente, 0),
+    })
+
+    const sobrante = pendiente < 0 ? Math.abs(pendiente) : 0
+    if (sobrante > 0) await publicarDisponiblePuestoActivo(puestoId, item, sobrante)
+  }
+
+  const ajustarNecesidadPuestoActivo = async (item: ItemInventario, cantidadNecesaria: number) => {
+    await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
+      cantidad: Math.max(cantidadNecesaria, 0),
+    })
+  }
+
+  const registrarSalidaDisponiblePuestoActivo = async (
+    puestoId: string,
+    card: InventarioPuestoCard,
+    cantidadSalida: number,
+  ) => {
+    if (!card.disponible || isInventarioVirtual(card.disponible)) return
+
+    const nuevaCantidadDisponible = Math.max(card.cantidadDisponible - cantidadSalida, 0)
+    const cantidadFaltante = Math.max(cantidadSalida - card.cantidadDisponible, 0)
+
+    await actualizarDisponiblePuestoActivo(card.disponible, nuevaCantidadDisponible)
+
+    if (card.necesario && !isInventarioVirtual(card.necesario)) {
+      await ajustarNecesidadPuestoActivo(card.necesario, cantidadFaltante)
+    } else if (cantidadFaltante > 0) {
+      await publicarNecesidadPuestoActivo(puestoId, card.disponible, cantidadFaltante)
+    }
+  }
+
+  const aplicarOperacionInventarioPuesto = async (
+    card: InventarioPuestoCard,
+    operacion: OperacionInventarioPuesto,
+    cantidad: number,
+  ) => {
     const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
     if (!puestoId) return
-    await apiClient.patch(`/api/inventario/items/${itemId}/cantidad`, { delta })
+    setInventarioPuestoError('')
+    try {
+      const baseItem = card.disponible ?? card.necesario ?? card.virtual
+      if (!baseItem) return
+
+      if (operacion === 'necesidad') {
+        if (card.cantidadDisponible > 0) {
+          throw new Error(`Todavia hay ${card.cantidadDisponible} ${card.producto.unidad} disponibles. Solo marca necesidad cuando no quede stock.`)
+        }
+        if (card.necesario && !isInventarioVirtual(card.necesario)) {
+          await ajustarNecesidadPuestoActivo(card.necesario, card.cantidadNecesaria + cantidad)
+        } else {
+          await publicarNecesidadPuestoActivo(puestoId, baseItem, cantidad)
+        }
+      } else if (operacion === 'entrada') {
+        if (card.estado === 'necesario' && card.necesario && !isInventarioVirtual(card.necesario)) {
+          await registrarLlegadaNecesarioPuestoActivo(puestoId, card.necesario, cantidad)
+        } else if (card.disponible && !isInventarioVirtual(card.disponible)) {
+          await actualizarDisponiblePuestoActivo(card.disponible, card.cantidadDisponible + cantidad)
+          if (card.necesario && !isInventarioVirtual(card.necesario)) {
+            await ajustarNecesidadPuestoActivo(card.necesario, 0)
+          }
+        } else {
+          await crearItemDesdeBasico(puestoId, baseItem, cantidad, 'DISPONIBLE')
+        }
+      } else if (operacion === 'salida') {
+        if (card.disponible && !isInventarioVirtual(card.disponible) && card.cantidadDisponible > 0) {
+          await registrarSalidaDisponiblePuestoActivo(puestoId, card, cantidad)
+        } else if (card.estado === 'necesario' && card.necesario && !isInventarioVirtual(card.necesario)) {
+          await ajustarNecesidadPuestoActivo(card.necesario, card.cantidadNecesaria + cantidad)
+        }
+      } else if (card.estado === 'necesario') {
+        if (card.necesario && !isInventarioVirtual(card.necesario)) {
+          await ajustarNecesidadPuestoActivo(card.necesario, cantidad)
+        } else if (cantidad > 0) {
+          await publicarNecesidadPuestoActivo(puestoId, baseItem, cantidad)
+        }
+      } else if (card.disponible && !isInventarioVirtual(card.disponible)) {
+        await actualizarDisponiblePuestoActivo(card.disponible, cantidad)
+      } else if (cantidad > 0) {
+        await crearItemDesdeBasico(puestoId, baseItem, cantidad, 'DISPONIBLE')
+      }
+      await cargarInventarioPuestoActivo(puestoId)
+      await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
+    } catch (err: unknown) {
+      setInventarioPuestoError(err instanceof Error ? err.message : 'No se pudo actualizar la cantidad.')
+      throw err
+    }
+  }
+
+  const ajustarInventarioPuestoActivo = async (
+    card: InventarioPuestoCard,
+    cantidadDisponible: number,
+    cantidadNecesaria: number,
+  ) => {
+    const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
+    if (!puestoId) return
+    setInventarioPuestoError('')
+    try {
+      if (cantidadDisponible > 0 && cantidadNecesaria > 0) {
+        throw new Error('No puedes guardar stock disponible y necesidad a la vez. Deja una de las dos cantidades a 0.')
+      }
+
+      const baseItem = card.disponible ?? card.necesario ?? card.virtual
+      if (!baseItem) return
+
+      if (card.disponible && !isInventarioVirtual(card.disponible)) {
+        await actualizarDisponiblePuestoActivo(card.disponible, cantidadDisponible)
+      } else if (cantidadDisponible > 0) {
+        await crearItemDesdeBasico(puestoId, baseItem, cantidadDisponible, 'DISPONIBLE')
+      }
+
+      if (card.necesario && !isInventarioVirtual(card.necesario)) {
+        await ajustarNecesidadPuestoActivo(card.necesario, cantidadNecesaria)
+      } else if (cantidadNecesaria > 0) {
+        await publicarNecesidadPuestoActivo(puestoId, baseItem, cantidadNecesaria)
+      }
+
+      await cargarInventarioPuestoActivo(puestoId)
+      await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
+    } catch (err: unknown) {
+      setInventarioPuestoError(err instanceof Error ? err.message : 'No se pudo ajustar el inventario.')
+      throw err
+    }
+  }
+
+  const eliminarProductoInventarioPuesto = async (card: InventarioPuestoCard) => {
+    if (card.isBasico) return
+    const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
+    if (!puestoId) return
+    const confirmed = window.confirm(`Eliminar ${card.producto.nombre} del inventario?`)
+    if (!confirmed) return
+
+    setInventarioPuestoError('')
+    try {
+      const deletions = [card.disponible, card.necesario]
+        .filter((item): item is ItemInventario => Boolean(item && !isInventarioVirtual(item)))
+        .map((item) => apiClient.delete(`/api/inventario/items/${item.id}`))
+      await Promise.all(deletions)
+      await cargarInventarioPuestoActivo(puestoId)
+      await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
+    } catch {
+      setInventarioPuestoError('No se pudo eliminar el producto.')
+    }
+  }
+
+  const crearItemInventarioPuestoActivo = async (input: {
+    nombre: string
+    categoria: string
+    unidad: string
+    cantidad: number
+    tipo: 'DISPONIBLE' | 'NECESARIO'
+  }) => {
+    const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
+    if (!puestoId) return
+    setInventarioPuestoError('')
+    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, input)
     await cargarInventarioPuestoActivo(puestoId)
+    await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
   }
 
   useEffect(() => {
@@ -1559,7 +2225,7 @@ export default function VoluntarioDashboard() {
   }
 
   const puestoActividad = actividadManualActiva?.tipo === 'puesto'
-    ? puestos.find((puesto) => puesto.id === actividadManualActiva.id)
+    ? puestos.find((puesto) => puesto.id === actividadManualActiva.id) ?? puestoActivoAsignado ?? undefined
     : undefined
   const incidenciaActividad = actividadManualActiva?.tipo === 'incidencia'
     ? incidencias.find((incidencia) => incidencia.id === actividadManualActiva.id)
@@ -1577,6 +2243,70 @@ export default function VoluntarioDashboard() {
         ? `puesto:${puestoActividad.id}`
         : ''
   const rutaActividadVisible = rutaActiva && actividadRutaId && rutaActiva.donacionId === actividadRutaId
+  const inventarioPuestoConBasicos = useMemo<InventarioPuestoCard[]>(() => {
+    const byKey = new globalThis.Map<string, InventarioPuestoCard>()
+    SUGERENCIAS_INVENTARIO_PUESTO.map(createInventarioBasico).forEach((item) => {
+      const key = getInventarioProductoKey(item.producto)
+      byKey.set(key, {
+        key,
+        producto: item.producto,
+        virtual: item,
+        cantidadDisponible: 0,
+        cantidadNecesaria: 0,
+        estado: 'sin-stock',
+        isBasico: true,
+      })
+    })
+    inventarioPuestoActivo.forEach((item) => {
+      const key = getInventarioProductoKey(item.producto)
+      const tipo = normalizeTipoInventario(item.tipo)
+      const current = byKey.get(key) ?? {
+        key,
+        producto: item.producto,
+        cantidadDisponible: 0,
+        cantidadNecesaria: 0,
+        estado: 'sin-stock' as const,
+        isBasico: isProductoBasico(item.producto),
+      }
+      if (tipo === 'necesario') {
+        current.necesario = item
+        current.cantidadNecesaria = item.cantidad
+      } else {
+        current.disponible = item
+        current.cantidadDisponible = item.cantidad
+      }
+      current.producto = current.disponible?.producto ?? current.necesario?.producto ?? current.virtual?.producto ?? item.producto
+      current.estado = current.cantidadDisponible > 0
+        ? 'disponible'
+        : current.cantidadNecesaria > 0
+          ? 'necesario'
+          : 'sin-stock'
+      byKey.set(key, current)
+    })
+    return Array.from(byKey.values()).sort((a, b) => (
+      a.estado.localeCompare(b.estado, 'es') ||
+      a.producto.nombre.localeCompare(b.producto.nombre, 'es')
+    ))
+  }, [inventarioPuestoActivo])
+  const inventarioPuestoFiltrado = useMemo(() => {
+    const query = inventarioPuestoQuery.trim().toLocaleLowerCase('es')
+
+    return inventarioPuestoConBasicos.filter((item) => {
+      const nivel = item.disponible ? getNivelInventario(item.disponible) : item.estado === 'sin-stock' ? 'critico' : 'necesario'
+      const matchesFiltro =
+        inventarioPuestoFiltro === 'todos' ||
+        (inventarioPuestoFiltro === 'disponible' && item.estado === 'disponible') ||
+        (inventarioPuestoFiltro === 'necesario' && item.estado === 'necesario') ||
+        (inventarioPuestoFiltro === 'critico' && nivel === 'critico')
+
+      if (!matchesFiltro) return false
+      if (!query) return true
+
+      return `${item.producto.nombre} ${item.producto.categoria} ${item.producto.unidad}`
+        .toLocaleLowerCase('es')
+        .includes(query)
+    })
+  }, [inventarioPuestoConBasicos, inventarioPuestoFiltro, inventarioPuestoQuery])
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-slate-50 pb-24 text-slate-900 safe-bottom">
@@ -1683,55 +2413,158 @@ export default function VoluntarioDashboard() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-950">Inventario del puesto</p>
-                    <p className="mt-1 text-xs text-slate-500">Puedes actualizar cantidades y escanear codigos QR mientras sigas aceptado en el equipo.</p>
+                    <p className="mt-1 text-xs text-slate-500">Actualiza stock, registra necesidades y escanea codigos QR mientras sigas aceptado en el equipo.</p>
                   </div>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setShowPuestoQr(true)}>
-                    Escanear QR
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Button type="button" size="sm" variant="secondary" onClick={() => setShowPuestoQr(true)}>
+                      Escanear QR
+                    </Button>
+                    <Button type="button" size="sm" onClick={() => setShowAddInventarioPuesto(true)}>
+                      + Anadir
+                    </Button>
+                  </div>
                 </div>
                 {puestoQrResult && (
                   <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
                     QR leido: <span className="font-medium break-all">{puestoQrResult}</span>
                   </div>
                 )}
+                {inventarioPuestoError && (
+                  <div className="mt-3">
+                    <Notice tone="danger">{inventarioPuestoError}</Notice>
+                  </div>
+                )}
+                <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <input
+                    value={inventarioPuestoQuery}
+                    onChange={(event) => setInventarioPuestoQuery(event.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
+                    placeholder="Buscar producto, categoria o unidad"
+                  />
+                  <div className="grid grid-cols-4 gap-1 rounded-lg border border-slate-200 bg-white p-1">
+                    {([
+                      ['todos', 'Todos'],
+                      ['disponible', 'Disp.'],
+                      ['necesario', 'Neces.'],
+                      ['critico', 'Critico'],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setInventarioPuestoFiltro(value)}
+                        className={`rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                          inventarioPuestoFiltro === value
+                            ? 'bg-cyan-700 text-white'
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {inventarioPuestoActivoLoading ? (
                   <p className="mt-4 text-sm text-slate-500">Cargando inventario...</p>
-                ) : inventarioPuestoActivo.length === 0 ? (
-                  <p className="mt-4 text-sm text-slate-500">No hay productos registrados todavia.</p>
+                ) : inventarioPuestoFiltrado.length === 0 ? (
+                  <p className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-5 text-center text-sm text-slate-500">
+                    No hay productos que coincidan con el filtro.
+                  </p>
                 ) : (
                   <div className="mt-4 grid gap-2 md:grid-cols-2">
-                    {inventarioPuestoActivo.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
+                    {inventarioPuestoFiltrado.map((card) => {
+                      const nivel = card.disponible ? getNivelInventario(card.disponible) : card.estado === 'sin-stock' ? 'critico' : 'necesario'
+                      const badgeVariant = card.estado === 'necesario' ? 'warning' : card.estado === 'sin-stock' || nivel === 'critico' ? 'danger' : 'success'
+                      const badgeText = card.estado === 'necesario' ? 'Necesario' : card.estado === 'sin-stock' ? 'Sin stock' : nivel === 'critico' ? 'Critico' : 'Disponible'
+                      const cantidadPrincipal = card.estado === 'necesario' ? card.cantidadNecesaria : card.cantidadDisponible
+                      const labelPrincipal = card.estado === 'necesario' ? 'Cantidad necesaria' : 'Cantidad disponible'
+
+                      return (
+                      <div
+                        key={card.key}
+                        className={`rounded-lg border bg-white px-3 py-3 ${
+                          card.estado === 'necesario' ? 'border-amber-200' : card.estado === 'sin-stock' || nivel === 'critico' ? 'border-red-200' : 'border-slate-200'
+                        }`}
+                      >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{item.producto.nombre}</p>
-                            <p className="mt-1 text-xs text-slate-500">{item.producto.categoria} · {item.tipo}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">{card.producto.nombre}</p>
+                            <p className="mt-1 text-xs text-slate-500">{card.producto.categoria} - {card.producto.unidad}</p>
                           </div>
-                          <p className="text-sm font-semibold text-slate-950">
-                            {item.cantidad} {item.producto.unidad}
-                          </p>
+                            <Badge variant={badgeVariant}>
+                              {badgeText}
+                            </Badge>
                         </div>
-                        <div className="mt-3 flex gap-2">
+                        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                          <span className="block text-xs font-medium text-slate-500">
+                            {labelPrincipal}
+                          </span>
+                          <span className="mt-1 block text-lg font-semibold text-slate-950">
+                            {cantidadPrincipal} {card.producto.unidad}
+                          </span>
+                          {card.estado === 'necesario' && card.cantidadDisponible > 0 && (
+                            <span className="mt-1 block text-xs text-slate-500">
+                              Tambien hay {card.cantidadDisponible} {card.producto.unidad} disponibles.
+                            </span>
+                          )}
+                          {card.estado === 'disponible' && card.cantidadNecesaria > 0 && (
+                            <span className="mt-1 block text-xs text-amber-700">
+                              Necesidad registrada: {card.cantidadNecesaria} {card.producto.unidad}.
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <Button
                             type="button"
+                              size="sm"
+                              variant="secondary"
+                              disabled={card.estado !== 'necesario' && card.cantidadDisponible <= 0}
+                              onClick={() => setOperacionInventarioPuesto({ card, operacion: 'salida' })}
+                            >
+                              {card.estado === 'necesario' ? 'Falta mas' : 'Salida'}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              disabled={card.estado === 'necesario'}
+                              onClick={() => {
+                                if (card.cantidadDisponible > 0) {
+                                  setInventarioPuestoError(`Todavia hay ${card.cantidadDisponible} ${card.producto.unidad} de ${card.producto.nombre}. Solo marca necesidad cuando no quede stock.`)
+                                  return
+                                }
+                                setOperacionInventarioPuesto({ card, operacion: 'necesidad' })
+                              }}
+                            >
+                              Necesitar
+                            </Button>
+                            <Button
+                              type="button"
                             size="sm"
                             variant="secondary"
-                            disabled={item.cantidad <= 0}
-                            onClick={() => void actualizarCantidadPuestoActivo(item.id, -1)}
+                            onClick={() => setOperacionInventarioPuesto({ card, operacion: 'ajuste' })}
                           >
-                            -1
+                            Ajustar
                           </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => void actualizarCantidadPuestoActivo(item.id, 1)}
-                          >
-                            +1
-                          </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => setOperacionInventarioPuesto({ card, operacion: 'entrada' })}
+                            >
+                              {card.estado === 'necesario' ? 'Llegada' : 'Entrada'}
+                            </Button>
                         </div>
+                        {!card.isBasico && (
+                          <button
+                            type="button"
+                            onClick={() => void eliminarProductoInventarioPuesto(card)}
+                            className="mt-3 text-xs font-medium text-red-500 hover:text-red-700"
+                          >
+                            Eliminar producto
+                          </button>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -1798,7 +2631,7 @@ export default function VoluntarioDashboard() {
             )}
           </section>
         )}
-        {accion && (
+        {accion && !estaGestionandoPuesto && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400">Actividad elegida</p>
@@ -1813,7 +2646,7 @@ export default function VoluntarioDashboard() {
             )}
           </div>
         )}
-        {!accion && (
+        {!accion && !estaGestionandoPuesto && (
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <SectionHeader
               title="Que quieres hacer ahora?"
@@ -1844,7 +2677,7 @@ export default function VoluntarioDashboard() {
       </main>
 
 
-      {accion && (
+      {accion && !estaGestionandoPuesto && (
       <main className="mx-auto max-w-6xl px-4 pt-5">
         {loading ? (
           <EmptyState>Cargando opciones disponibles...</EmptyState>
@@ -3061,6 +3894,21 @@ export default function VoluntarioDashboard() {
             </div>
           </form>
         </div>
+      )}
+      {showAddInventarioPuesto && (
+        <AddInventarioPuestoSheet
+          onClose={() => setShowAddInventarioPuesto(false)}
+          onCreate={crearItemInventarioPuestoActivo}
+        />
+      )}
+      {operacionInventarioPuesto && (
+        <OperacionInventarioPuestoSheet
+          card={operacionInventarioPuesto.card}
+          operacion={operacionInventarioPuesto.operacion}
+          onClose={() => setOperacionInventarioPuesto(null)}
+          onApply={aplicarOperacionInventarioPuesto}
+          onAdjust={ajustarInventarioPuestoActivo}
+        />
       )}
       {showPuestoQr && (
         <QrScanner
