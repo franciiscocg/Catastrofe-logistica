@@ -484,6 +484,10 @@ function getInventarioProductoKey(producto: Pick<ItemInventario['producto'], 'no
   return `${producto.nombre.toLocaleLowerCase('es')}:${producto.unidad.toLocaleLowerCase('es')}`
 }
 
+function normalizeInventarioProductoNombre(nombre: string) {
+  return nombre.trim().toLocaleLowerCase('es')
+}
+
 function isInventarioVirtual(item: ItemInventario) {
   return item.id.startsWith('basico:')
 }
@@ -534,9 +538,11 @@ function ocupacionInicialPuesto(puesto: PuestoEmergencia, index: number): Ocupac
 }
 
 function AddInventarioPuestoSheet({
+  existingItems,
   onClose,
   onCreate,
 }: {
+  existingItems: ItemInventario[]
   onClose: () => void
   onCreate: (input: {
     nombre: string
@@ -570,6 +576,13 @@ function AddInventarioPuestoSheet({
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const parsedCantidad = Number(cantidad.replace(',', '.'))
+    const existing = existingItems.find((item) => (
+      normalizeInventarioProductoNombre(item.producto.nombre) === normalizeInventarioProductoNombre(nombre)
+    ))
+    if (existing) {
+      setError(`"${existing.producto.nombre}" ya existe en el inventario. Edita la cantidad desde su tarjeta.`)
+      return
+    }
 
     if (!nombre.trim()) {
       setError('El nombre es obligatorio.')
@@ -747,7 +760,7 @@ function OperacionInventarioPuestoSheet({
         ? 'Aumenta la cantidad que falta.'
         : 'Resta material entregado o retirado del puesto.'
       : operacion === 'necesidad'
-        ? 'Publica o aumenta la cantidad que hace falta de este producto.'
+        ? 'Descarta primero el stock disponible y publica como urgente solo lo que siga faltando.'
         : 'Fija por separado lo que hay fisicamente y lo que hace falta pedir.'
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1556,16 +1569,6 @@ export default function VoluntarioDashboard() {
     }
   }
 
-  const publicarDisponiblePuestoActivo = async (puestoId: string, item: ItemInventario, cantidad: number) => {
-    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
-      nombre: item.producto.nombre,
-      categoria: item.producto.categoria,
-      unidad: item.producto.unidad,
-      cantidad,
-      tipo: 'DISPONIBLE',
-    })
-  }
-
   const publicarNecesidadPuestoActivo = async (puestoId: string, item: ItemInventario, cantidad: number) => {
     await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
       nombre: item.producto.nombre,
@@ -1592,40 +1595,79 @@ export default function VoluntarioDashboard() {
     })
   }
 
-  const registrarLlegadaNecesarioPuestoActivo = async (puestoId: string, item: ItemInventario, cantidadRecibida: number) => {
-    if (cantidadRecibida <= 0) return
-
-    const pendiente = item.cantidad - cantidadRecibida
-    await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
-      cantidad: Math.max(pendiente, 0),
-    })
-
-    const sobrante = pendiente < 0 ? Math.abs(pendiente) : 0
-    if (sobrante > 0) await publicarDisponiblePuestoActivo(puestoId, item, sobrante)
-  }
-
   const ajustarNecesidadPuestoActivo = async (item: ItemInventario, cantidadNecesaria: number) => {
     await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
       cantidad: Math.max(cantidadNecesaria, 0),
     })
   }
 
-  const registrarSalidaDisponiblePuestoActivo = async (
+  const guardarDisponiblePuestoActivo = async (
     puestoId: string,
     card: InventarioPuestoCard,
-    cantidadSalida: number,
+    cantidadDisponible: number,
   ) => {
-    if (!card.disponible || isInventarioVirtual(card.disponible)) return
+    const baseItem = card.disponible ?? card.necesario ?? card.virtual
+    const cantidad = Math.max(cantidadDisponible, 0)
 
-    const nuevaCantidadDisponible = Math.max(card.cantidadDisponible - cantidadSalida, 0)
-    const cantidadFaltante = Math.max(cantidadSalida - card.cantidadDisponible, 0)
+    if (card.disponible && !isInventarioVirtual(card.disponible)) {
+      await actualizarDisponiblePuestoActivo(card.disponible, cantidad)
+    } else if (baseItem && cantidad > 0) {
+      await crearItemDesdeBasico(puestoId, baseItem, cantidad, 'DISPONIBLE')
+    }
+  }
 
-    await actualizarDisponiblePuestoActivo(card.disponible, nuevaCantidadDisponible)
+  const guardarNecesidadPuestoActivo = async (
+    puestoId: string,
+    card: InventarioPuestoCard,
+    cantidadNecesaria: number,
+  ) => {
+    const baseItem = card.disponible ?? card.necesario ?? card.virtual
+    const cantidad = Math.max(cantidadNecesaria, 0)
 
     if (card.necesario && !isInventarioVirtual(card.necesario)) {
-      await ajustarNecesidadPuestoActivo(card.necesario, cantidadFaltante)
-    } else if (cantidadFaltante > 0) {
-      await publicarNecesidadPuestoActivo(puestoId, card.disponible, cantidadFaltante)
+      await ajustarNecesidadPuestoActivo(card.necesario, cantidad)
+    } else if (baseItem && cantidad > 0) {
+      await publicarNecesidadPuestoActivo(puestoId, baseItem, cantidad)
+    }
+  }
+
+  const registrarLlegadaPuestoActivo = async (
+    puestoId: string,
+    card: InventarioPuestoCard,
+    cantidadRecibida: number,
+  ) => {
+    if (cantidadRecibida <= 0) return
+
+    const cubierto = Math.min(card.cantidadNecesaria, cantidadRecibida)
+    const nuevaCantidadNecesaria = Math.max(card.cantidadNecesaria - cubierto, 0)
+    const sobrante = Math.max(cantidadRecibida - card.cantidadNecesaria, 0)
+    const nuevaCantidadDisponible = card.cantidadDisponible + sobrante
+
+    if (card.cantidadNecesaria > 0) {
+      await guardarNecesidadPuestoActivo(puestoId, card, nuevaCantidadNecesaria)
+    }
+    if (sobrante > 0 || card.cantidadNecesaria <= 0) {
+      await guardarDisponiblePuestoActivo(puestoId, card, nuevaCantidadDisponible)
+    }
+  }
+
+  const registrarSalidaONecesidadPuestoActivo = async (
+    puestoId: string,
+    card: InventarioPuestoCard,
+    cantidadSolicitada: number,
+  ) => {
+    if (cantidadSolicitada <= 0) return
+
+    const cubierto = Math.min(card.cantidadDisponible, cantidadSolicitada)
+    const nuevaCantidadDisponible = Math.max(card.cantidadDisponible - cubierto, 0)
+    const faltante = Math.max(cantidadSolicitada - card.cantidadDisponible, 0)
+    const nuevaCantidadNecesaria = card.cantidadNecesaria + faltante
+
+    if (card.cantidadDisponible > 0) {
+      await guardarDisponiblePuestoActivo(puestoId, card, nuevaCantidadDisponible)
+    }
+    if (faltante > 0 || card.cantidadDisponible <= 0) {
+      await guardarNecesidadPuestoActivo(puestoId, card, nuevaCantidadNecesaria)
     }
   }
 
@@ -1642,31 +1684,11 @@ export default function VoluntarioDashboard() {
       if (!baseItem) return
 
       if (operacion === 'necesidad') {
-        if (card.cantidadDisponible > 0) {
-          throw new Error(`Todavia hay ${card.cantidadDisponible} ${card.producto.unidad} disponibles. Solo marca necesidad cuando no quede stock.`)
-        }
-        if (card.necesario && !isInventarioVirtual(card.necesario)) {
-          await ajustarNecesidadPuestoActivo(card.necesario, card.cantidadNecesaria + cantidad)
-        } else {
-          await publicarNecesidadPuestoActivo(puestoId, baseItem, cantidad)
-        }
+        await registrarSalidaONecesidadPuestoActivo(puestoId, card, cantidad)
       } else if (operacion === 'entrada') {
-        if (card.estado === 'necesario' && card.necesario && !isInventarioVirtual(card.necesario)) {
-          await registrarLlegadaNecesarioPuestoActivo(puestoId, card.necesario, cantidad)
-        } else if (card.disponible && !isInventarioVirtual(card.disponible)) {
-          await actualizarDisponiblePuestoActivo(card.disponible, card.cantidadDisponible + cantidad)
-          if (card.necesario && !isInventarioVirtual(card.necesario)) {
-            await ajustarNecesidadPuestoActivo(card.necesario, 0)
-          }
-        } else {
-          await crearItemDesdeBasico(puestoId, baseItem, cantidad, 'DISPONIBLE')
-        }
+        await registrarLlegadaPuestoActivo(puestoId, card, cantidad)
       } else if (operacion === 'salida') {
-        if (card.disponible && !isInventarioVirtual(card.disponible) && card.cantidadDisponible > 0) {
-          await registrarSalidaDisponiblePuestoActivo(puestoId, card, cantidad)
-        } else if (card.estado === 'necesario' && card.necesario && !isInventarioVirtual(card.necesario)) {
-          await ajustarNecesidadPuestoActivo(card.necesario, card.cantidadNecesaria + cantidad)
-        }
+        await registrarSalidaONecesidadPuestoActivo(puestoId, card, cantidad)
       } else if (card.estado === 'necesario') {
         if (card.necesario && !isInventarioVirtual(card.necesario)) {
           await ajustarNecesidadPuestoActivo(card.necesario, cantidad)
@@ -2527,13 +2549,7 @@ export default function VoluntarioDashboard() {
                               size="sm"
                               variant="secondary"
                               disabled={card.estado === 'necesario'}
-                              onClick={() => {
-                                if (card.cantidadDisponible > 0) {
-                                  setInventarioPuestoError(`Todavia hay ${card.cantidadDisponible} ${card.producto.unidad} de ${card.producto.nombre}. Solo marca necesidad cuando no quede stock.`)
-                                  return
-                                }
-                                setOperacionInventarioPuesto({ card, operacion: 'necesidad' })
-                              }}
+                              onClick={() => setOperacionInventarioPuesto({ card, operacion: 'necesidad' })}
                             >
                               Necesitar
                             </Button>
@@ -3897,6 +3913,7 @@ export default function VoluntarioDashboard() {
       )}
       {showAddInventarioPuesto && (
         <AddInventarioPuestoSheet
+          existingItems={inventarioPuestoActivo}
           onClose={() => setShowAddInventarioPuesto(false)}
           onCreate={crearItemInventarioPuestoActivo}
         />

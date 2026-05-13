@@ -47,6 +47,21 @@ interface SolicitudPuesto {
   createdAt: string
 }
 
+interface HistorialInventario {
+  id: string
+  accion: string
+  createdAt: string
+  datos?: {
+    itemId?: string
+    producto?: Producto
+    tipo?: 'DISPONIBLE' | 'NECESARIO'
+    cantidadAnterior?: number
+    cantidadNueva?: number
+    delta?: number
+  } | null
+  usuario?: { id: string; nombre: string; apellidos: string; email: string } | null
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function nivelStock(cantidad: number): { label: string; variant: 'success' | 'info' | 'warning' | 'danger' } {
@@ -55,6 +70,32 @@ function nivelStock(cantidad: number): { label: string; variant: 'success' | 'in
   if (cantidad <= 20) return { label: 'Bajo',        variant: 'warning' }
   if (cantidad <= 50) return { label: 'Medio',       variant: 'info'    }
   return               { label: 'Alto',        variant: 'success' }
+}
+
+function formatCantidad(cantidad?: number) {
+  if (cantidad === undefined) return '0'
+  return cantidad % 1 === 0 ? String(cantidad) : cantidad.toFixed(1)
+}
+
+function accionHistorialLabel(accion: string) {
+  if (accion === 'INVENTARIO_CREADO') return 'Creado'
+  if (accion === 'INVENTARIO_INCREMENTADO') return 'Sumado'
+  if (accion === 'INVENTARIO_ACTUALIZADO') return 'Actualizado'
+  if (accion === 'INVENTARIO_ELIMINADO') return 'Eliminado'
+  return 'Movimiento'
+}
+
+function formatFechaHistorial(value: string) {
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function normalizeProductoNombre(nombre: string) {
+  return nombre.trim().toLocaleLowerCase('es')
 }
 
 const CATEGORIA_EMOJI: Record<string, string> = {
@@ -83,10 +124,12 @@ const SUGERENCIAS_PRODUCTOS = [
 
 function AddItemSheet({
   puestoId,
+  existingItems,
   onClose,
   onAdded,
 }: {
   puestoId: string
+  existingItems: ItemInventario[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -113,6 +156,13 @@ function AddItemSheet({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const cant = parseFloat(cantidad)
+    const existing = existingItems.find((item) => (
+      normalizeProductoNombre(item.producto.nombre) === normalizeProductoNombre(nombre)
+    ))
+    if (existing) {
+      setError(`"${existing.producto.nombre}" ya existe en el inventario. Edita la cantidad desde su tarjeta.`)
+      return
+    }
     if (!nombre.trim()) { setError('El nombre es obligatorio'); return }
     if (!categoria.trim()) { setError('La categoría es obligatoria'); return }
     if (!unidad.trim()) { setError('La unidad es obligatoria'); return }
@@ -327,6 +377,85 @@ function InventarioRow({
 }
 
 // ── Panel de gestión de trabajadores ─────────────────────────────────────────
+
+function HistorialInventarioSheet({
+  historial,
+  loading,
+  onClose,
+}: {
+  historial: HistorialInventario[]
+  loading: boolean
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[2400] bg-black/40 flex items-end sm:items-center sm:justify-center">
+      <div className="bg-white w-full max-h-[88vh] sm:max-w-2xl sm:rounded-xl rounded-t-2xl overflow-hidden shadow-xl flex flex-col">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Historial</p>
+            <h2 className="text-lg font-bold text-gray-900">Movimientos de inventario</h2>
+            <p className="text-sm text-gray-500">Ultimas entradas, salidas, ajustes y eliminaciones.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">x</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-500" />
+            </div>
+          ) : historial.length === 0 ? (
+            <div className="text-center py-10 text-gray-400">
+              <p className="text-3xl mb-2">📋</p>
+              <p className="text-sm">Todavia no hay movimientos registrados.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {historial.map((movimiento) => {
+                const datos = movimiento.datos ?? {}
+                const producto = datos.producto
+                const unidad = producto?.unidad ?? ''
+                const delta = datos.delta ?? ((datos.cantidadNueva ?? 0) - (datos.cantidadAnterior ?? 0))
+                const usuario = movimiento.usuario
+                  ? `${movimiento.usuario.nombre} ${movimiento.usuario.apellidos}`.trim()
+                  : 'Sistema'
+                const tipoLabel = datos.tipo === 'NECESARIO' ? 'Necesario' : 'Disponible'
+
+                return (
+                  <div key={movimiento.id} className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {producto?.nombre ?? 'Producto eliminado'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {accionHistorialLabel(movimiento.accion)} · {tipoLabel} · {usuario}
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-400 flex-shrink-0">
+                        {formatFechaHistorial(movimiento.createdAt)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-700">
+                        {formatCantidad(datos.cantidadAnterior)} -&gt; {formatCantidad(datos.cantidadNueva)} {unidad}
+                      </span>
+                      <span className={`rounded-full px-2 py-1 font-medium ${
+                        delta >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                      }`}>
+                        {delta >= 0 ? '+' : ''}{formatCantidad(delta)} {unidad}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 interface Trabajador {
   id: string
@@ -772,6 +901,7 @@ export default function PuestoDashboard() {
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [showQr, setShowQr] = useState(false)
   const [showWorkers, setShowWorkers] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [qrResult, setQrResult] = useState<{ text: string; ts: number } | null>(null)
   const [filtro, setFiltro] = useState<'todos' | 'DISPONIBLE' | 'NECESARIO'>('todos')
   const qc = useQueryClient()
@@ -812,17 +942,34 @@ export default function PuestoDashboard() {
 
   const inventario = invData?.inventario ?? []
 
+  const { data: historialData, isLoading: loadingHistorial } = useQuery({
+    queryKey: ['inventario-historial', puesto?.id],
+    queryFn: () =>
+      apiClient
+        .get<{ historial: HistorialInventario[] }>(`/api/inventario/puesto/${puesto!.id}/historial`)
+        .then((r) => r.data.historial),
+    enabled: !!puesto?.id && showHistory,
+  })
+
+  const historialInventario = historialData ?? []
+
   // Mutation: actualizar cantidad
   const mutCantidad = useMutation({
     mutationFn: ({ id, delta }: { id: string; delta: number }) =>
       apiClient.patch(`/api/inventario/items/${id}/cantidad`, { delta }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] })
+      qc.invalidateQueries({ queryKey: ['inventario-historial', puesto?.id] })
+    },
   })
 
   // Mutation: eliminar
   const mutDelete = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/api/inventario/items/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] })
+      qc.invalidateQueries({ queryKey: ['inventario-historial', puesto?.id] })
+    },
   })
 
   const handleUpdateCantidad = useCallback((id: string, delta: number) => {
@@ -928,6 +1075,9 @@ export default function PuestoDashboard() {
           <Button size="sm" variant="secondary" onClick={() => setShowQr(true)}>
             📷 QR
           </Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowHistory(true)}>
+            Historial
+          </Button>
           <Button size="sm" variant="secondary" onClick={() => setShowWorkers(true)}>
             👷
           </Button>
@@ -1002,11 +1152,23 @@ export default function PuestoDashboard() {
       )}
 
       {/* Panel añadir producto */}
+      {showHistory && (
+        <HistorialInventarioSheet
+          historial={historialInventario}
+          loading={loadingHistorial}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+
       {showAddSheet && puesto && (
         <AddItemSheet
           puestoId={puesto.id}
+          existingItems={inventario}
           onClose={() => setShowAddSheet(false)}
-          onAdded={() => qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })}
+          onAdded={() => {
+            qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })
+            qc.invalidateQueries({ queryKey: ['inventario-historial', puesto.id] })
+          }}
         />
       )}
     </div>
