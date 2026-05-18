@@ -1954,6 +1954,7 @@ export default function CiudadanoDashboard() {
           incidencias={incidencias}
           selectedPuestoId={selectedId}
           onPuestoSelect={handleSelectPuesto}
+          onVerInventarioPuesto={(id) => { setSelectedId(id); setVista('inventario') }}
           onUserLocated={setUserPosition}
           onReportPointSelect={(pos) => {
             setReportPosition(pos)

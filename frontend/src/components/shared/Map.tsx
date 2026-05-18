@@ -62,6 +62,7 @@ interface MapProps {
   incidencias?: IncidenciaMarker[]
   selectedPuestoId?: string | null
   onPuestoSelect?: (id: string) => void
+  onVerInventarioPuesto?: (id: string) => void
   onUserLocated?: (pos: [number, number]) => void
   onReportPointSelect?: (pos: [number, number]) => void
   onIncidenciaAction?: (incidencia: IncidenciaMarker, action: IncidenciaAction) => void
@@ -260,6 +261,7 @@ export default function Map({
   incidencias = [],
   selectedPuestoId,
   onPuestoSelect,
+  onVerInventarioPuesto,
   onUserLocated,
   onReportPointSelect,
   onIncidenciaAction,
@@ -450,16 +452,37 @@ export default function Map({
             eventHandlers={{ click: () => !selectingReportPoint && onPuestoSelect?.(p.id) }}
           >
             <Popup>
-              <div style={{ minWidth: 160 }}>
-                <p style={{ fontWeight: 600, marginBottom: 2 }}>{p.nombre}</p>
+              <div style={{ minWidth: 170 }}>
+                <p style={{ fontWeight: 700, marginBottom: 2, color: '#111827' }}>{p.nombre}</p>
                 <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{p.direccion}</p>
                 {p.distanciaKm !== undefined && (
-                  <p style={{ fontSize: 12, color: '#9ca3af' }}>{p.distanciaKm.toFixed(1)} km</p>
+                  <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>{p.distanciaKm.toFixed(1)} km</p>
                 )}
                 {p.necesidades > 0 && (
-                  <p style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginTop: 4 }}>
+                  <p style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginBottom: 8 }}>
                     ⚠️ {p.necesidades} necesidad{p.necesidades > 1 ? 'es' : ''} urgente{p.necesidades > 1 ? 's' : ''}
                   </p>
+                )}
+                {onVerInventarioPuesto && (
+                  <button
+                    type="button"
+                    onClick={() => onVerInventarioPuesto(p.id)}
+                    style={{
+                      width: '100%',
+                      marginTop: 4,
+                      padding: '7px 10px',
+                      border: '1px solid #3b82f6',
+                      borderRadius: 8,
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textAlign: 'center',
+                    }}
+                  >
+                    📦 Ver inventario
+                  </button>
                 )}
               </div>
             </Popup>
