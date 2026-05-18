@@ -13,10 +13,22 @@ import {
 import {
   getProductosDisponibles as _getProductosDisponibles,
   getProductoOptions as _getProductoOptions,
+  getProductosRecomendados as _getProductosRecomendados,
+  calcularOpcionesRutaProductos,
+  type OpcionRutaProductos,
 } from '@/utils/productos'
 import { apiClient } from '@/lib/api/client'
 import { useSyncStore } from '@/store/sync.store'
-import { fetchRutaEvitandoIncidencias as fetchRutaSegura } from '@/utils/routing'
+import { fetchRutaEvitandoIncidencias as fetchRutaSegura, fetchRutaMultiParada, fetchRutaConPasos, type ModoTransporte } from '@/utils/routing'
+import {
+  parsearStepsOsrm,
+  formatearDistanciaNav,
+  calcularBearing,
+  distanciaAlStep,
+  ROTACION_ICONO,
+  type StepNavegacion,
+  type DireccionIcono,
+} from '@/utils/navegacion'
 
 // PUESTOS_BASE ya no se usa — los puestos vienen de la API (/api/puestos)
 
@@ -497,257 +509,185 @@ function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[]
   return _getProductoOptions(disponibles)
 }
 
-function BuscarProductoSheet({
-  producto,
+function SelectorProductosSheet({
+  productosSeleccionados,
+  productosRecomendados,
+  productoOptions,
   textoBusqueda,
-  productos,
-  resultados,
-  selectedPuesto,
-  inventarioPorPuesto,
   userPosition,
-  routeLoading,
-  routeError,
   onTextoBusquedaChange,
-  onPreviewPuesto,
-  onComoLlegar,
-  onCancelRuta,
-  onBackToResults,
+  onAgregarProducto,
+  onQuitarProducto,
+  onVerRutas,
   onClose,
 }: {
-  producto: string
+  productosSeleccionados: string[]
+  productosRecomendados: ProductoOption[]
+  productoOptions: ProductoOption[]
   textoBusqueda: string
-  productos: ProductoOption[]
-  resultados: ProductoDisponible[]
-  selectedPuesto: PuestoMarker | null
-  inventarioPorPuesto: InventarioPorPuesto
   userPosition: [number, number] | null
-  routeLoading: boolean
-  routeError: string | null
   onTextoBusquedaChange: (texto: string) => void
-  onPreviewPuesto: (puestoId: string) => void
-  onComoLlegar: (puestoId: string) => void
-  onCancelRuta: () => void
-  onBackToResults: () => void
+  onAgregarProducto: (nombre: string) => void
+  onQuitarProducto: (nombre: string) => void
+  onVerRutas: () => void
   onClose: () => void
 }) {
-  const recomendado = resultados[0]
   const [inputFocused, setInputFocused] = useState(false)
-  const inventarioSeleccionado = selectedPuesto
-    ? inventarioPorPuesto[selectedPuesto.id] ?? { disponible: [], necesario: [] }
-    : null
-  const showSugerencias = inputFocused
-  const hasTextoBusqueda = textoBusqueda.trim().length > 0
+
+  const textoBusquedaNorm = textoBusqueda.trim().toLocaleLowerCase('es')
+  const sugerencias = textoBusquedaNorm
+    ? productoOptions.filter((o) =>
+        o.nombre.toLocaleLowerCase('es').includes(textoBusquedaNorm) ||
+        o.categoria.toLocaleLowerCase('es').includes(textoBusquedaNorm),
+      )
+    : productoOptions
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-white">
-      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center justify-between">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Buscar producto</p>
-          <p className="font-semibold text-gray-900">Disponibilidad por puesto</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Recursos disponibles</p>
+          <p className="font-semibold text-gray-900">Buscar productos</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+        >
+          ✕
+        </button>
       </div>
 
-      <div className="overflow-y-auto flex-1 px-4 pb-6 pt-4 space-y-4 bg-slate-50">
-        <div>
-          <label htmlFor="texto-producto-busqueda" className="block text-sm font-medium text-gray-700 mb-1">
-            Producto
-          </label>
-          <div>
-            <input
-              id="texto-producto-busqueda"
-              type="search"
-              value={textoBusqueda}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              onChange={(e) => {
-                onTextoBusquedaChange(e.target.value)
-                onBackToResults()
-              }}
-              className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
-              placeholder="Escribe o elige un producto"
-              autoComplete="off"
-            />
-
-            {showSugerencias && productos.length > 0 && (
-              <div className="mt-2 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-                {productos.map((item) => (
-                  <button
-                    key={item.nombre}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      onTextoBusquedaChange(item.nombre)
-                      onBackToResults()
-                      setInputFocused(false)
-                    }}
-                    className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
-                      item.nombre === producto ? 'bg-blue-50 text-blue-800' : 'text-gray-800'
-                    }`}
-                  >
-                    <span className="font-medium">{item.nombre}</span>
-                    <span className="ml-2 text-xs text-gray-500">
-                      {item.total} {item.unidad}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {productos.length === 0 && hasTextoBusqueda && (
-            <p className="text-xs text-gray-500 mt-1">No hay productos que coincidan con la busqueda.</p>
-          )}
-          {productos.length > 0 && producto && (
-            <p className="text-xs text-gray-500 mt-1">
-              Seleccionado: {producto}
-            </p>
-          )}
-          {!producto && (
-            <p className="text-xs text-gray-500 mt-1">Selecciona un producto para ver los puestos con stock.</p>
-          )}
-        </div>
-
-        {!userPosition && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Comparte tu ubicacion para que la recomendacion use el puesto mas cercano.
-          </p>
-        )}
-
-        {selectedPuesto && inventarioSeleccionado ? (
-          <section className="space-y-4">
-            <button
-              type="button"
-              onClick={onBackToResults}
-              className="text-xs font-medium text-blue-700 hover:text-blue-800"
-            >
-              Volver a puestos
-            </button>
-
-            <div className="border-2 border-blue-400 bg-blue-50 rounded-xl p-3.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-900 text-sm">{selectedPuesto.nombre}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{selectedPuesto.direccion}</p>
-                </div>
-                {selectedPuesto.distanciaKm !== undefined && (
-                  <span className="text-xs font-medium text-blue-700 flex-shrink-0">{selectedPuesto.distanciaKm.toFixed(1)} km</span>
-                )}
-              </div>
-              <div className="mt-3">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  fullWidth
-                  loading={routeLoading}
-                  onClick={() => onComoLlegar(selectedPuesto.id)}
-                >
-                  🚗 Cómo llegar
-                </Button>
-                {routeLoading && (
-                  <div className="mt-2 text-xs text-blue-800 bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="animate-spin h-3.5 w-3.5 border-2 border-blue-700 border-t-transparent rounded-full flex-shrink-0" />
-                      <span>Calculando ruta segura...</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onCancelRuta}
-                      className="w-full rounded-md border border-blue-300 bg-white/70 px-2 py-1 font-medium text-blue-800 hover:bg-white"
-                    >
-                      Cancelar busqueda de ruta
-                    </button>
-                  </div>
-                )}
-                {routeError && (
-                  <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    {routeError}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <section>
-              <h3 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                Productos disponibles ({inventarioSeleccionado.disponible.length})
-              </h3>
-              {inventarioSeleccionado.disponible.length === 0 ? (
-                <p className="text-sm text-gray-400 italic">Sin productos disponibles</p>
-              ) : (
-                <div className="space-y-1">
-                  {inventarioSeleccionado.disponible.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-lg flex-shrink-0">{CATEGORIA_EMOJI[item.categoria] ?? '📦'}</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{item.nombre}</p>
-                          <p className="text-xs text-gray-400">{item.categoria}</p>
-                        </div>
-                      </div>
-                      <span className="text-sm font-semibold text-green-700 flex-shrink-0">
-                        {item.cantidad} {item.unidad}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </section>
-        ) : recomendado && (
-          <button
-            type="button"
-            onClick={() => onPreviewPuesto(recomendado.puesto.id)}
-            className="w-full text-left border-2 border-blue-400 bg-blue-50 rounded-xl p-3.5 transition-colors hover:bg-blue-100"
-          >
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Recomendado</span>
-              {recomendado.puesto.distanciaKm !== undefined && (
-                <span className="text-xs font-medium text-blue-700">{recomendado.puesto.distanciaKm.toFixed(1)} km</span>
-              )}
-            </div>
-            <p className="font-semibold text-gray-900 text-sm">{recomendado.puesto.nombre}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{recomendado.puesto.direccion}</p>
-            <p className="text-sm text-blue-800 mt-2">
-              {CATEGORIA_EMOJI[recomendado.categoria] ?? '📦'} {recomendado.cantidad} {recomendado.unidad} disponibles
-            </p>
-          </button>
-        )}
-
-        {!selectedPuesto && (
+      <div className="overflow-y-auto flex-1 px-4 pb-4 pt-4 space-y-5 bg-slate-50">
+        {/* Recomendados */}
+        {productosRecomendados.length > 0 && (
           <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Otros puestos con stock
-            </h3>
-            <div className="space-y-2">
-              {resultados.slice(1).map((item) => (
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Lo mas solicitado</p>
+            <div className="flex flex-wrap gap-2">
+              {productosRecomendados.map((p) => (
                 <button
-                  key={`${item.puesto.id}-${item.nombre}`}
+                  key={p.nombre}
                   type="button"
-                  onClick={() => onPreviewPuesto(item.puesto.id)}
-                  className="w-full text-left border border-gray-200 bg-white rounded-xl p-3 transition-colors hover:border-blue-200 hover:bg-gray-50"
+                  onClick={() => { if (!productosSeleccionados.includes(p.nombre)) onAgregarProducto(p.nombre) }}
+                  disabled={productosSeleccionados.includes(p.nombre)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    productosSeleccionados.includes(p.nombre)
+                      ? 'border-green-300 bg-green-50 text-green-700 cursor-default'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 text-sm truncate">{item.puesto.nombre}</p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{item.puesto.direccion}</p>
-                    </div>
-                    {item.puesto.distanciaKm !== undefined && (
-                      <span className="text-xs text-gray-400 flex-shrink-0">{item.puesto.distanciaKm.toFixed(1)} km</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    {item.cantidad} {item.unidad} disponibles
-                  </p>
+                  <span>{CATEGORIA_EMOJI[p.categoria] ?? '📦'}</span>
+                  {p.nombre}
+                  {productosSeleccionados.includes(p.nombre) && <span className="ml-0.5">✓</span>}
                 </button>
               ))}
             </div>
           </section>
         )}
+
+        {/* Buscador */}
+        <section>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">¿Que necesitas?</label>
+          <div className="relative">
+            <input
+              type="search"
+              value={textoBusqueda}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setTimeout(() => setInputFocused(false), 150)}
+              onChange={(e) => onTextoBusquedaChange(e.target.value)}
+              placeholder="Buscar producto o categoria..."
+              autoComplete="off"
+              className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {inputFocused && sugerencias.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-52 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+                {sugerencias.map((item) => (
+                  <button
+                    key={item.nombre}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      if (!productosSeleccionados.includes(item.nombre)) onAgregarProducto(item.nombre)
+                      setInputFocused(false)
+                    }}
+                    disabled={productosSeleccionados.includes(item.nombre)}
+                    className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm transition-colors ${
+                      productosSeleccionados.includes(item.nombre)
+                        ? 'bg-gray-50 text-gray-400 cursor-default'
+                        : 'hover:bg-blue-50 text-gray-800'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-base">{CATEGORIA_EMOJI[item.categoria] ?? '📦'}</span>
+                      <span className="font-medium">{item.nombre}</span>
+                    </span>
+                    {productosSeleccionados.includes(item.nombre)
+                      ? <span className="text-xs text-green-600 font-medium">Añadido</span>
+                      : <span className="text-xs text-gray-400">{item.total} {item.unidad}</span>
+                    }
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Lista seleccionada */}
+        {productosSeleccionados.length > 0 && (
+          <section>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Tu lista ({productosSeleccionados.length})
+            </p>
+            <div className="space-y-1.5">
+              {productosSeleccionados.map((nombre) => {
+                const option = productoOptions.find((o) => o.nombre === nombre)
+                return (
+                  <div key={nombre} className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3.5 py-2.5">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="text-base flex-shrink-0">{CATEGORIA_EMOJI[option?.categoria ?? ''] ?? '📦'}</span>
+                      <span className="text-sm font-medium text-gray-900 truncate">{nombre}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onQuitarProducto(nombre)}
+                      className="ml-2 flex-shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      aria-label={`Quitar ${nombre}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {!userPosition && productosSeleccionados.length > 0 && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Activa tu ubicacion para que la ruta sea la mas cercana a ti.
+          </p>
+        )}
+
+        {productosSeleccionados.length === 0 && productosRecomendados.length === 0 && (
+          <p className="text-sm text-gray-500 text-center py-4">No hay productos disponibles en este momento.</p>
+        )}
       </div>
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+
+      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3 space-y-2">
+        {productosSeleccionados.length > 0 && (
+          <button
+            type="button"
+            onClick={onVerRutas}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
+          >
+            Ver rutas disponibles
+            <span aria-hidden>→</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}
-          className="mx-auto flex min-w-40 items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
+          className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
           Volver
         </button>
@@ -756,7 +696,238 @@ function BuscarProductoSheet({
   )
 }
 
-type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar'
+function tiempoEstimadoMin(distanciaKm: number, modo: ModoTransporte): number {
+  // Road distance is ~1.3x straight-line; speed: driving 25 km/h urban, walking 4.5 km/h
+  const velocidad = modo === 'driving' ? 25 : 4.5
+  return Math.max(1, Math.round(distanciaKm * 1.3 / velocidad * 60))
+}
+
+function formatearTiempo(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`
+  const horas = Math.floor(minutos / 60)
+  const mins = minutos % 60
+  return mins > 0 ? `${horas}h ${mins} min` : `${horas}h`
+}
+
+function OpcionesRutaProductosPanel({
+  opciones,
+  opcionIdx,
+  productosSeleccionados,
+  productoOptions,
+  modo,
+  loading,
+  navLoading,
+  error,
+  userPosition,
+  onSeleccionarOpcion,
+  onCambiarModo,
+  onIniciarNavegacion,
+  onVolver,
+}: {
+  opciones: OpcionRutaProductos<PuestoMarker>[]
+  opcionIdx: number
+  productosSeleccionados: string[]
+  productoOptions: ProductoOption[]
+  modo: ModoTransporte
+  loading: boolean
+  navLoading: boolean
+  error: string | null
+  userPosition: [number, number] | null
+  onSeleccionarOpcion: (idx: number) => void
+  onCambiarModo: (modo: ModoTransporte) => void
+  onIniciarNavegacion: () => void
+  onVolver: () => void
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Planificacion de ruta</p>
+          <p className="font-semibold text-gray-900">
+            {productosSeleccionados.length} producto{productosSeleccionados.length !== 1 ? 's' : ''} seleccionado{productosSeleccionados.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onVolver}
+          className="text-xs font-medium text-blue-700 hover:text-blue-800"
+        >
+          ← Cambiar lista
+        </button>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Selector de modo de transporte */}
+        <div className="flex overflow-hidden rounded-xl border border-gray-200">
+          <button
+            type="button"
+            onClick={() => onCambiarModo('driving')}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${
+              modo === 'driving'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span aria-hidden>🚗</span> En coche
+          </button>
+          <div className="w-px bg-gray-200" />
+          <button
+            type="button"
+            onClick={() => onCambiarModo('foot')}
+            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${
+              modo === 'foot'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span aria-hidden>🚶</span> A pie
+          </button>
+        </div>
+
+        {loading && (
+          <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+            <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full flex-shrink-0" />
+            <span className="text-xs text-blue-800 font-medium">
+              Calculando ruta {modo === 'driving' ? 'en coche' : 'a pie'}...
+            </span>
+          </div>
+        )}
+
+        {error && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
+        {!userPosition && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Activa tu ubicacion para calcular y mostrar la ruta en el mapa.
+          </p>
+        )}
+
+        {opciones.length === 0 && !loading && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+            <p className="text-sm font-semibold text-amber-800">Sin resultados</p>
+            <p className="text-xs text-amber-700 mt-1">
+              No se han encontrado puestos con los productos seleccionados. Prueba con otros productos.
+            </p>
+          </div>
+        )}
+
+        {opciones.map((opcion, idx) => {
+          const isSelected = idx === opcionIdx
+          const cubretodo = opcion.productosNoEncontrados.length === 0
+          const totalParadas = opcion.paradas.length
+          // Rough estimated time from straight-line distances (shown on all cards)
+          const distanciaEstimada = opcion.paradas.reduce(
+            (acc, p) => acc + (p.puesto.distanciaKm ?? 0),
+            0,
+          )
+          const tiempoEstimado = distanciaEstimada > 0
+            ? tiempoEstimadoMin(distanciaEstimada, modo)
+            : null
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onSeleccionarOpcion(idx)}
+              className={`w-full text-left rounded-xl border-2 p-3.5 transition-colors ${
+                isSelected
+                  ? 'border-blue-400 bg-blue-50'
+                  : 'border-gray-200 bg-white hover:border-blue-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {idx === 0 && (
+                    <span className="text-xs font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
+                      Recomendada
+                    </span>
+                  )}
+                  {totalParadas > 1 && (
+                    <span className="text-xs font-medium text-gray-500">
+                      {totalParadas} paradas
+                    </span>
+                  )}
+                  {totalParadas === 1 && idx > 0 && (
+                    <span className="text-xs font-medium text-gray-500">Puesto unico</span>
+                  )}
+                </div>
+                {cubretodo
+                  ? <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 flex-shrink-0">Todo disponible</span>
+                  : <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 flex-shrink-0">{opcion.productosEncontrados.length}/{productosSeleccionados.length} productos</span>
+                }
+              </div>
+
+              {opcion.paradas.map((parada, pIdx) => (
+                <div key={parada.puesto.id} className={pIdx > 0 ? 'mt-2.5 pt-2.5 border-t border-gray-100' : ''}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {totalParadas > 1 && <span className="text-gray-400 mr-1">{pIdx + 1}.</span>}
+                        {parada.puesto.nombre}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">{parada.puesto.direccion}</p>
+                    </div>
+                    {parada.puesto.distanciaKm !== undefined && (
+                      <span className="text-xs text-gray-400 flex-shrink-0">{parada.puesto.distanciaKm.toFixed(1)} km</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {parada.productos.map((p) => (
+                      <span key={p} className="text-xs bg-emerald-50 text-emerald-700 rounded-full px-2 py-0.5 border border-emerald-200">
+                        {CATEGORIA_EMOJI[productoOptions.find((o) => o.nombre === p)?.categoria ?? ''] ?? '📦'} {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Tiempo estimado al pie de la tarjeta */}
+              {tiempoEstimado !== null && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {modo === 'driving' ? '🚗' : '🚶'} ~{formatearTiempo(tiempoEstimado)} estimados
+                  {totalParadas > 1 && <span className="text-gray-400"> (aproximado)</span>}
+                </p>
+              )}
+
+              {opcion.productosNoEncontrados.length > 0 && (
+                <p className="text-xs text-amber-600 mt-2">
+                  No disponible: {opcion.productosNoEncontrados.join(', ')}
+                </p>
+              )}
+            </button>
+          )
+        })}
+
+        {userPosition && opciones.length > 0 && (
+          <button
+            type="button"
+            onClick={onIniciarNavegacion}
+            disabled={loading || navLoading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700 disabled:opacity-60"
+          >
+            {navLoading
+              ? <><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Preparando guía…</>
+              : 'Iniciar navegación'
+            }
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={onVolver}
+          className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Volver a la busqueda
+        </button>
+      </div>
+    </div>
+  )
+}
+
+type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar' | 'ruta-productos' | 'navegacion'
 type PanelReturnVista = 'inicio' | 'default'
 type EstadoVia = 'CORTADA' | 'TRANSITABLE'
 
@@ -770,6 +941,184 @@ type DuplicateIncidencia = {
 }
 
 const CATASTROFE_ID = import.meta.env.VITE_CATASTROFE_ID ?? ''
+
+// ── Arrow SVG used in the navigation compass ─────────────────────────────────
+function FlechaNavegacion({
+  icono,
+  rotacion,
+  grande = false,
+}: {
+  icono: DireccionIcono
+  rotacion: number
+  grande?: boolean
+}) {
+  const size = grande ? 80 : 56
+  if (icono === 'destino') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <circle cx="40" cy="40" r="28" fill="#16a34a" />
+        <text x="40" y="47" textAnchor="middle" fontSize="24" fill="white">★</text>
+      </svg>
+    )
+  }
+  if (icono === 'rotonda') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <circle cx="40" cy="40" r="28" stroke="#2563EB" strokeWidth="6" fill="none" />
+        <path d="M54 30 L62 38 L54 46" stroke="#2563EB" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    )
+  }
+  return (
+    <div style={{ transform: `rotate(${rotacion}deg)`, transition: 'transform 0.3s ease' }}>
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <path d="M40 8 L58 62 L40 50 L22 62 Z" fill="#2563EB" />
+      </svg>
+    </div>
+  )
+}
+
+function PanelNavegacionActiva({
+  steps,
+  stepIdx,
+  userPosition,
+  headingDispositivo,
+  modo,
+  vozActiva,
+  onToggleVoz,
+  onAvanzar,
+  onRetroceder,
+  onFinalizar,
+}: {
+  steps: StepNavegacion[]
+  stepIdx: number
+  userPosition: [number, number] | null
+  headingDispositivo: number | null
+  modo: ModoTransporte
+  vozActiva: boolean
+  onToggleVoz: () => void
+  onAvanzar: () => void
+  onRetroceder: () => void
+  onFinalizar: () => void
+}) {
+  const step     = steps[stepIdx]
+  const nextStep = steps[stepIdx + 1]
+  if (!step) return null
+
+  const esUltimo = stepIdx === steps.length - 1
+
+  const distanciaM = userPosition
+    ? Math.round(distanciaAlStep(userPosition[0], userPosition[1], step))
+    : null
+
+  const bearingAbsoluto = userPosition && !esUltimo
+    ? calcularBearing(userPosition[0], userPosition[1], step.lat, step.lng)
+    : null
+
+  const brujulaDisponible = headingDispositivo !== null && bearingAbsoluto !== null
+  const rotacion = brujulaDisponible
+    ? (bearingAbsoluto! - headingDispositivo! + 360) % 360
+    : ROTACION_ICONO[step.icono]
+
+  return (
+    <div className="bg-white rounded-t-2xl shadow-2xl border-t border-gray-200">
+      {/* Drag handle */}
+      <div className="flex justify-center pt-2.5 pb-1">
+        <div className="w-10 h-1 bg-gray-300 rounded-full" />
+      </div>
+
+      {/* Header: step counter + modo + voz + finalizar */}
+      <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-500">
+            {stepIdx + 1}/{steps.length}
+          </span>
+          <span className="text-xs text-gray-400">·</span>
+          <span className="text-xs text-gray-500">{modo === 'foot' ? '🚶 A pie' : '🚗 En coche'}</span>
+          {brujulaDisponible && (
+            <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-1.5 py-0.5">🧭</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onToggleVoz}
+            className={`rounded-full p-1.5 text-base transition-colors ${vozActiva ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'}`}
+            aria-label={vozActiva ? 'Silenciar voz' : 'Activar voz'}
+          >
+            {vozActiva ? '🔊' : '🔇'}
+          </button>
+          <button
+            type="button"
+            onClick={onFinalizar}
+            className="rounded-full px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
+          >
+            Finalizar
+          </button>
+        </div>
+      </div>
+
+      {/* Main row: compass arrow + instruction + distance */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        {/* Direction indicator */}
+        <div className={`flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-xl border-2 shadow-sm ${brujulaDisponible ? 'bg-slate-100 border-blue-200' : 'bg-blue-50 border-blue-200'}`}>
+          {brujulaDisponible ? (
+            <div className="relative flex items-center justify-center w-full h-full">
+              <span className="absolute top-1 text-[9px] font-bold text-slate-400">N</span>
+              <span className="absolute bottom-1 text-[9px] font-bold text-slate-400">S</span>
+              <span className="absolute left-1 text-[9px] font-bold text-slate-400">O</span>
+              <span className="absolute right-1 text-[9px] font-bold text-slate-400">E</span>
+              <FlechaNavegacion icono={step.icono} rotacion={rotacion} />
+            </div>
+          ) : (
+            <FlechaNavegacion icono={step.icono} rotacion={rotacion} />
+          )}
+        </div>
+
+        {/* Instruction text + distance */}
+        <div className="flex-1 min-w-0">
+          <p className="text-lg font-bold text-gray-900 leading-tight">{step.instruccion}</p>
+          {step.calle && step.tipo !== 'depart' && step.tipo !== 'arrive' && (
+            <p className="text-sm text-gray-500 mt-0.5 truncate">{step.calle}</p>
+          )}
+          {distanciaM !== null && !esUltimo && (
+            <p className="text-2xl font-extrabold text-blue-700 mt-1 tabular-nums leading-none">
+              {formatearDistanciaNav(distanciaM)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Next step */}
+      {nextStep && (
+        <div className="mx-4 mb-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 flex items-center gap-2">
+          <span className="text-xs text-gray-400 whitespace-nowrap">A continuación</span>
+          <span className="text-sm text-gray-600 flex-1 truncate">{nextStep.instruccion}</span>
+        </div>
+      )}
+
+      {/* Step controls */}
+      <div className="flex gap-2 px-4 pb-4">
+        <button
+          type="button"
+          onClick={onRetroceder}
+          disabled={stepIdx === 0}
+          className="flex-1 rounded-xl border border-gray-200 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+        >
+          ← Anterior
+        </button>
+        <button
+          type="button"
+          onClick={onAvanzar}
+          disabled={esUltimo}
+          className="flex-1 rounded-xl border border-blue-200 bg-blue-50 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40 transition-colors"
+        >
+          Siguiente →
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function CiudadanoInicio({
   onVerMapa,
@@ -875,9 +1224,21 @@ export default function CiudadanoDashboard() {
   const [comentarioLoading, setComentarioLoading] = useState(false)
   const [comentarioError, setComentarioError] = useState<string | null>(null)
   const [historialComentariosIncidencia, setHistorialComentariosIncidencia] = useState<IncidenciaMarker | null>(null)
-  const [productoBusqueda, setProductoBusqueda] = useState('')
-  const [textoProductoBusqueda, setTextoProductoBusqueda] = useState('')
-  const [busquedaPuestoId, setBusquedaPuestoId] = useState<string | null>(null)
+  const [productosSeleccionados, setProductosSeleccionados] = useState<string[]>([])
+  const [textoBusquedaProducto, setTextoBusquedaProducto] = useState('')
+  const [opcionesRutaProductos, setOpcionesRutaProductos] = useState<OpcionRutaProductos<PuestoMarker>[] | null>(null)
+  const [opcionRutaIdx, setOpcionRutaIdx] = useState(0)
+  const [modoTransporte, setModoTransporte] = useState<ModoTransporte>('driving')
+  const [rutaProductosPoints, setRutaProductosPoints] = useState<[number, number][] | null>(null)
+  const [rutaProductosInfo, setRutaProductosInfo] = useState<{ distanciaKm: number; duracionMin: number; incidenciasCercanas: number } | null>(null)
+  const [rutaProductosLoading, setRutaProductosLoading] = useState(false)
+  const [rutaProductosError, setRutaProductosError] = useState<string | null>(null)
+  const [stepsNavegacion, setStepsNavegacion] = useState<StepNavegacion[]>([])
+  const [stepActualIdx, setStepActualIdx] = useState(0)
+  const [navLoading, setNavLoading] = useState(false)
+  const [vozActiva, setVozActiva] = useState(true)
+  const [headingDispositivo, setHeadingDispositivo] = useState<number | null>(null)
+  const anunciosRef = useRef<Set<string>>(new Set())
   const [focusUserPositionKey, setFocusUserPositionKey] = useState(0)
   const [pendingUserPositionFocus, setPendingUserPositionFocus] = useState(false)
 
@@ -1085,7 +1446,15 @@ export default function CiudadanoDashboard() {
     setRouteInfo(null)
     setRouteError(null)
     setSelectedId(null)
-    setBusquedaPuestoId(null)
+    setProductosSeleccionados([])
+    setTextoBusquedaProducto('')
+    setOpcionesRutaProductos(null)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
+    setStepsNavegacion([])
+    setStepActualIdx(0)
+    setHeadingDispositivo(null)
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
     setComentarioIncidencia(null)
     setHistorialComentariosIncidencia(null)
     setIsPickingLocation(false)
@@ -1221,42 +1590,95 @@ export default function CiudadanoDashboard() {
 
   const abrirBusquedaProducto = () => {
     setPanelReturnVista(getCurrentPanelReturnVista())
-    setProductoBusqueda('')
-    setTextoProductoBusqueda('')
-    setBusquedaPuestoId(null)
+    setProductosSeleccionados([])
+    setTextoBusquedaProducto('')
+    setOpcionesRutaProductos(null)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
     setVista('buscar')
   }
 
-  const handleTextoProductoBusqueda = (texto: string) => {
-    setTextoProductoBusqueda(texto)
-    setBusquedaPuestoId(null)
+  const handleAgregarProducto = (nombre: string) => {
+    setProductosSeleccionados((prev) => (prev.includes(nombre) ? prev : [...prev, nombre]))
+    setTextoBusquedaProducto('')
+  }
 
-    const normalizado = texto.trim().toLocaleLowerCase('es')
-    if (!normalizado) {
-      setProductoBusqueda('')
-      return
+  const handleQuitarProducto = (nombre: string) => {
+    setProductosSeleccionados((prev) => prev.filter((p) => p !== nombre))
+  }
+
+  const calcularRutaOpcion = async (opcion: OpcionRutaProductos<PuestoMarker>, idx: number, modo: ModoTransporte) => {
+    setOpcionRutaIdx(idx)
+    if (!currentUserPosition || opcion.paradas.length === 0) return
+    setRutaProductosLoading(true)
+    setRutaProductosError(null)
+    setRutaProductosPoints(null)
+    try {
+      const waypoints: [number, number][] = [
+        currentUserPosition,
+        ...opcion.paradas.map((p) => [p.puesto.latitud, p.puesto.longitud] as [number, number]),
+      ]
+      const resultado = await fetchRutaMultiParada(waypoints, incidencias, modo)
+      setRutaProductosPoints(resultado.points)
+      setRutaProductosInfo({ distanciaKm: resultado.distanciaKm, duracionMin: resultado.duracionMin, incidenciasCercanas: resultado.incidenciasCercanas })
+    } catch (e) {
+      setRutaProductosError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
+    } finally {
+      setRutaProductosLoading(false)
     }
-
-    const match = productoOptions.find((item) => (
-      item.nombre.toLocaleLowerCase('es') === normalizado
-    ))
-    setProductoBusqueda(match?.nombre ?? '')
   }
 
-  const handlePreviewPuestoBusqueda = (puestoId: string) => {
-    setSelectedId(puestoId)
-    setBusquedaPuestoId(puestoId)
-    setRoute(null)
-    setRouteInfo(null)
-    setRouteError(null)
+  const handleVerRutasProductos = () => {
+    const opciones = calcularOpcionesRutaProductos(productosSeleccionados, puestos, inventarioPorPuesto)
+    setOpcionesRutaProductos(opciones)
+    setOpcionRutaIdx(0)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
+    setVista('ruta-productos')
+    if (opciones.length > 0) void calcularRutaOpcion(opciones[0], 0, modoTransporte)
   }
 
-  const handleComoLlegarBusqueda = async (puestoId: string) => {
-    const puesto = puestos.find((p) => p.id === puestoId)
-    if (!puesto) return
+  const handleSeleccionarOpcionRuta = (idx: number) => {
+    if (!opcionesRutaProductos?.[idx]) return
+    void calcularRutaOpcion(opcionesRutaProductos[idx], idx, modoTransporte)
+  }
 
-    setSelectedId(puestoId)
-    await calcularRutaPuesto(puesto)
+  const handleCambiarModoTransporte = (modo: ModoTransporte) => {
+    setModoTransporte(modo)
+    const opcion = opcionesRutaProductos?.[opcionRutaIdx]
+    if (opcion) void calcularRutaOpcion(opcion, opcionRutaIdx, modo)
+  }
+
+  const handleIniciarNavegacionProductos = async () => {
+    if (!opcionesRutaProductos?.[opcionRutaIdx] || !currentUserPosition) return
+    const opcion = opcionesRutaProductos[opcionRutaIdx]
+    if (opcion.paradas.length === 0) return
+    setNavLoading(true)
+    setRutaProductosError(null)
+    try {
+      const waypoints: [number, number][] = [
+        currentUserPosition,
+        ...opcion.paradas.map((p) => [p.puesto.latitud, p.puesto.longitud] as [number, number]),
+      ]
+      const resultado = await fetchRutaConPasos(waypoints, modoTransporte)
+      const steps = parsearStepsOsrm(resultado.legs as Parameters<typeof parsearStepsOsrm>[0])
+      setSelectedId(opcion.paradas[opcion.paradas.length - 1].puesto.id)
+      setRoute(resultado.points)
+      setStepsNavegacion(steps)
+      setStepActualIdx(0)
+      anunciosRef.current = new Set()
+      setVista('navegacion')
+      // Request compass permission on iOS 13+
+      type DoeWithPerm = typeof DeviceOrientationEvent & { requestPermission?: () => Promise<string> }
+      const DoE = DeviceOrientationEvent as DoeWithPerm
+      if (typeof DoE.requestPermission === 'function') {
+        DoE.requestPermission().catch(() => undefined)
+      }
+    } catch (e) {
+      setRutaProductosError(e instanceof Error ? e.message : 'No se pudo iniciar la navegación')
+    } finally {
+      setNavLoading(false)
+    }
   }
 
   const abrirComentarioIncidencia = (
@@ -1392,29 +1814,9 @@ export default function CiudadanoDashboard() {
 
   const productosDisponibles = getProductosDisponibles(puestos, inventarioPorPuesto)
   const productoOptions = getProductoOptions(productosDisponibles)
-  const textoProductoNormalizado = textoProductoBusqueda.trim().toLocaleLowerCase('es')
-  const productoOptionsFiltradas = textoProductoNormalizado
-    ? productoOptions.filter((item) => (
-      item.nombre.toLocaleLowerCase('es').includes(textoProductoNormalizado) ||
-      item.categoria.toLocaleLowerCase('es').includes(textoProductoNormalizado)
-    ))
-    : productoOptions
-  const productoSeleccionado = productoOptions.some((item) => item.nombre === productoBusqueda)
-    ? productoBusqueda
-    : textoProductoNormalizado && productoOptionsFiltradas.length === 1
-      ? productoOptionsFiltradas[0].nombre
-    : ''
-  const resultadosProducto = productosDisponibles.filter((item) => {
-    if (productoSeleccionado) return item.nombre === productoSeleccionado
-    if (!textoProductoNormalizado) return false
-
-    return (
-      item.nombre.toLocaleLowerCase('es').includes(textoProductoNormalizado) ||
-      item.categoria.toLocaleLowerCase('es').includes(textoProductoNormalizado)
-    )
-  })
+  const productosRecomendados = _getProductosRecomendados(productosDisponibles)
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
-  const selectedPuestoBusqueda = busquedaPuestoId ? puestos.find((p) => p.id === busquedaPuestoId) ?? null : null
+  const puestosOpcionActual = opcionesRutaProductos?.[opcionRutaIdx]?.paradas.map((p) => p.puesto) ?? []
   const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
   const totalTransitables = incidencias.filter((inc) => inc.estado === 'TRANSITABLE').length
   const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
@@ -1431,6 +1833,77 @@ export default function CiudadanoDashboard() {
     void calcularRutaPuesto(puesto)
   }, [currentUserPosition, destinoPuesto, puestos, routeLoading])
 
+  // ── Brújula (DeviceOrientation) ───────────────────────────────────────────
+  useEffect(() => {
+    if (vista !== 'navegacion') return
+    type OrientationEvt = DeviceOrientationEvent & { webkitCompassHeading?: number }
+    const handler = (e: OrientationEvt) => {
+      // webkitCompassHeading (iOS): degrees clockwise from North, already absolute
+      // alpha (Android absolute): degrees counter-clockwise → convert to clockwise
+      const heading =
+        e.webkitCompassHeading != null
+          ? e.webkitCompassHeading
+          : e.alpha != null
+            ? (360 - e.alpha) % 360
+            : null
+      if (heading != null) setHeadingDispositivo(Math.round(heading))
+    }
+    window.addEventListener('deviceorientationabsolute', handler as EventListener, true)
+    window.addEventListener('deviceorientation', handler as EventListener, true)
+    return () => {
+      window.removeEventListener('deviceorientationabsolute', handler as EventListener, true)
+      window.removeEventListener('deviceorientation', handler as EventListener, true)
+    }
+  }, [vista])
+
+  // ── Seguimiento de paso + avance automático ───────────────────────────────
+  useEffect(() => {
+    if (vista !== 'navegacion' || !currentUserPosition || stepsNavegacion.length === 0) return
+    const step = stepsNavegacion[stepActualIdx]
+    if (!step || step.tipo === 'arrive') return
+    const distM = distanciaAlStep(currentUserPosition[0], currentUserPosition[1], step)
+    // Auto-advance when within 20 m of the maneuver point
+    if (distM < 20 && stepActualIdx < stepsNavegacion.length - 1) {
+      setStepActualIdx((prev) => prev + 1)
+      return
+    }
+    // Voice pre-announcements: 200 m and 50 m thresholds
+    for (const threshold of [200, 50] as const) {
+      const key = `${stepActualIdx}-${threshold}`
+      if (!anunciosRef.current.has(key) && distM <= threshold + 10 && distM > threshold - 40) {
+        anunciosRef.current.add(key)
+        if (vozActiva && typeof speechSynthesis !== 'undefined') {
+          speechSynthesis.cancel()
+          const u = new SpeechSynthesisUtterance(
+            `En ${formatearDistanciaNav(Math.round(distM))}, ${step.instruccion}`,
+          )
+          u.lang = 'es-ES'
+          u.rate = 0.95
+          speechSynthesis.speak(u)
+        }
+      }
+    }
+    // Keep map centered on user during navigation
+    setFocusUserPositionKey((k) => k + 1)
+  }, [currentUserPosition, stepActualIdx, stepsNavegacion, vista, vozActiva])
+
+  // ── Announce step on change ───────────────────────────────────────────────
+  useEffect(() => {
+    if (vista !== 'navegacion' || stepsNavegacion.length === 0) return
+    const step = stepsNavegacion[stepActualIdx]
+    if (!step) return
+    if (vozActiva && typeof speechSynthesis !== 'undefined') {
+      speechSynthesis.cancel()
+      const u = new SpeechSynthesisUtterance(step.instruccion)
+      u.lang = 'es-ES'
+      u.rate = 0.95
+      speechSynthesis.speak(u)
+    }
+    anunciosRef.current = new Set()
+  // Only re-run when step index or vozActiva changes (not on every render)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepActualIdx, vista])
+
   return (
     <div className="flex flex-col h-full">
 
@@ -1438,18 +1911,13 @@ export default function CiudadanoDashboard() {
       {vista === 'ruta' && routeInfo && (
         <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
           <span className="text-sm">
-            🚗 <strong>{routeInfo.distanciaKm.toFixed(1)} km</strong>
-            {' · ~'}<strong>{routeInfo.duracionMin} min</strong>
+            {modoTransporte === 'foot' ? '🚶' : '🚗'}
+            {' '}<strong>{routeInfo.distanciaKm.toFixed(1)} km</strong>
+            {' · '}<strong>{formatearTiempo(routeInfo.duracionMin)}</strong>
             {selectedPuesto && ` · ${selectedPuesto.nombre}`}
             {routeInfo.incidenciasEvitadas > 0 && ` · evita ${routeInfo.incidenciasEvitadas} corte${routeInfo.incidenciasEvitadas === 1 ? '' : 's'}`}
             {routeInfo.incidenciasCercanas > 0 && ` · ${routeInfo.incidenciasCercanas} corte${routeInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
           </span>
-          <button
-            onClick={handleCancelarRuta}
-            className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg transition-colors"
-          >
-            ✕ Cancelar
-          </button>
         </div>
       )}
 
@@ -1472,13 +1940,13 @@ export default function CiudadanoDashboard() {
         />
       )}
 
-      {(vista === 'default' || vista === 'ruta' || vista === 'reportar' || vista === 'inventario') && (
+      {(vista === 'default' || vista === 'ruta' || vista === 'reportar' || vista === 'inventario' || vista === 'navegacion') && (
       <div
         className="relative flex-1 min-h-0"
       >
         <Map
           center={currentUserPosition ?? [39.4250, -0.4000]}
-          zoom={13}
+          zoom={vista === 'navegacion' ? 17 : 13}
           userPosition={currentUserPosition}
           reportPoint={reportPosition}
           selectingReportPoint={vista === 'reportar'}
@@ -1537,6 +2005,37 @@ export default function CiudadanoDashboard() {
               ? 'Toca el mapa para marcar la calle de la incidencia.'
               : 'Punto marcado. Puedes cambiarlo pulsando "Cambiar punto".'}
           </div>
+        )}
+
+        {/* ── Overlay navegación paso a paso ────────────────────────────── */}
+        {vista === 'navegacion' && (
+          <>
+            {navLoading && (
+              <div className="absolute inset-0 z-[1300] flex items-center justify-center bg-white/70">
+                <div className="flex items-center gap-3 rounded-xl bg-white border border-gray-200 shadow-xl px-5 py-4">
+                  <span className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  <span className="text-sm font-medium text-gray-800">Calculando guía…</span>
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 z-[1200]">
+              <PanelNavegacionActiva
+                steps={stepsNavegacion}
+                stepIdx={stepActualIdx}
+                userPosition={currentUserPosition}
+                headingDispositivo={headingDispositivo}
+                modo={modoTransporte}
+                vozActiva={vozActiva}
+                onToggleVoz={() => {
+                  if (vozActiva && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+                  setVozActiva((v) => !v)
+                }}
+                onAvanzar={() => setStepActualIdx((i) => Math.min(i + 1, stepsNavegacion.length - 1))}
+                onRetroceder={() => setStepActualIdx((i) => Math.max(i - 1, 0))}
+                onFinalizar={volverInicioCiudadano}
+              />
+            </div>
+          </>
         )}
 
       </div>
@@ -1669,23 +2168,91 @@ export default function CiudadanoDashboard() {
       )}
 
       {vista === 'buscar' && (
-        <BuscarProductoSheet
-          producto={productoSeleccionado}
-          textoBusqueda={textoProductoBusqueda}
-          productos={productoOptionsFiltradas}
-          resultados={resultadosProducto}
-          selectedPuesto={selectedPuestoBusqueda}
-          inventarioPorPuesto={inventarioPorPuesto}
+        <SelectorProductosSheet
+          productosSeleccionados={productosSeleccionados}
+          productosRecomendados={productosRecomendados}
+          productoOptions={productoOptions}
+          textoBusqueda={textoBusquedaProducto}
           userPosition={currentUserPosition}
-          routeLoading={routeLoading}
-          routeError={routeError}
-          onTextoBusquedaChange={handleTextoProductoBusqueda}
-          onPreviewPuesto={handlePreviewPuestoBusqueda}
-          onComoLlegar={(puestoId) => void handleComoLlegarBusqueda(puestoId)}
-          onCancelRuta={handleCancelarBusquedaRuta}
-          onBackToResults={() => setBusquedaPuestoId(null)}
+          onTextoBusquedaChange={setTextoBusquedaProducto}
+          onAgregarProducto={handleAgregarProducto}
+          onQuitarProducto={handleQuitarProducto}
+          onVerRutas={handleVerRutasProductos}
           onClose={() => setVista(panelReturnVista)}
         />
+      )}
+
+      {vista === 'ruta-productos' && (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Banner con info de ruta calculada */}
+          {rutaProductosInfo && !rutaProductosLoading && (
+            <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <span className="text-sm">
+                {modoTransporte === 'driving' ? '🚗' : '🚶'}
+                {' '}<strong>{rutaProductosInfo.distanciaKm.toFixed(1)} km</strong>
+                {' · '}<strong>{formatearTiempo(rutaProductosInfo.duracionMin)}</strong>
+                {opcionesRutaProductos?.[opcionRutaIdx]?.paradas.length === 1
+                  ? ` · ${opcionesRutaProductos[opcionRutaIdx].paradas[0].puesto.nombre}`
+                  : ` · ${opcionesRutaProductos?.[opcionRutaIdx]?.paradas.length ?? 0} paradas`}
+                {rutaProductosInfo.incidenciasCercanas > 0 && ` · ${rutaProductosInfo.incidenciasCercanas} incidencia${rutaProductosInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
+              </span>
+            </div>
+          )}
+
+          {/* Mapa — porción superior */}
+          <div className="relative h-52 flex-shrink-0">
+            <Map
+              center={
+                puestosOpcionActual[0]
+                  ? [puestosOpcionActual[0].latitud, puestosOpcionActual[0].longitud]
+                  : currentUserPosition ?? [39.4250, -0.4000]
+              }
+              zoom={13}
+              userPosition={currentUserPosition}
+              reportPoint={null}
+              selectingReportPoint={false}
+              puestos={puestos}
+              incidencias={incidencias}
+              selectedPuestoId={puestosOpcionActual[0]?.id ?? null}
+              onPuestoSelect={() => undefined}
+              onUserLocated={setUserPosition}
+              onReportPointSelect={() => undefined}
+              onIncidenciaAction={() => undefined}
+              onIncidenciaCommentsOpen={() => undefined}
+              route={rutaProductosPoints}
+              focusUserPositionKey={focusUserPositionKey}
+              markerVariant="neutral"
+              className="h-full w-full"
+            />
+            <button
+              type="button"
+              onClick={handleLocalizarme}
+              disabled={geoLoading}
+              className="absolute top-2 right-2 z-[1000] bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
+            >
+              {geoLoading ? '🔄' : '📍'} Localizarme
+            </button>
+          </div>
+
+          {/* Panel de opciones — porción inferior scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+            <OpcionesRutaProductosPanel
+              opciones={opcionesRutaProductos ?? []}
+              opcionIdx={opcionRutaIdx}
+              productosSeleccionados={productosSeleccionados}
+              productoOptions={productoOptions}
+              modo={modoTransporte}
+              loading={rutaProductosLoading}
+              navLoading={navLoading}
+              error={rutaProductosError}
+              userPosition={currentUserPosition}
+              onSeleccionarOpcion={handleSeleccionarOpcionRuta}
+              onCambiarModo={handleCambiarModoTransporte}
+              onIniciarNavegacion={() => void handleIniciarNavegacionProductos()}
+              onVolver={() => setVista('buscar')}
+            />
+          </div>
+        </div>
       )}
 
       {historialComentariosIncidencia && (

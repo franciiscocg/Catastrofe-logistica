@@ -141,6 +141,75 @@ function buildDetourWaypointSets(desde: [number, number], hasta: [number, number
   return waypointSets
 }
 
+export type ModoTransporte = 'driving' | 'foot'
+
+// router.project-osrm.org only has the driving profile.
+// For foot we use routing.openstreetmap.de which provides separate OSRM instances
+// with OSM foot/car networks, giving genuinely different routes and durations.
+export function osrmUrl(modo: ModoTransporte, path: string): string {
+  if (modo === 'foot') {
+    return `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${path}?overview=full&geometries=geojson&alternatives=false`
+  }
+  return `https://router.project-osrm.org/route/v1/driving/${path}?overview=full&geometries=geojson&alternatives=false`
+}
+
+export async function fetchRutaMultiParada(
+  waypoints: [number, number][],
+  incidencias: IncidenciaRutaInput[],
+  modo: ModoTransporte = 'driving',
+  signal?: AbortSignal,
+): Promise<{ points: [number, number][]; distanciaKm: number; duracionMin: number; incidenciasCercanas: number }> {
+  if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos para calcular la ruta')
+  const path = waypoints.map(([lat, lng]) => `${lng},${lat}`).join(';')
+  const res = await fetch(osrmUrl(modo, path), { signal })
+  if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
+  const data = await res.json()
+  if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
+  const route = data.routes[0]
+  const points: [number, number][] = route.geometry.coordinates.map(
+    ([lng, lat]: [number, number]) => [lat, lng],
+  )
+  return {
+    points,
+    distanciaKm: route.distance / 1000,
+    duracionMin: Math.round(route.duration / 60),
+    incidenciasCercanas: countBlockedIncidenciasNearRoute(points, incidencias),
+  }
+}
+
+// Fetches a route WITH step-by-step instructions (for turn-by-turn navigation).
+// Returns the polyline + the raw OSRM legs array so the caller can parse steps.
+export async function fetchRutaConPasos(
+  waypoints: [number, number][],
+  modo: ModoTransporte = 'driving',
+  signal?: AbortSignal,
+): Promise<{
+  points: [number, number][]
+  distanciaKm: number
+  duracionMin: number
+  legs: { steps: unknown[] }[]
+}> {
+  if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos')
+  const path = waypoints.map(([lat, lng]) => `${lng},${lat}`).join(';')
+  // Reuse osrmUrl and append steps=true
+  const base = osrmUrl(modo, path)
+  const url  = base.includes('?') ? `${base}&steps=true` : `${base}?steps=true`
+  const res  = await fetch(url, { signal })
+  if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
+  const data = await res.json()
+  if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
+  const route = data.routes[0]
+  const points: [number, number][] = route.geometry.coordinates.map(
+    ([lng, lat]: [number, number]) => [lat, lng],
+  )
+  return {
+    points,
+    distanciaKm: route.distance / 1000,
+    duracionMin: Math.round(route.duration / 60),
+    legs: route.legs as { steps: unknown[] }[],
+  }
+}
+
 export async function fetchRutaEvitandoIncidencias(
   desde: [number, number],
   hasta: [number, number],
