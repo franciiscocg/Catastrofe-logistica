@@ -127,7 +127,12 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    setState((prev) => ({ ...prev, loading: !prev.position }))
+    setState((prev) => ({
+      ...prev,
+      error: null,
+      loading: !prev.position,
+      permissionState: prev.permissionState === 'denied' ? null : prev.permissionState,
+    }))
 
     if (requestCurrentPosition) {
       navigator.geolocation.getCurrentPosition(
@@ -177,9 +182,17 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
       .then((status) => {
         if (cancelled) return
         permissionStatus = status
-        setState((prev) => ({ ...prev, permissionState: status.state }))
+        setState((prev) => ({
+          ...prev,
+          error: status.state === 'granted' ? null : prev.error,
+          permissionState: status.state,
+        }))
         status.onchange = () => {
-          setState((prev) => ({ ...prev, permissionState: status.state }))
+          setState((prev) => ({
+            ...prev,
+            error: status.state === 'granted' ? null : prev.error,
+            permissionState: status.state,
+          }))
           if (status.state === 'granted') startWatching(true, true)
         }
       })
@@ -240,7 +253,12 @@ function useStandaloneGeolocation(watch = false): GeolocationContextValue {
       }))
       return
     }
-    setState((prev) => ({ ...prev, loading: true }))
+    setState((prev) => ({
+      ...prev,
+      error: null,
+      loading: true,
+      permissionState: prev.permissionState === 'denied' ? null : prev.permissionState,
+    }))
     navigator.geolocation.getCurrentPosition(onSuccess, onError, {
       enableHighAccuracy: true,
       timeout: 10000,

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  getInventarioNeto,
   getProductosDisponibles,
   getProductoOptions,
   matchProductoNombre,
@@ -77,6 +78,58 @@ describe('getProductosDisponibles', () => {
     const result = getProductosDisponibles([{ id: 'p1', nombre: 'X', latitud: 0, longitud: 0, necesidades: 0 }], inventarioConNecesario as any)
     expect(result).toHaveLength(1)
     expect(result[0].nombre).toBe('Agua')
+  })
+
+  it('usa el balance neto si un producto aparece como disponible y necesario', () => {
+    const inventarioConBalance = {
+      p1: {
+        disponible: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 10, unidad: 'litros' }],
+        necesario: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 4, unidad: 'litros' }],
+      },
+    }
+
+    const result = getProductosDisponibles([{ id: 'p1', nombre: 'X', latitud: 0, longitud: 0, necesidades: 0 }], inventarioConBalance)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].nombre).toBe('Agua')
+    expect(result[0].cantidad).toBe(6)
+  })
+
+  it('no muestra como disponible un producto cuyo balance es necesario', () => {
+    const inventarioConBalance = {
+      p1: {
+        disponible: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 4, unidad: 'litros' }],
+        necesario: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 10, unidad: 'litros' }],
+      },
+    }
+
+    const result = getProductosDisponibles([{ id: 'p1', nombre: 'X', latitud: 0, longitud: 0, necesidades: 0 }], inventarioConBalance)
+
+    expect(result).toHaveLength(0)
+  })
+})
+
+describe('getInventarioNeto', () => {
+  it('devuelve necesidad neta cuando falta mas de lo disponible', () => {
+    const result = getInventarioNeto({
+      disponible: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 4, unidad: 'litros' }],
+      necesario: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 10, unidad: 'litros' }],
+    })
+
+    expect(result.disponible).toHaveLength(0)
+    expect(result.necesario).toEqual([
+      { nombre: 'Agua', categoria: 'Bebidas', cantidad: 6, unidad: 'litros' },
+    ])
+  })
+
+  it('elimina productos con balance cero', () => {
+    const result = getInventarioNeto({
+      disponible: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 10, unidad: 'litros' }],
+      necesario: [{ nombre: 'Agua', categoria: 'Bebidas', cantidad: 10, unidad: 'litros' }],
+    })
+
+    expect(result.disponible).toHaveLength(0)
+    expect(result.necesario).toHaveLength(0)
   })
 })
 

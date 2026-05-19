@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { QRCodeSVG } from 'qrcode.react'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -11,6 +12,7 @@ import {
   blockedIncidenciasNearRoute,
 } from '@/utils/routing'
 import {
+  getInventarioNeto,
   getProductosDisponibles as _getProductosDisponibles,
   getProductoOptions as _getProductoOptions,
 } from '@/utils/productos'
@@ -22,6 +24,14 @@ import { fetchRutaEvitandoIncidencias as fetchRutaSegura } from '@/utils/routing
 
 type ItemInventario = { nombre: string; categoria: string; cantidad: number; unidad: string }
 // Re-export alias para compatibilidad con el resto del fichero
+
+type QrSolicitudState = {
+  requestId: string
+  payload: string
+  estado: 'PENDIENTE' | 'COMPLETADA'
+  completedAt?: string
+  error?: string
+}
 
 type CategoriaIncidenciaKey = 'inundacion' | 'obstaculos_via' | 'limpieza' | 'asistencia'
 
@@ -134,6 +144,25 @@ type ProductoOption = {
 }
 
 type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
+type SolicitudCiudadanoQrItem = {
+  nombre: string
+  categoria: string
+  cantidad: number
+  unidad: string
+}
+type SolicitudCiudadanoEnCurso = {
+  requestId: string
+  puestoId: string
+  puestoNombre: string
+  puestoDireccion?: string
+  cantidades: Record<string, string>
+  productos: SolicitudCiudadanoQrItem[]
+  payload?: string
+  estado: 'BORRADOR' | 'PENDIENTE' | 'COMPLETADA'
+  updatedAt: number
+}
+
+const SOLICITUD_CIUDADANO_STORAGE_KEY = 'catlogistica-solicitud-ciudadano-en-curso'
 type ApiInventarioItem = {
   id: string
   tipo: 'DISPONIBLE' | 'NECESARIO' | 'disponible' | 'necesario'
@@ -440,7 +469,7 @@ function InventarioSheet({
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
 function normalizeApiInventario(items: ApiInventarioItem[]) {
-  return items.reduce<{ disponible: ItemInventario[]; necesario: ItemInventario[] }>((acc, item) => {
+  const raw = items.reduce<{ disponible: ItemInventario[]; necesario: ItemInventario[] }>((acc, item) => {
     const normalized = {
       nombre: item.producto.nombre,
       categoria: item.producto.categoria,
@@ -456,6 +485,8 @@ function normalizeApiInventario(items: ApiInventarioItem[]) {
 
     return acc
   }, { disponible: [], necesario: [] })
+
+  return getInventarioNeto(raw)
 }
 
 function normalizeText(value: string) {
@@ -478,15 +509,9 @@ function mergeWithDemoInventario(
   apiInventario: { disponible: ItemInventario[]; necesario: ItemInventario[] },
 ) {
   const demoInventario = getDemoInventarioForPuesto(puesto)
+  const apiHasData = apiInventario.disponible.length > 0 || apiInventario.necesario.length > 0
 
-  return {
-    disponible: apiInventario.disponible.length > 0
-      ? apiInventario.disponible
-      : demoInventario.disponible,
-    necesario: apiInventario.necesario.length > 0
-      ? apiInventario.necesario
-      : demoInventario.necesario,
-  }
+  return apiHasData ? apiInventario : demoInventario
 }
 
 function getProductosDisponibles(puestos: PuestoMarker[], inventario: InventarioPorPuesto) {
@@ -495,6 +520,58 @@ function getProductosDisponibles(puestos: PuestoMarker[], inventario: Inventario
 
 function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[] {
   return _getProductoOptions(disponibles)
+}
+
+function createSolicitudCiudadanoPayload(
+  puesto: PuestoMarker,
+  productos: SolicitudCiudadanoQrItem[],
+  existingRequestId?: string,
+) {
+  const requestId = existingRequestId ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+
+  const payload = JSON.stringify({
+    t: 'SC',
+    v: 1,
+    r: requestId,
+    p: puesto.id,
+    pn: puesto.nombre,
+    i: productos.map((producto) => ({
+      n: producto.nombre,
+      c: producto.categoria,
+      q: producto.cantidad,
+      u: producto.unidad,
+    })),
+    g: Date.now(),
+  })
+
+  return { requestId, payload }
+}
+
+function readSolicitudCiudadanoEnCurso() {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.localStorage.getItem(SOLICITUD_CIUDADANO_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as SolicitudCiudadanoEnCurso
+    if (!parsed.requestId || !parsed.puestoId || !parsed.cantidades) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function saveSolicitudCiudadanoEnCurso(solicitud: SolicitudCiudadanoEnCurso | null) {
+  if (typeof window === 'undefined') return
+
+  if (!solicitud) {
+    window.localStorage.removeItem(SOLICITUD_CIUDADANO_STORAGE_KEY)
+    return
+  }
+
+  window.localStorage.setItem(SOLICITUD_CIUDADANO_STORAGE_KEY, JSON.stringify(solicitud))
 }
 
 function BuscarProductoSheet({
@@ -532,11 +609,173 @@ function BuscarProductoSheet({
 }) {
   const recomendado = resultados[0]
   const [inputFocused, setInputFocused] = useState(false)
+  const [solicitudEnCurso, setSolicitudEnCurso] = useState<SolicitudCiudadanoEnCurso | null>(() =>
+    readSolicitudCiudadanoEnCurso(),
+  )
+  const [cantidades, setCantidades] = useState<Record<string, string>>(() =>
+    readSolicitudCiudadanoEnCurso()?.cantidades ?? {},
+  )
+  const [qrSolicitud, setQrSolicitud] = useState<QrSolicitudState | null>(() => {
+    const stored = readSolicitudCiudadanoEnCurso()
+    return stored?.payload
+      ? {
+          requestId: stored.requestId,
+          payload: stored.payload,
+          estado: stored.estado === 'COMPLETADA' ? 'COMPLETADA' : 'PENDIENTE',
+        }
+      : null
+  })
   const inventarioSeleccionado = selectedPuesto
     ? inventarioPorPuesto[selectedPuesto.id] ?? { disponible: [], necesario: [] }
     : null
   const showSugerencias = inputFocused
   const hasTextoBusqueda = textoBusqueda.trim().length > 0
+  const productosSolicitud = selectedPuesto && inventarioSeleccionado
+    ? inventarioSeleccionado.disponible
+        .map((item) => {
+          const cantidad = Number(cantidades[item.nombre] ?? 0)
+          return {
+            nombre: item.nombre,
+            categoria: item.categoria,
+            cantidad: Math.min(Math.max(cantidad, 0), item.cantidad),
+            unidad: item.unidad,
+          }
+        })
+        .filter((item) => item.cantidad > 0)
+    : []
+
+  useEffect(() => {
+    if (!solicitudEnCurso || !selectedPuesto || solicitudEnCurso.puestoId !== selectedPuesto.id) return
+    setCantidades(solicitudEnCurso.cantidades)
+    if (solicitudEnCurso.payload) {
+      setQrSolicitud({
+        requestId: solicitudEnCurso.requestId,
+        payload: solicitudEnCurso.payload,
+        estado: solicitudEnCurso.estado === 'COMPLETADA' ? 'COMPLETADA' : 'PENDIENTE',
+      })
+    }
+  }, [selectedPuesto?.id, solicitudEnCurso])
+
+  const handleCantidadSolicitud = (item: ItemInventario, value: string) => {
+    if (!selectedPuesto || !inventarioSeleccionado) return
+    const cantidad = value === '' ? '' : String(Math.min(Math.max(Number(value), 0), item.cantidad))
+    const nextCantidades = { ...cantidades, [item.nombre]: cantidad }
+    const nextProductos = inventarioSeleccionado.disponible
+      .map((producto) => {
+        const nextCantidad = Number(nextCantidades[producto.nombre] ?? 0)
+        return {
+          nombre: producto.nombre,
+          categoria: producto.categoria,
+          cantidad: Math.min(Math.max(nextCantidad, 0), producto.cantidad),
+          unidad: producto.unidad,
+        }
+      })
+      .filter((producto) => producto.cantidad > 0)
+    const requestId = solicitudEnCurso?.puestoId === selectedPuesto.id
+      ? solicitudEnCurso.requestId
+      : createSolicitudCiudadanoPayload(selectedPuesto, nextProductos.length > 0 ? nextProductos : [{
+          nombre: item.nombre,
+          categoria: item.categoria,
+          cantidad: Math.max(Number(cantidad), 1),
+          unidad: item.unidad,
+        }]).requestId
+
+    setCantidades(nextCantidades)
+    setQrSolicitud(null)
+    const nextSolicitud = nextProductos.length > 0
+      ? {
+          requestId,
+          puestoId: selectedPuesto.id,
+          puestoNombre: selectedPuesto.nombre,
+          puestoDireccion: selectedPuesto.direccion,
+          cantidades: nextCantidades,
+          productos: nextProductos,
+          estado: 'BORRADOR' as const,
+          updatedAt: Date.now(),
+        }
+      : null
+    setSolicitudEnCurso(nextSolicitud)
+    saveSolicitudCiudadanoEnCurso(nextSolicitud)
+  }
+
+  const handleGenerarQrSolicitud = () => {
+    if (!selectedPuesto || productosSolicitud.length === 0) return
+    const solicitud = createSolicitudCiudadanoPayload(
+      selectedPuesto,
+      productosSolicitud,
+      solicitudEnCurso?.puestoId === selectedPuesto.id ? solicitudEnCurso.requestId : undefined,
+    )
+    const nextSolicitud = {
+      requestId: solicitud.requestId,
+      puestoId: selectedPuesto.id,
+      puestoNombre: selectedPuesto.nombre,
+      puestoDireccion: selectedPuesto.direccion,
+      cantidades,
+      productos: productosSolicitud,
+      payload: solicitud.payload,
+      estado: 'PENDIENTE' as const,
+      updatedAt: Date.now(),
+    }
+    setQrSolicitud({
+      ...solicitud,
+      estado: 'PENDIENTE',
+    })
+    setSolicitudEnCurso(nextSolicitud)
+    saveSolicitudCiudadanoEnCurso(nextSolicitud)
+  }
+
+  const handleCancelarSolicitudEnCurso = () => {
+    setCantidades({})
+    setQrSolicitud(null)
+    setSolicitudEnCurso(null)
+    saveSolicitudCiudadanoEnCurso(null)
+  }
+
+  useEffect(() => {
+    if (!qrSolicitud || qrSolicitud.estado === 'COMPLETADA') return
+
+    let cancelled = false
+    const checkEstadoSolicitud = async () => {
+      try {
+        const { data } = await apiClient.get<{
+          estado: 'PENDIENTE' | 'COMPLETADA'
+          completedAt?: string
+        }>(`/api/inventario/qr-solicitudes/${qrSolicitud.requestId}`)
+
+        if (cancelled) return
+        setQrSolicitud((current) => {
+          if (!current || current.requestId !== qrSolicitud.requestId) return current
+          return {
+            ...current,
+            estado: data.estado,
+            completedAt: data.completedAt,
+            error: undefined,
+          }
+        })
+        if (data.estado === 'COMPLETADA') {
+          setSolicitudEnCurso(null)
+          saveSolicitudCiudadanoEnCurso(null)
+        }
+      } catch {
+        if (cancelled) return
+        setQrSolicitud((current) => {
+          if (!current || current.requestId !== qrSolicitud.requestId) return current
+          return {
+            ...current,
+            error: 'No se pudo comprobar todavia el estado de la solicitud.',
+          }
+        })
+      }
+    }
+
+    void checkEstadoSolicitud()
+    const intervalId = window.setInterval(() => void checkEstadoSolicitud(), 5000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [qrSolicitud?.requestId, qrSolicitud?.estado])
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-white">
@@ -675,7 +914,7 @@ function BuscarProductoSheet({
               ) : (
                 <div className="space-y-1">
                   {inventarioSeleccionado.disponible.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50">
+                    <div key={i} className="flex items-center justify-between gap-3 py-2 border-b border-gray-50">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-lg flex-shrink-0">{CATEGORIA_EMOJI[item.categoria] ?? '📦'}</span>
                         <div className="min-w-0">
@@ -683,11 +922,100 @@ function BuscarProductoSheet({
                           <p className="text-xs text-gray-400">{item.categoria}</p>
                         </div>
                       </div>
-                      <span className="text-sm font-semibold text-green-700 flex-shrink-0">
-                        {item.cantidad} {item.unidad}
-                      </span>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        <span className="text-xs font-semibold text-green-700">
+                          {item.cantidad} {item.unidad}
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={item.cantidad}
+                          step="1"
+                          value={cantidades[item.nombre] ?? ''}
+                          onChange={(e) => handleCantidadSolicitud(item, e.target.value)}
+                          className="w-20 rounded-lg border-gray-300 text-right text-sm focus:border-blue-500 focus:ring-blue-500"
+                          aria-label={`Cantidad solicitada de ${item.nombre}`}
+                          placeholder="0"
+                        />
+                      </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-blue-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Solicitud por QR</p>
+                  <p className="text-xs text-gray-500">
+                    Elige cantidades y enseña el QR en el puesto para retirar productos.
+                  </p>
+                </div>
+                <Badge variant={productosSolicitud.length > 0 ? 'info' : 'warning'}>
+                  {productosSolicitud.length} producto{productosSolicitud.length === 1 ? '' : 's'}
+                </Badge>
+              </div>
+              {solicitudEnCurso && solicitudEnCurso.puestoId === selectedPuesto.id && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">
+                        Solicitud en curso para {solicitudEnCurso.puestoNombre}
+                      </p>
+                      <p className="mt-1">
+                        {solicitudEnCurso.productos.map((item) => `${item.cantidad} ${item.unidad} de ${item.nombre}`).join(' · ')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelarSolicitudEnCurso}
+                      className="flex-shrink-0 rounded-md border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+              <Button
+                size="sm"
+                variant="primary"
+                fullWidth
+                disabled={productosSolicitud.length === 0}
+                onClick={handleGenerarQrSolicitud}
+                className="mt-3"
+              >
+                Generar QR de solicitud
+              </Button>
+              {qrSolicitud && (
+                <div className={`mt-3 flex flex-col items-center rounded-lg border p-3 ${
+                  qrSolicitud.estado === 'COMPLETADA'
+                    ? 'border-green-200 bg-green-50'
+                    : 'border-blue-100 bg-blue-50'
+                }`}>
+                  <QRCodeSVG value={qrSolicitud.payload} size={280} level="M" includeMargin />
+                  <div className="mt-2 flex flex-col items-center gap-1 text-center">
+                    <Badge variant={qrSolicitud.estado === 'COMPLETADA' ? 'success' : 'info'}>
+                      {qrSolicitud.estado === 'COMPLETADA' ? 'Completado' : 'Pendiente de entrega'}
+                    </Badge>
+                    <p className={`text-xs font-medium ${
+                      qrSolicitud.estado === 'COMPLETADA' ? 'text-green-900' : 'text-blue-900'
+                    }`}>
+                      {qrSolicitud.estado === 'COMPLETADA'
+                        ? 'Solicitud cerrada por el puesto'
+                        : `QR listo para ${selectedPuesto.nombre}`}
+                    </p>
+                    {qrSolicitud.error && (
+                      <p className="text-xs text-amber-700">{qrSolicitud.error}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard?.writeText(qrSolicitud.payload)}
+                    className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                  >
+                    Copiar codigo
+                  </button>
                 </div>
               )}
             </section>
@@ -1220,10 +1548,11 @@ export default function CiudadanoDashboard() {
   }
 
   const abrirBusquedaProducto = () => {
+    const solicitudGuardada = readSolicitudCiudadanoEnCurso()
     setPanelReturnVista(getCurrentPanelReturnVista())
-    setProductoBusqueda('')
-    setTextoProductoBusqueda('')
-    setBusquedaPuestoId(null)
+    setProductoBusqueda(solicitudGuardada?.productos[0]?.nombre ?? '')
+    setTextoProductoBusqueda(solicitudGuardada?.productos[0]?.nombre ?? '')
+    setBusquedaPuestoId(solicitudGuardada?.puestoId ?? null)
     setVista('buscar')
   }
 

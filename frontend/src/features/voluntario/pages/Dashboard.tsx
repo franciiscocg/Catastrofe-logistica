@@ -364,15 +364,17 @@ function isDonacionActiva(donacion: Donacion) {
 
 function createCodigoEntregaPayload(donacion: Donacion, entregaCodigo: string) {
   return JSON.stringify({
-    type: 'DONACION_ENTREGA',
-    version: 1,
-    entregaCodigo,
-    donacionId: donacion.id,
-    puestoId: donacion.puesto.id,
-    productoId: donacion.producto.id,
-    cantidad: donacion.cantidad,
-    unidad: donacion.unidad,
-    generatedAt: new Date().toISOString(),
+    t: 'DE',
+    v: 1,
+    e: entregaCodigo,
+    d: donacion.id,
+    p: donacion.puesto.id,
+    pr: donacion.producto.id,
+    n: donacion.producto.nombre,
+    c: donacion.producto.categoria,
+    q: donacion.cantidad,
+    u: donacion.unidad,
+    g: Date.now(),
   })
 }
 
@@ -1122,6 +1124,53 @@ export default function VoluntarioDashboard() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const donacionesConCodigo = Object.keys(codigosEntrega)
+    if (donacionesConCodigo.length === 0) return
+
+    let cancelled = false
+    const checkDonacionesEntregadas = async () => {
+      try {
+        const { data } = await apiClient.get('/api/donaciones/mis-donaciones')
+        if (cancelled) return
+
+        const donacionesActualizadas = (data.donaciones ?? []) as Donacion[]
+        const idsCerradas = new Set(
+          donacionesActualizadas
+            .filter((donacion) => donacion.estado === 'ENTREGADA' || donacion.estado === 'CANCELADA')
+            .map((donacion) => donacion.id),
+        )
+
+        setMisDonaciones(donacionesActualizadas)
+        setCodigosEntrega((current) => {
+          const next = { ...current }
+          let changed = false
+          for (const donacionId of Object.keys(next)) {
+            if (idsCerradas.has(donacionId)) {
+              delete next[donacionId]
+              changed = true
+            }
+          }
+          return changed ? next : current
+        })
+
+        if (donacionesConCodigo.some((donacionId) => idsCerradas.has(donacionId))) {
+          setMensajeDonacion('Donacion cerrada por el puesto.')
+        }
+      } catch {
+        // La pantalla seguira mostrando el QR; se reintenta en la siguiente comprobacion.
+      }
+    }
+
+    void checkDonacionesEntregadas()
+    const intervalId = window.setInterval(() => void checkDonacionesEntregadas(), 5000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [codigosEntrega])
 
   const necesidades = useMemo<Necesidad[]>(() => (
     necesidadesApi.length > 0 ? necesidadesApi.filter((necesidad) => necesidad.item.cantidad > 0) :
@@ -2246,6 +2295,21 @@ export default function VoluntarioDashboard() {
     }
   }
 
+  const handleActualizarEstadoDonaciones = async (
+    donaciones: Donacion[],
+    estado: 'EN_CAMINO' | 'ENTREGADA' | 'CANCELADA',
+  ) => {
+    for (const donacion of donaciones) {
+      await handleActualizarEstadoDonacion(donacion, estado)
+    }
+  }
+
+  const handleGenerarCodigosEntrega = async (donaciones: Donacion[]) => {
+    for (const donacion of donaciones) {
+      await handleGenerarCodigoEntrega(donacion)
+    }
+  }
+
   const puestoActividad = actividadManualActiva?.tipo === 'puesto'
     ? puestos.find((puesto) => puesto.id === actividadManualActiva.id) ?? puestoActivoAsignado ?? undefined
     : undefined
@@ -2422,11 +2486,18 @@ export default function VoluntarioDashboard() {
             {codigoEntregaActividad && donacionActiva && (
               <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-cyan-100 bg-cyan-50 p-4 sm:flex-row">
                 <div className="rounded-lg border border-cyan-100 bg-white p-3 shadow-sm">
-                  <QRCodeSVG value={codigoEntregaActividad} size={132} level="M" includeMargin />
+                  <QRCodeSVG value={codigoEntregaActividad} size={240} level="M" includeMargin />
                 </div>
                 <div className="text-center sm:text-left">
                   <p className="text-sm font-semibold text-cyan-950">Codigo de entrega activo</p>
                   <p className="mt-1 text-sm text-cyan-900">Enseña este QR en el puesto para confirmar la recepcion.</p>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard?.writeText(codigoEntregaActividad)}
+                    className="mt-2 rounded-lg border border-cyan-200 bg-white px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"
+                  >
+                    Copiar codigo
+                  </button>
                 </div>
               </div>
             )}
@@ -3100,7 +3171,177 @@ export default function VoluntarioDashboard() {
                           </div>
                         )}
                       </div>
-                      {donacionesActivas.map((donacion) => {
+                      {paradasDonacionesActivas.map((parada) => {
+                        const rutaParadaId = `puesto-donaciones:${parada.puesto.id}`
+                        const pendientes = parada.donaciones.filter((donacion) => donacion.estado === 'PENDIENTE')
+                        const enCamino = parada.donaciones.filter((donacion) => donacion.estado === 'EN_CAMINO')
+                        const codigos = parada.donaciones
+                          .map((donacion) => ({
+                            donacion,
+                            codigo: codigosEntrega[donacion.id] ?? (
+                              donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
+                            ),
+                          }))
+                          .filter((item) => item.codigo)
+                        const estadoParada = pendientes.length > 0 ? 'PENDIENTE' : 'EN_CAMINO'
+
+                        return (
+                          <div key={parada.puesto.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">{parada.puesto.nombre}</p>
+                                <p className="mt-1 text-xs font-medium text-slate-500">
+                                  {parada.donaciones.length} donacion{parada.donaciones.length === 1 ? '' : 'es'} para entregar aqui
+                                </p>
+                              </div>
+                              <Badge variant="info">{estadoParada.replace('_', ' ')}</Badge>
+                            </div>
+
+                            <div className="mt-3 space-y-2 rounded-lg bg-slate-50 px-3 py-2">
+                              {parada.donaciones.map((donacion) => (
+                                <div key={donacion.id} className="flex items-start justify-between gap-3 text-sm">
+                                  <span className="font-medium text-slate-800">
+                                    {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
+                                  </span>
+                                  <span className="text-xs font-semibold text-slate-500">
+                                    {donacion.estado.replace('_', ' ')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleComoLlegar(parada.puesto, rutaParadaId)}
+                              className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800"
+                              disabled={rutaLoading}
+                            >
+                              {rutaLoadingId === rutaParadaId ? 'Calculando ruta...' : 'Como llegar'}
+                            </button>
+
+                            {rutaError && rutaErrorDonacionId === rutaParadaId && (
+                              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                                <p>{rutaError}</p>
+                                {rutaError.includes('ubicacion') && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    className="mt-2 w-full sm:w-auto"
+                                    onClick={() => {
+                                      setRutaPendiente({ puesto: parada.puesto, donacionId: rutaParadaId })
+                                      requestGeo()
+                                    }}
+                                  >
+                                    Compartir ubicacion
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                            {rutaActiva?.donacionId === rutaParadaId && (
+                              <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                                <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-sm font-semibold text-slate-950">Ruta segura a {rutaActiva.puesto.nombre}</p>
+                                      <p className="mt-1 text-xs text-slate-600">
+                                        {rutaActiva.distanciaKm.toFixed(1)} km - ~{rutaActiva.duracionMin} min
+                                        {rutaActiva.incidenciasEvitadas > 0 && ` - evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRutaActiva(null)}
+                                      className="text-xs font-medium text-slate-500 hover:text-slate-950"
+                                    >
+                                      Cerrar
+                                    </button>
+                                  </div>
+                                </div>
+                                <Map
+                                  className="h-72"
+                                  center={[rutaActiva.puesto.latitud, rutaActiva.puesto.longitud]}
+                                  userPosition={userPosition}
+                                  onUserLocated={setUserPosition}
+                                  puestos={puestoRutaMarker}
+                                  incidencias={incidencias as IncidenciaMarker[]}
+                                  selectedPuestoId={rutaActiva.puesto.id}
+                                  route={rutaActiva.points}
+                                  markerVariant="neutral"
+                                />
+                                <RouteSafetyPanel
+                                  distanciaKm={rutaActiva.distanciaKm}
+                                  duracionMin={rutaActiva.duracionMin}
+                                  incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
+                                  incidenciasCercanas={rutaActiva.incidenciasCercanas}
+                                  destino={rutaActiva.puesto.nombre}
+                                />
+                              </div>
+                            )}
+
+                            {codigos.length > 0 && (
+                              <div className="mt-3 space-y-3 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                                <p className="text-sm font-semibold text-cyan-950">Codigos de entrega</p>
+                                {codigos.map(({ donacion, codigo }) => (
+                                  <div key={donacion.id} className="rounded-lg border border-cyan-100 bg-white p-3">
+                                    <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+                                      <QRCodeSVG value={codigo} size={220} level="M" includeMargin />
+                                      <div className="text-center sm:text-left">
+                                        <p className="text-sm font-semibold text-cyan-950">
+                                          {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
+                                        </p>
+                                        <p className="mt-1 text-sm text-cyan-900">
+                                          Enseña este QR al personal del puesto.
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={() => void navigator.clipboard?.writeText(codigo)}
+                                          className="mt-2 rounded-lg border border-cyan-200 bg-white px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"
+                                        >
+                                          Copiar codigo
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              {pendientes.length > 0 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => void handleActualizarEstadoDonaciones(pendientes, 'EN_CAMINO')}
+                                >
+                                  Poner todo en camino
+                                </Button>
+                              )}
+                              {pendientes.length === 0 && enCamino.length > 0 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => void handleGenerarCodigosEntrega(enCamino)}
+                                >
+                                  {codigos.length > 0 ? 'Mostrar codigos' : 'Generar codigos'}
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="danger"
+                                onClick={() => void handleActualizarEstadoDonaciones(parada.donaciones, 'CANCELADA')}
+                              >
+                                Cancelar todo
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {false && donacionesActivas.map((donacion) => {
                         const codigoEntrega = codigosEntrega[donacion.id] ?? (
                           donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
                         )
@@ -3189,7 +3430,7 @@ export default function VoluntarioDashboard() {
                             <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
                               <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                                 <div className="rounded-lg border border-cyan-100 bg-white p-3 shadow-sm">
-                                  <QRCodeSVG value={codigoEntrega} size={164} level="M" includeMargin />
+                                  <QRCodeSVG value={codigoEntrega} size={280} level="M" includeMargin />
                                 </div>
                                 <div className="text-center sm:text-left">
                                   <p className="text-sm font-semibold text-cyan-950">Codigo de entrega</p>
@@ -3199,6 +3440,13 @@ export default function VoluntarioDashboard() {
                                   <p className="mt-2 break-all rounded-md bg-white/80 px-2 py-1 font-mono text-xs text-cyan-950">
                                     {donacion.id}
                                   </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => void navigator.clipboard?.writeText(codigoEntrega)}
+                                    className="mt-2 rounded-lg border border-cyan-200 bg-white px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"
+                                  >
+                                    Copiar codigo
+                                  </button>
                                 </div>
                               </div>
                             </div>

@@ -12,14 +12,75 @@ export interface ProductoOption {
   total: number
 }
 
-export type InventarioRecord = Record<string, { disponible: ItemInventario[] }>
+export type InventarioRecord = Record<string, { disponible: ItemInventario[]; necesario?: ItemInventario[] }>
+
+function normalizeNombre(nombre: string) {
+  return nombre.trim().toLocaleLowerCase('es')
+}
+
+export function getInventarioNeto(inventario: { disponible: ItemInventario[]; necesario?: ItemInventario[] }) {
+  const productos = new Map<string, {
+    nombre: string
+    categoria: string
+    unidad: string
+    disponible: number
+    necesario: number
+  }>()
+
+  for (const item of inventario.disponible) {
+    const key = normalizeNombre(item.nombre)
+    const current = productos.get(key) ?? {
+      nombre: item.nombre,
+      categoria: item.categoria,
+      unidad: item.unidad,
+      disponible: 0,
+      necesario: 0,
+    }
+    current.disponible += item.cantidad
+    productos.set(key, current)
+  }
+
+  for (const item of inventario.necesario ?? []) {
+    const key = normalizeNombre(item.nombre)
+    const current = productos.get(key) ?? {
+      nombre: item.nombre,
+      categoria: item.categoria,
+      unidad: item.unidad,
+      disponible: 0,
+      necesario: 0,
+    }
+    current.necesario += item.cantidad
+    productos.set(key, current)
+  }
+
+  return [...productos.values()].reduce<{ disponible: ItemInventario[]; necesario: ItemInventario[] }>((acc, item) => {
+    const balance = item.disponible - item.necesario
+    if (balance > 0) {
+      acc.disponible.push({
+        nombre: item.nombre,
+        categoria: item.categoria,
+        unidad: item.unidad,
+        cantidad: balance,
+      })
+    } else if (balance < 0) {
+      acc.necesario.push({
+        nombre: item.nombre,
+        categoria: item.categoria,
+        unidad: item.unidad,
+        cantidad: Math.abs(balance),
+      })
+    }
+    return acc
+  }, { disponible: [], necesario: [] })
+}
 
 export function getProductosDisponibles<T extends { id: string }>(
   puestos: T[],
   inventario: InventarioRecord,
 ): Array<ItemInventario & { puesto: T }> {
   return puestos.flatMap((puesto) =>
-    (inventario[puesto.id]?.disponible ?? []).map((item) => ({ ...item, puesto })),
+    getInventarioNeto(inventario[puesto.id] ?? { disponible: [], necesario: [] }).disponible
+      .map((item) => ({ ...item, puesto })),
   )
 }
 

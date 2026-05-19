@@ -28,8 +28,21 @@ async function getVoluntarioByUsuario(usuarioId: string) {
     select: { id: true },
   })
 
-  if (!voluntario) throw badRequest('El usuario no tiene perfil de voluntario')
-  return voluntario
+  if (voluntario) return voluntario
+
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: usuarioId },
+    select: { roles: true },
+  })
+
+  if (!usuario?.roles.includes('VOLUNTARIO')) {
+    throw badRequest('El usuario no tiene perfil de voluntario')
+  }
+
+  return prisma.voluntario.create({
+    data: { usuarioId },
+    select: { id: true },
+  })
 }
 
 export async function listNecesidadesDonacion() {

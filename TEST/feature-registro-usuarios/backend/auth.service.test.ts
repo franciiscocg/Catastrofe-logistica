@@ -6,6 +6,10 @@ const { prismaMock } = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
     },
+    voluntario: {
+      create: vi.fn(),
+      upsert: vi.fn(),
+    },
     catastrofe: {
       findFirst: vi.fn(),
     },
@@ -16,6 +20,9 @@ const { prismaMock } = vi.hoisted(() => {
       cb({
         usuario: {
           create: prismaMock.usuario.create,
+        },
+        voluntario: {
+          create: prismaMock.voluntario.create,
         },
         catastrofe: {
           findFirst: prismaMock.catastrofe.findFirst,
@@ -76,6 +83,11 @@ describe('auth.service', () => {
 
     expect(mp.usuario.findUnique).toHaveBeenCalledWith({ where })
     expect(mockCompare).toHaveBeenCalledWith('Password123', 'hashed:Password123')
+    expect(mp.voluntario.upsert).toHaveBeenCalledWith({
+      where: { usuarioId: 'user-1' },
+      update: {},
+      create: { usuarioId: 'user-1' },
+    })
     expect(user).toMatchObject({
       id: 'user-1',
       email: 'maria@example.com',
@@ -111,6 +123,9 @@ describe('auth.service', () => {
         activo: true,
       }),
     }))
+    expect(mp.voluntario.create).toHaveBeenCalledWith({
+      data: { usuarioId: 'user-1' },
+    })
   })
 
   it('crea una solicitud de puesto inactiva y pendiente de aprobacion', async () => {
@@ -148,6 +163,7 @@ describe('auth.service', () => {
 
     expect(result.puesto).toBeNull()
     expect(result.solicitud).toMatchObject({ id: 'solicitud-1', estado: 'PENDIENTE' })
+    expect(mp.voluntario.create).not.toHaveBeenCalled()
     expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         usuarioId: 'user-1',
