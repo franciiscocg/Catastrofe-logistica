@@ -994,9 +994,8 @@ export default function VoluntarioDashboard() {
   const [recomendacionesLeidas, setRecomendacionesLeidas] = useState(false)
   const [ayudaIncidenciaLoadingId, setAyudaIncidenciaLoadingId] = useState('')
   const { position, request: requestGeo } = useGeolocation()
-  const { mode, isOnline } = useConnectivity()
+  const { isOnline } = useConnectivity()
   const enqueueSync = useSyncStore((store) => store.enqueue)
-  const pendingSync = useSyncStore((store) => store.pendingCount)
 
   useEffect(() => {
     if (position) setUserPosition([position.lat, position.lng])
@@ -1233,8 +1232,6 @@ export default function VoluntarioDashboard() {
         nombre: `${donacionActiva.producto.nombre} para ${donacionActiva.puesto.nombre}`,
       }
     : actividadManualActiva
-  const estadoOperativo = actividadActiva ? 'En servicio' : 'Disponible'
-  const connectionLabel = mode === 'offline' ? 'Offline' : mode === 'slow' ? 'Conexion lenta' : 'Online'
   const estaGestionandoPuesto = actividadActiva?.tipo === 'puesto'
 
   const resetSelection = (next: AccionVoluntario) => {

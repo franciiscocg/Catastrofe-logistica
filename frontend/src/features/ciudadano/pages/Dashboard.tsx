@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
@@ -1216,8 +1216,6 @@ export default function CiudadanoDashboard() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const [pendingDuplicate, setPendingDuplicate] = useState<DuplicateIncidencia | null>(null)
   const [incidencias, setIncidencias] = useState<IncidenciaMarker[]>([])
-  const [incidenciasLoading, setIncidenciasLoading] = useState(false)
-  const [incidenciasError, setIncidenciasError] = useState<string | null>(null)
   const [comentarioIncidencia, setComentarioIncidencia] = useState<IncidenciaMarker | null>(null)
   const [comentarioEstado, setComentarioEstado] = useState<EstadoVia>('CORTADA')
   const [comentarioTexto, setComentarioTexto] = useState('')
@@ -1320,23 +1318,6 @@ export default function CiudadanoDashboard() {
   useEffect(() => () => {
     routeAbortControllerRef.current?.abort()
     if (routeTimeoutRef.current !== null) window.clearTimeout(routeTimeoutRef.current)
-  }, [])
-
-  const refreshIncidencias = useCallback(async () => {
-    setIncidenciasLoading(true)
-    setIncidenciasError(null)
-    try {
-      const params = CATASTROFE_ID ? { catastrofeId: CATASTROFE_ID } : undefined
-      const { data } = await apiClient.get('/api/incidencias', { params })
-      setIncidencias((prev) => {
-        const pendientes = prev.filter((inc) => inc.pendingSync)
-        return [...pendientes, ...(data.incidencias ?? [])]
-      })
-    } catch {
-      setIncidenciasError('No se pudieron actualizar las incidencias. Se muestran las disponibles en este dispositivo.')
-    } finally {
-      setIncidenciasLoading(false)
-    }
   }, [])
 
   useEffect(() => {
@@ -1817,9 +1798,6 @@ export default function CiudadanoDashboard() {
   const productosRecomendados = _getProductosRecomendados(productosDisponibles)
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
   const puestosOpcionActual = opcionesRutaProductos?.[opcionRutaIdx]?.paradas.map((p) => p.puesto) ?? []
-  const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
-  const totalTransitables = incidencias.filter((inc) => inc.estado === 'TRANSITABLE').length
-  const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
 
   useEffect(() => {
     if (!destinoPuesto || !currentUserPosition || routeLoading) return
@@ -1918,6 +1896,12 @@ export default function CiudadanoDashboard() {
             {routeInfo.incidenciasEvitadas > 0 && ` · evita ${routeInfo.incidenciasEvitadas} corte${routeInfo.incidenciasEvitadas === 1 ? '' : 's'}`}
             {routeInfo.incidenciasCercanas > 0 && ` · ${routeInfo.incidenciasCercanas} corte${routeInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
           </span>
+          <button
+            onClick={handleCancelarRuta}
+            className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg transition-colors"
+          >
+            ✕ Cancelar
+          </button>
         </div>
       )}
 

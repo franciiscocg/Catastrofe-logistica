@@ -3,13 +3,6 @@ import { useAuthStore } from '@/store/auth.store'
 import { ROLE_LABELS } from '@/types/auth.types'
 import type { Role } from '@/types/auth.types'
 
-const ROLE_COLORS: Record<string, string> = {
-  ciudadano:    'bg-blue-100 text-blue-700',
-  voluntario:   'bg-green-100 text-green-700',
-  puesto:       'bg-amber-100 text-amber-700',
-  coordinador:  'bg-purple-100 text-purple-700',
-}
-
 const HEADER_COLORS: Record<string, string> = {
   ciudadano:   'bg-blue-600',
   voluntario:  'bg-green-600',
@@ -34,7 +27,6 @@ export default function AppShell() {
   }
 
   const roleLabel  = selectedRole ? ROLE_LABELS[selectedRole as Role] : ''
-  const roleColor  = selectedRole ? (ROLE_COLORS[selectedRole] ?? 'bg-gray-100 text-gray-700') : 'bg-gray-100 text-gray-700'
   const roleIcon   = selectedRole ? (ROLE_ICONS[selectedRole] ?? '👤') : '👤'
   const headerBg   = selectedRole ? (HEADER_COLORS[selectedRole] ?? 'bg-gray-700') : 'bg-gray-700'
 

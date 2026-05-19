@@ -494,6 +494,8 @@ export default function Map({
           onSelect={(pos) => onReportPointSelect?.(pos)}
         />
 
+        {onUserLocated && <LocateButton onLocated={onUserLocated} />}
+
       </MapContainer>
     </div>
   )
