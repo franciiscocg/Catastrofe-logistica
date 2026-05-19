@@ -1641,7 +1641,7 @@ export default function CiudadanoDashboard() {
         currentUserPosition,
         ...opcion.paradas.map((p) => [p.puesto.latitud, p.puesto.longitud] as [number, number]),
       ]
-      const resultado = await fetchRutaConPasos(waypoints, modoTransporte)
+      const resultado = await fetchRutaConPasos(waypoints, modoTransporte, incidencias)
       const steps = parsearStepsOsrm(resultado.legs as Parameters<typeof parsearStepsOsrm>[0])
       setSelectedId(opcion.paradas[opcion.paradas.length - 1].puesto.id)
       setRoute(resultado.points)

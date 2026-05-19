@@ -1,11 +1,35 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   pointToSegmentDistanceKm,
   countBlockedIncidenciasNearRoute,
   blockedIncidenciasNearRoute,
+  fetchRutaConPasos,
+  fetchRutaMultiParada,
   ROUTE_BLOCK_RADIUS_KM,
 } from '../../../frontend/src/utils/routing'
 import type { IncidenciaRutaInput } from '../../../frontend/src/utils/routing'
+
+const osrmResponse = (
+  coordinates: [number, number][],
+  distance = 1000,
+  duration = 600,
+  legs: { steps: unknown[] }[] = [{ steps: [] }],
+) => ({
+  ok: true,
+  json: async () => ({
+    code: 'Ok',
+    routes: [{
+      distance,
+      duration,
+      geometry: { coordinates },
+      legs,
+    }],
+  }),
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 // ── pointToSegmentDistanceKm ──────────────────────────────────────────────────
 
@@ -164,5 +188,60 @@ describe('blockedIncidenciasNearRoute', () => {
       estado: 'CORTADA',
     }
     expect(blockedIncidenciasNearRoute(RUTA, [incidenciaLejos])).toHaveLength(0)
+  })
+})
+
+describe('rutas evitando incidencias', () => {
+  const origen: [number, number] = [39, -0.4]
+  const destino: [number, number] = [39, -0.3]
+  const incidenciaCortada: IncidenciaRutaInput = {
+    latitud: 39,
+    longitud: -0.35,
+    estado: 'CORTADA',
+  }
+  const rutaCortada: [number, number][] = [
+    [-0.4, 39],
+    [-0.35, 39],
+    [-0.3, 39],
+  ]
+  const rutaDesviada: [number, number][] = [
+    [-0.4, 39],
+    [-0.35, 39.004],
+    [-0.3, 39],
+  ]
+
+  it('calcula rutas multiparada usando un desvio cuando la directa pasa por una calle cortada', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(osrmResponse(rutaCortada))
+      .mockResolvedValue(osrmResponse(rutaDesviada, 1200, 720))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchRutaMultiParada([origen, destino], [incidenciaCortada])
+
+    expect(result.points).toEqual([[39, -0.4], [39.004, -0.35], [39, -0.3]])
+    expect(result.incidenciasCercanas).toBe(0)
+    expect(fetchMock).toHaveBeenCalledTimes(9)
+  })
+
+  it('usa el mismo desvio seguro al pedir indicaciones paso a paso aunque OSRM recalcule la geometria', async () => {
+    const steps = [{ maneuver: { type: 'depart' }, name: 'Calle segura' }]
+    const fetchMock = vi.fn((url: string) => {
+      const callNumber = fetchMock.mock.calls.length
+      if (callNumber === 1) return Promise.resolve(osrmResponse(rutaCortada))
+      if (url.includes('steps=true')) {
+        return Promise.resolve(osrmResponse(rutaCortada, 1200, 720, [{ steps }]))
+      }
+      return Promise.resolve(osrmResponse(rutaDesviada, 1200, 720))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchRutaConPasos([origen, destino], 'driving', [incidenciaCortada])
+
+    expect(result.points).toEqual([[39, -0.4], [39.004, -0.35], [39, -0.3]])
+    expect(result.legs[0].steps).toEqual(steps)
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('-0.35,39.004'),
+      expect.any(Object),
+    )
   })
 })
