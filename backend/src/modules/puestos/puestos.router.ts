@@ -1067,6 +1067,29 @@ export async function puestosRouter(app: FastifyInstance) {
     reply.send({ participantes: participantes.map(formatParticipante) })
   })
 
+  app.get('/:id/donaciones', {
+    preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
+  }, async (request, reply) => {
+    const { id: puestoId } = request.params as { id: string }
+    const responsableId = (request.user as { id: string }).id
+    await assertPuestoResponsable(puestoId, responsableId)
+
+    const donaciones = await prisma.donacion.findMany({
+      where: { puestoId, estado: { in: ['PENDIENTE', 'EN_CAMINO'] } },
+      orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
+      include: {
+        producto: true,
+        voluntario: {
+          include: {
+            usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+          },
+        },
+      },
+    })
+
+    reply.send({ donaciones })
+  })
+
   app.delete('/:id/participantes/:asignacionId', {
     preHandler: [requireAuth, requireRole('PUESTO_EMERGENCIA')],
   }, async (request, reply) => {
