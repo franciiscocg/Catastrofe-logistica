@@ -144,6 +144,8 @@ type ProductoOption = {
   unidad: string
   total: number
 }
+type RadioBusquedaProductos = 2 | 5 | 10 | 'todos'
+type OrdenProductos = 'relevancia' | 'cantidad' | 'nombre'
 
 type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
 type ApiInventarioItem = {
@@ -509,15 +511,37 @@ function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[]
   return _getProductoOptions(disponibles)
 }
 
+function getNivelDisponibilidad(total: number) {
+  if (total >= 100) {
+    return {
+      label: 'Alta disponibilidad',
+      className: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    }
+  }
+  if (total >= 25) {
+    return {
+      label: 'Stock medio',
+      className: 'bg-blue-50 text-blue-700 ring-blue-100',
+    }
+  }
+  return {
+    label: 'Quedan pocas unidades',
+    className: 'bg-amber-50 text-amber-700 ring-amber-100',
+  }
+}
+
 function SelectorProductosSheet({
   productosSeleccionados,
   productosRecomendados,
   productoOptions,
   textoBusqueda,
+  radioBusqueda,
   userPosition,
   onTextoBusquedaChange,
   onAgregarProducto,
   onQuitarProducto,
+  onLimpiarProductos,
+  onRadioBusquedaChange,
   onVerRutas,
   onClose,
 }: {
@@ -525,83 +549,103 @@ function SelectorProductosSheet({
   productosRecomendados: ProductoOption[]
   productoOptions: ProductoOption[]
   textoBusqueda: string
+  radioBusqueda: RadioBusquedaProductos
   userPosition: [number, number] | null
   onTextoBusquedaChange: (texto: string) => void
   onAgregarProducto: (nombre: string) => void
   onQuitarProducto: (nombre: string) => void
+  onLimpiarProductos: () => void
+  onRadioBusquedaChange: (radio: RadioBusquedaProductos) => void
   onVerRutas: () => void
   onClose: () => void
 }) {
   const [inputFocused, setInputFocused] = useState(false)
+  const [categoriaActiva, setCategoriaActiva] = useState<string>('Todas')
+  const [ordenProductos, setOrdenProductos] = useState<OrdenProductos>('relevancia')
 
   const textoBusquedaNorm = textoBusqueda.trim().toLocaleLowerCase('es')
-  const sugerencias = textoBusquedaNorm
+  const sugerenciasBase = textoBusquedaNorm
     ? productoOptions.filter((o) =>
         o.nombre.toLocaleLowerCase('es').includes(textoBusquedaNorm) ||
         o.categoria.toLocaleLowerCase('es').includes(textoBusquedaNorm),
       )
     : productoOptions
+  const sugerenciasFiltradas = categoriaActiva === 'Todas'
+    ? sugerenciasBase
+    : sugerenciasBase.filter((o) => o.categoria === categoriaActiva)
+  const recomendadosSet = new Set(productosRecomendados.map((p) => p.nombre))
+  const sugerencias = [...sugerenciasFiltradas].sort((a, b) => {
+    if (ordenProductos === 'cantidad') return b.total - a.total || a.nombre.localeCompare(b.nombre, 'es')
+    if (ordenProductos === 'nombre') return a.nombre.localeCompare(b.nombre, 'es')
+    const scoreA = recomendadosSet.has(a.nombre) ? 1 : 0
+    const scoreB = recomendadosSet.has(b.nombre) ? 1 : 0
+    return scoreB - scoreA || b.total - a.total || a.nombre.localeCompare(b.nombre, 'es')
+  })
+  const sugerenciasVisibles = sugerencias.slice(0, 8)
+  const categoriasDisponibles = Array.from(new Set(productoOptions.map((o) => o.categoria))).slice(0, 7)
+  const productosEnCatalogo = productoOptions.length
+  const unidadesTotales = productoOptions.reduce((acc, item) => acc + item.total, 0)
+  const puedeVerRutas = productosSeleccionados.length > 0
+  const radios: Array<{ value: RadioBusquedaProductos; label: string }> = [
+    { value: 2, label: '2 km' },
+    { value: 5, label: '5 km' },
+    { value: 10, label: '10 km' },
+    { value: 'todos', label: 'Todos' },
+  ]
+  const ordenes: Array<{ value: OrdenProductos; label: string }> = [
+    { value: 'relevancia', label: 'Relevancia' },
+    { value: 'cantidad', label: 'Mas cantidad' },
+    { value: 'nombre', label: 'A-Z' },
+  ]
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-white">
-      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center justify-between">
+    <div className="flex-1 min-h-0 flex flex-col bg-slate-50">
+      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center justify-between bg-white">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Recursos disponibles</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Busqueda inteligente</p>
           <p className="font-semibold text-gray-900">Buscar productos</p>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50"
+          aria-label="Cerrar busqueda"
         >
-          ✕
+          x
         </button>
       </div>
 
-      <div className="overflow-y-auto flex-1 px-4 pb-4 pt-4 space-y-5 bg-slate-50">
-        {/* Recomendados */}
-        {productosRecomendados.length > 0 && (
-          <section>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Lo mas solicitado</p>
-            <div className="flex flex-wrap gap-2">
-              {productosRecomendados.map((p) => (
-                <button
-                  key={p.nombre}
-                  type="button"
-                  onClick={() => { if (!productosSeleccionados.includes(p.nombre)) onAgregarProducto(p.nombre) }}
-                  disabled={productosSeleccionados.includes(p.nombre)}
-                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    productosSeleccionados.includes(p.nombre)
-                      ? 'border-green-300 bg-green-50 text-green-700 cursor-default'
-                      : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
-                  }`}
-                >
-                  <span>{CATEGORIA_EMOJI[p.categoria] ?? '📦'}</span>
-                  {p.nombre}
-                  {productosSeleccionados.includes(p.nombre) && <span className="ml-0.5">✓</span>}
-                </button>
-              ))}
+      <div className="mx-auto w-full max-w-5xl overflow-y-auto flex-1 px-4 pb-5 pt-4 space-y-4">
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-950">Que necesitas recoger?</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Selecciona uno o varios productos y calcularemos la mejor combinacion de puestos.</p>
             </div>
-          </section>
-        )}
+            <div className="rounded-xl bg-slate-900 px-2.5 py-1.5 text-right text-white">
+              <p className="text-sm font-semibold leading-none">{productosSeleccionados.length}</p>
+              <p className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-300">lista</p>
+            </div>
+          </div>
 
-        {/* Buscador */}
-        <section>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">¿Que necesitas?</label>
-          <div className="relative">
+          <div className="relative mb-3">
+            <label className="sr-only">Buscar producto o categoria</label>
             <input
               type="search"
               value={textoBusqueda}
               onFocus={() => setInputFocused(true)}
               onBlur={() => setTimeout(() => setInputFocused(false), 150)}
               onChange={(e) => onTextoBusquedaChange(e.target.value)}
-              placeholder="Buscar producto o categoria..."
+              placeholder="Buscar agua, mantas, medicamentos..."
               autoComplete="off"
-              className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="h-12 w-full rounded-xl border border-gray-300 bg-white px-4 pr-24 text-sm text-gray-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
             />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+              {sugerencias.length} items
+            </span>
             {inputFocused && sugerencias.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-52 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
-                {sugerencias.map((item) => (
+              <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                {sugerenciasVisibles.map((item) => (
                   <button
                     key={item.nombre}
                     type="button"
@@ -614,46 +658,176 @@ function SelectorProductosSheet({
                     className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm transition-colors ${
                       productosSeleccionados.includes(item.nombre)
                         ? 'bg-gray-50 text-gray-400 cursor-default'
-                        : 'hover:bg-blue-50 text-gray-800'
+                        : 'hover:bg-slate-50 text-gray-800'
                     }`}
                   >
-                    <span className="flex items-center gap-2">
-                      <span className="text-base">{CATEGORIA_EMOJI[item.categoria] ?? '📦'}</span>
-                      <span className="font-medium">{item.nombre}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
+                        {item.categoria.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{item.nombre}</span>
+                        <span className="block truncate text-xs text-gray-400">{item.categoria}</span>
+                      </span>
                     </span>
                     {productosSeleccionados.includes(item.nombre)
-                      ? <span className="text-xs text-green-600 font-medium">Añadido</span>
-                      : <span className="text-xs text-gray-400">{item.total} {item.unidad}</span>
+                      ? <span className="text-xs text-emerald-700 font-medium">Anadido</span>
+                      : <span className="ml-3 flex-shrink-0 text-xs text-gray-400">{item.total} {item.unidad}</span>
                     }
                   </button>
                 ))}
+                {sugerencias.length > sugerenciasVisibles.length && (
+                  <p className="border-t border-gray-100 px-3.5 py-2 text-xs text-gray-500">
+                    Afina la busqueda para ver menos resultados.
+                  </p>
+                )}
               </div>
             )}
           </div>
+
+          {productosRecomendados.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Accesos rapidos</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {productosRecomendados.map((p) => {
+                  const selected = productosSeleccionados.includes(p.nombre)
+                  return (
+                    <button
+                      key={p.nombre}
+                      type="button"
+                      onClick={() => { if (!selected) onAgregarProducto(p.nombre) }}
+                      disabled={selected}
+                      className={`flex flex-shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                        selected
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-700">
+                        {p.categoria.slice(0, 1).toUpperCase()}
+                      </span>
+                      {p.nombre}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 md:grid-cols-2">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Ordenar por</p>
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-gray-200 bg-slate-50 p-1">
+                {ordenes.map((orden) => (
+                  <button
+                    key={orden.value}
+                    type="button"
+                    onClick={() => setOrdenProductos(orden.value)}
+                    className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                      ordenProductos === orden.value
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-gray-500 hover:bg-white/70'
+                    }`}
+                  >
+                    {orden.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Radio de busqueda</p>
+              <div className="grid grid-cols-4 gap-1 rounded-xl border border-gray-200 bg-slate-50 p-1">
+                {radios.map((radio) => (
+                  <button
+                    key={String(radio.value)}
+                    type="button"
+                    onClick={() => onRadioBusquedaChange(radio.value)}
+                    className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                      radioBusqueda === radio.value
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-gray-500 hover:bg-white/70'
+                    }`}
+                  >
+                    {radio.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {categoriasDisponibles.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Filtrar categoria</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {['Todas', ...categoriasDisponibles].map((categoria) => (
+                  <button
+                    key={categoria}
+                    type="button"
+                    onClick={() => setCategoriaActiva(categoria)}
+                    className={`flex-shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                      categoriaActiva === categoria
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {categoria}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
-        {/* Lista seleccionada */}
         {productosSeleccionados.length > 0 && (
-          <section>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Tu lista ({productosSeleccionados.length})
-            </p>
-            <div className="space-y-1.5">
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-950">Lista de recogida</h3>
+                <p className="text-xs text-gray-500">{productosSeleccionados.length} producto{productosSeleccionados.length !== 1 ? 's' : ''} seleccionado{productosSeleccionados.length !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                  Planificable
+                </span>
+                <button
+                  type="button"
+                  onClick={onLimpiarProductos}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2">
               {productosSeleccionados.map((nombre) => {
                 const option = productoOptions.find((o) => o.nombre === nombre)
+                const nivel = option ? getNivelDisponibilidad(option.total) : null
                 return (
-                  <div key={nombre} className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-3.5 py-2.5">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="text-base flex-shrink-0">{CATEGORIA_EMOJI[option?.categoria ?? ''] ?? '📦'}</span>
-                      <span className="text-sm font-medium text-gray-900 truncate">{nombre}</span>
-                    </span>
+                  <div key={nombre} className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
+                        {(option?.categoria ?? nombre).slice(0, 1).toUpperCase()}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{nombre}</p>
+                        <p className="truncate text-xs text-gray-500">
+                          {option ? `${option.total} ${option.unidad} disponibles` : 'Producto seleccionado'}
+                        </p>
+                        {nivel && (
+                          <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${nivel.className}`}>
+                            {nivel.label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => onQuitarProducto(nombre)}
-                      className="ml-2 flex-shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                       aria-label={`Quitar ${nombre}`}
                     >
-                      ✕
+                      x
                     </button>
                   </div>
                 )
@@ -663,31 +837,67 @@ function SelectorProductosSheet({
         )}
 
         {!userPosition && productosSeleccionados.length > 0 && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Activa tu ubicacion para que la ruta sea la mas cercana a ti.
-          </p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
+            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para ordenar resultados por cercania y calcular rutas reales.</p>
+          </div>
         )}
 
         {productosSeleccionados.length === 0 && productosRecomendados.length === 0 && (
-          <p className="text-sm text-gray-500 text-center py-4">No hay productos disponibles en este momento.</p>
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
+            <p className="text-sm font-semibold text-gray-900">No hay productos disponibles</p>
+            <p className="mt-1 text-xs text-gray-500">Cuando un puesto publique inventario, aparecera aqui.</p>
+          </div>
+        )}
+
+        {productoOptions.length > 0 && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-slate-50 px-2 py-3">
+                <p className="text-base font-semibold text-gray-950">{productosEnCatalogo}</p>
+                <p className="text-[11px] text-gray-500">productos</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-2 py-3">
+                <p className="text-base font-semibold text-gray-950">{categoriasDisponibles.length}</p>
+                <p className="text-[11px] text-gray-500">categorias</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-2 py-3">
+                <p className="text-base font-semibold text-gray-950">{Math.round(unidadesTotales)}</p>
+                <p className="text-[11px] text-gray-500">unidades</p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {categoriasDisponibles.map((categoria) => (
+                <span key={categoria} className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+                  {categoria}
+                </span>
+              ))}
+            </div>
+          </section>
         )}
       </div>
 
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3 space-y-2">
-        {productosSeleccionados.length > 0 && (
-          <button
-            type="button"
-            onClick={onVerRutas}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
-          >
-            Ver rutas disponibles
-            <span aria-hidden>→</span>
-          </button>
+      <div className="mx-auto w-full max-w-5xl flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+        {puedeVerRutas && (
+          <p className="mb-2 text-center text-xs text-gray-500">
+            Radio: {radioBusqueda === 'todos' ? 'todos los puestos' : `${radioBusqueda} km`}
+            {!userPosition && ' · se afinara al activar ubicacion'}
+          </p>
         )}
         <button
           type="button"
+          onClick={onVerRutas}
+          disabled={!puedeVerRutas}
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none"
+        >
+          {puedeVerRutas
+            ? `Ver mejores opciones (${productosSeleccionados.length})`
+            : 'Selecciona productos para continuar'}
+        </button>
+        <button
+          type="button"
           onClick={onClose}
-          className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
           Volver
         </button>
@@ -695,7 +905,6 @@ function SelectorProductosSheet({
     </div>
   )
 }
-
 function tiempoEstimadoMin(distanciaKm: number, modo: ModoTransporte): number {
   // Road distance is ~1.3x straight-line; speed: driving 25 km/h urban, walking 4.5 km/h
   const velocidad = modo === 'driving' ? 25 : 4.5
@@ -713,7 +922,6 @@ function OpcionesRutaProductosPanel({
   opciones,
   opcionIdx,
   productosSeleccionados,
-  productoOptions,
   modo,
   loading,
   navLoading,
@@ -727,7 +935,6 @@ function OpcionesRutaProductosPanel({
   opciones: OpcionRutaProductos<PuestoMarker>[]
   opcionIdx: number
   productosSeleccionados: string[]
-  productoOptions: ProductoOption[]
   modo: ModoTransporte
   loading: boolean
   navLoading: boolean
@@ -738,87 +945,106 @@ function OpcionesRutaProductosPanel({
   onIniciarNavegacion: () => void
   onVolver: () => void
 }) {
+  const opcionActual = opciones[opcionIdx]
+  const coberturaActual = opcionActual
+    ? `${opcionActual.productosEncontrados.length}/${productosSeleccionados.length}`
+    : `0/${productosSeleccionados.length}`
+  const etiquetaModo = modo === 'driving' ? 'Coche' : 'A pie'
+
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Planificacion de ruta</p>
-          <p className="font-semibold text-gray-900">
-            {productosSeleccionados.length} producto{productosSeleccionados.length !== 1 ? 's' : ''} seleccionado{productosSeleccionados.length !== 1 ? 's' : ''}
-          </p>
+    <div className="flex min-h-full flex-col bg-slate-50">
+      <div className="border-b border-gray-100 bg-white px-4 py-3">
+        <div className="mx-auto w-full max-w-5xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-400">Plan de recogida</p>
+            <p className="font-semibold text-gray-950">Mejores opciones</p>
+          </div>
+          <button
+            type="button"
+            onClick={onVolver}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+          >
+            Editar lista
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onVolver}
-          className="text-xs font-medium text-blue-700 hover:text-blue-800"
-        >
-          ← Cambiar lista
-        </button>
+
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-slate-50 px-2 py-2">
+            <p className="text-sm font-semibold text-gray-950">{productosSeleccionados.length}</p>
+            <p className="text-[11px] text-gray-500">productos</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 px-2 py-2">
+            <p className="text-sm font-semibold text-gray-950">{opcionActual?.paradas.length ?? 0}</p>
+            <p className="text-[11px] text-gray-500">paradas</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 px-2 py-2">
+            <p className="text-sm font-semibold text-gray-950">{coberturaActual}</p>
+            <p className="text-[11px] text-gray-500">cubierto</p>
+          </div>
+        </div>
+        </div>
       </div>
 
-      <div className="px-4 py-3 space-y-3">
-        {/* Selector de modo de transporte */}
-        <div className="flex overflow-hidden rounded-xl border border-gray-200">
-          <button
-            type="button"
-            onClick={() => onCambiarModo('driving')}
-            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${
-              modo === 'driving'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <span aria-hidden>🚗</span> En coche
-          </button>
-          <div className="w-px bg-gray-200" />
-          <button
-            type="button"
-            onClick={() => onCambiarModo('foot')}
-            className={`flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${
-              modo === 'foot'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <span aria-hidden>🚶</span> A pie
-          </button>
+      <div className="mx-auto w-full max-w-5xl px-4 py-3 space-y-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => onCambiarModo('driving')}
+              className={`h-10 rounded-xl text-sm font-semibold transition-colors ${
+                modo === 'driving'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-slate-50'
+              }`}
+            >
+              En coche
+            </button>
+            <button
+              type="button"
+              onClick={() => onCambiarModo('foot')}
+              className={`h-10 rounded-xl text-sm font-semibold transition-colors ${
+                modo === 'foot'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-slate-50'
+              }`}
+            >
+              A pie
+            </button>
+          </div>
         </div>
 
         {loading && (
-          <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
-            <span className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full flex-shrink-0" />
-            <span className="text-xs text-blue-800 font-medium">
-              Calculando ruta {modo === 'driving' ? 'en coche' : 'a pie'}...
-            </span>
+          <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+            <span className="h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            <span className="text-xs font-medium text-blue-800">Calculando ruta en modo {etiquetaModo.toLowerCase()}...</span>
           </div>
         )}
 
         {error && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
             {error}
           </p>
         )}
 
         {!userPosition && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Activa tu ubicacion para calcular y mostrar la ruta en el mapa.
-          </p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
+            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para mostrar la ruta exacta sobre el mapa.</p>
+          </div>
         )}
 
         {opciones.length === 0 && !loading && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <p className="text-sm font-semibold text-amber-800">Sin resultados</p>
-            <p className="text-xs text-amber-700 mt-1">
-              No se han encontrado puestos con los productos seleccionados. Prueba con otros productos.
-            </p>
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
+            <p className="text-sm font-semibold text-gray-900">No hay opciones disponibles</p>
+            <p className="mt-1 text-xs text-gray-500">Prueba con menos productos o con otro recurso similar.</p>
           </div>
         )}
 
         {opciones.map((opcion, idx) => {
           const isSelected = idx === opcionIdx
-          const cubretodo = opcion.productosNoEncontrados.length === 0
+          const cubreTodo = opcion.productosNoEncontrados.length === 0
           const totalParadas = opcion.paradas.length
-          // Rough estimated time from straight-line distances (shown on all cards)
           const distanciaEstimada = opcion.paradas.reduce(
             (acc, p) => acc + (p.puesto.distanciaKm ?? 0),
             0,
@@ -826,74 +1052,77 @@ function OpcionesRutaProductosPanel({
           const tiempoEstimado = distanciaEstimada > 0
             ? tiempoEstimadoMin(distanciaEstimada, modo)
             : null
+          const titulo = idx === 0
+            ? 'Opcion recomendada'
+            : opcion.tipo === 'multi'
+              ? 'Opcion completa'
+              : 'Alternativa cercana'
 
           return (
             <button
               key={idx}
               type="button"
               onClick={() => onSeleccionarOpcion(idx)}
-              className={`w-full text-left rounded-xl border-2 p-3.5 transition-colors ${
+              className={`w-full rounded-2xl border p-3.5 text-left shadow-sm transition-colors ${
                 isSelected
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-200 bg-white hover:border-blue-200 hover:bg-gray-50'
+                  ? 'border-slate-900 bg-white ring-2 ring-slate-900/10'
+                  : 'border-gray-200 bg-white hover:border-slate-300'
               }`}
             >
-              <div className="flex items-start justify-between gap-2 mb-2.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {idx === 0 && (
-                    <span className="text-xs font-semibold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">
-                      Recomendada
-                    </span>
-                  )}
-                  {totalParadas > 1 && (
-                    <span className="text-xs font-medium text-gray-500">
-                      {totalParadas} paradas
-                    </span>
-                  )}
-                  {totalParadas === 1 && idx > 0 && (
-                    <span className="text-xs font-medium text-gray-500">Puesto unico</span>
-                  )}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-950">{titulo}</p>
+                    {isSelected && (
+                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        Seleccionada
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {totalParadas} parada{totalParadas !== 1 ? 's' : ''}
+                    {tiempoEstimado !== null ? ` · aprox. ${formatearTiempo(tiempoEstimado)}` : ''}
+                    {distanciaEstimada > 0 ? ` · ${distanciaEstimada.toFixed(1)} km estimados` : ''}
+                  </p>
                 </div>
-                {cubretodo
-                  ? <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 flex-shrink-0">Todo disponible</span>
-                  : <span className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 flex-shrink-0">{opcion.productosEncontrados.length}/{productosSeleccionados.length} productos</span>
+                {cubreTodo
+                  ? <span className="flex-shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">Completa</span>
+                  : <span className="flex-shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">Parcial</span>
                 }
               </div>
 
-              {opcion.paradas.map((parada, pIdx) => (
-                <div key={parada.puesto.id} className={pIdx > 0 ? 'mt-2.5 pt-2.5 border-t border-gray-100' : ''}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {totalParadas > 1 && <span className="text-gray-400 mr-1">{pIdx + 1}.</span>}
-                        {parada.puesto.nombre}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{parada.puesto.direccion}</p>
-                    </div>
-                    {parada.puesto.distanciaKm !== undefined && (
-                      <span className="text-xs text-gray-400 flex-shrink-0">{parada.puesto.distanciaKm.toFixed(1)} km</span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {parada.productos.map((p) => (
-                      <span key={p} className="text-xs bg-emerald-50 text-emerald-700 rounded-full px-2 py-0.5 border border-emerald-200">
-                        {CATEGORIA_EMOJI[productoOptions.find((o) => o.nombre === p)?.categoria ?? ''] ?? '📦'} {p}
+              <div className="mt-3 space-y-2.5">
+                {opcion.paradas.map((parada, pIdx) => (
+                  <div key={parada.puesto.id} className="rounded-xl border border-gray-100 bg-slate-50 px-3 py-2.5">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-white text-xs font-bold text-slate-700 ring-1 ring-gray-200">
+                        {pIdx + 1}
                       </span>
-                    ))}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">{parada.puesto.nombre}</p>
+                            <p className="mt-0.5 truncate text-xs text-gray-500">{parada.puesto.direccion}</p>
+                          </div>
+                          {parada.puesto.distanciaKm !== undefined && (
+                            <span className="flex-shrink-0 text-xs font-medium text-gray-500">{parada.puesto.distanciaKm.toFixed(1)} km</span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {parada.productos.map((p) => (
+                            <span key={p} className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
-
-              {/* Tiempo estimado al pie de la tarjeta */}
-              {tiempoEstimado !== null && (
-                <p className="mt-2 text-xs text-gray-500">
-                  {modo === 'driving' ? '🚗' : '🚶'} ~{formatearTiempo(tiempoEstimado)} estimados
-                  {totalParadas > 1 && <span className="text-gray-400"> (aproximado)</span>}
-                </p>
-              )}
+                ))}
+              </div>
 
               {opcion.productosNoEncontrados.length > 0 && (
-                <p className="text-xs text-amber-600 mt-2">
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                   No disponible: {opcion.productosNoEncontrados.join(', ')}
                 </p>
               )}
@@ -906,11 +1135,11 @@ function OpcionesRutaProductosPanel({
             type="button"
             onClick={onIniciarNavegacion}
             disabled={loading || navLoading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700 disabled:opacity-60"
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-slate-800 disabled:opacity-60"
           >
             {navLoading
-              ? <><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Preparando guía…</>
-              : 'Iniciar navegación'
+              ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Preparando guia...</>
+              : 'Iniciar navegacion'
             }
           </button>
         )}
@@ -918,7 +1147,7 @@ function OpcionesRutaProductosPanel({
         <button
           type="button"
           onClick={onVolver}
-          className="flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="flex h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           Volver a la busqueda
         </button>
@@ -926,7 +1155,6 @@ function OpcionesRutaProductosPanel({
     </div>
   )
 }
-
 type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar' | 'ruta-productos' | 'navegacion'
 type PanelReturnVista = 'inicio' | 'default'
 type EstadoVia = 'CORTADA' | 'TRANSITABLE'
@@ -1224,6 +1452,7 @@ export default function CiudadanoDashboard() {
   const [historialComentariosIncidencia, setHistorialComentariosIncidencia] = useState<IncidenciaMarker | null>(null)
   const [productosSeleccionados, setProductosSeleccionados] = useState<string[]>([])
   const [textoBusquedaProducto, setTextoBusquedaProducto] = useState('')
+  const [radioBusquedaProductos, setRadioBusquedaProductos] = useState<RadioBusquedaProductos>('todos')
   const [opcionesRutaProductos, setOpcionesRutaProductos] = useState<OpcionRutaProductos<PuestoMarker>[] | null>(null)
   const [opcionRutaIdx, setOpcionRutaIdx] = useState(0)
   const [modoTransporte, setModoTransporte] = useState<ModoTransporte>('driving')
@@ -1429,6 +1658,7 @@ export default function CiudadanoDashboard() {
     setSelectedId(null)
     setProductosSeleccionados([])
     setTextoBusquedaProducto('')
+    setRadioBusquedaProductos('todos')
     setOpcionesRutaProductos(null)
     setRutaProductosPoints(null)
     setRutaProductosInfo(null)
@@ -1573,6 +1803,7 @@ export default function CiudadanoDashboard() {
     setPanelReturnVista(getCurrentPanelReturnVista())
     setProductosSeleccionados([])
     setTextoBusquedaProducto('')
+    setRadioBusquedaProductos('todos')
     setOpcionesRutaProductos(null)
     setRutaProductosPoints(null)
     setRutaProductosInfo(null)
@@ -1586,6 +1817,15 @@ export default function CiudadanoDashboard() {
 
   const handleQuitarProducto = (nombre: string) => {
     setProductosSeleccionados((prev) => prev.filter((p) => p !== nombre))
+  }
+
+  const handleLimpiarProductos = () => {
+    setProductosSeleccionados([])
+    setTextoBusquedaProducto('')
+    setOpcionesRutaProductos(null)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
+    setRutaProductosError(null)
   }
 
   const calcularRutaOpcion = async (opcion: OpcionRutaProductos<PuestoMarker>, idx: number, modo: ModoTransporte) => {
@@ -1610,7 +1850,10 @@ export default function CiudadanoDashboard() {
   }
 
   const handleVerRutasProductos = () => {
-    const opciones = calcularOpcionesRutaProductos(productosSeleccionados, puestos, inventarioPorPuesto)
+    const puestosEnRadio = currentUserPosition && radioBusquedaProductos !== 'todos'
+      ? puestos.filter((puesto) => puesto.distanciaKm === undefined || puesto.distanciaKm <= radioBusquedaProductos)
+      : puestos
+    const opciones = calcularOpcionesRutaProductos(productosSeleccionados, puestosEnRadio, inventarioPorPuesto)
     setOpcionesRutaProductos(opciones)
     setOpcionRutaIdx(0)
     setRutaProductosPoints(null)
@@ -2158,10 +2401,13 @@ export default function CiudadanoDashboard() {
           productosRecomendados={productosRecomendados}
           productoOptions={productoOptions}
           textoBusqueda={textoBusquedaProducto}
+          radioBusqueda={radioBusquedaProductos}
           userPosition={currentUserPosition}
           onTextoBusquedaChange={setTextoBusquedaProducto}
           onAgregarProducto={handleAgregarProducto}
           onQuitarProducto={handleQuitarProducto}
+          onLimpiarProductos={handleLimpiarProductos}
+          onRadioBusquedaChange={setRadioBusquedaProductos}
           onVerRutas={handleVerRutasProductos}
           onClose={() => setVista(panelReturnVista)}
         />
@@ -2225,7 +2471,6 @@ export default function CiudadanoDashboard() {
               opciones={opcionesRutaProductos ?? []}
               opcionIdx={opcionRutaIdx}
               productosSeleccionados={productosSeleccionados}
-              productoOptions={productoOptions}
               modo={modoTransporte}
               loading={rutaProductosLoading}
               navLoading={navLoading}
