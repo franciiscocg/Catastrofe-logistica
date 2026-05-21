@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { QRCodeSVG } from 'qrcode.react'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -37,14 +36,6 @@ import {
 type ItemInventario = { nombre: string; categoria: string; cantidad: number; unidad: string }
 // Re-export alias para compatibilidad con el resto del fichero
 
-type QrSolicitudState = {
-  requestId: string
-  payload: string
-  estado: 'PENDIENTE' | 'COMPLETADA'
-  completedAt?: string
-  error?: string
-}
-
 type CategoriaIncidenciaKey = 'inundacion' | 'obstaculos_via' | 'limpieza' | 'asistencia'
 
 const CATEGORIAS_INCIDENCIA: Array<{
@@ -54,22 +45,22 @@ const CATEGORIAS_INCIDENCIA: Array<{
 }> = [
   {
     value: 'inundacion',
-    label: 'Inundacion',
+    label: 'Agua o inundacion',
     equipment: ['Cubo', 'Guantes impermeables', 'Botas de agua', 'Chaleco reflectante'],
   },
   {
     value: 'obstaculos_via',
-    label: 'Obstaculos en via',
+    label: 'Calle bloqueada',
     equipment: ['Guantes', 'Palanca o herramienta de carga', 'Carretilla', 'Chaleco reflectante'],
   },
   {
     value: 'limpieza',
-    label: 'Limpieza y retirada',
+    label: 'Escombros o limpieza',
     equipment: ['Guantes', 'Mascarilla', 'Escoba o pala', 'Bolsas resistentes'],
   },
   {
     value: 'asistencia',
-    label: 'Asistencia a personas',
+    label: 'Ayuda a personas',
     equipment: ['Botiquin basico', 'Agua', 'Manta termica', 'Telefono con bateria'],
   },
 ]
@@ -158,25 +149,10 @@ type RadioBusquedaProductos = 2 | 5 | 10 | 'todos'
 type OrdenProductos = 'relevancia' | 'cantidad' | 'nombre'
 
 type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
-type SolicitudCiudadanoQrItem = {
-  nombre: string
-  categoria: string
-  cantidad: number
-  unidad: string
+type ReverseGeocodeResponse = {
+  display_name?: string
+  address?: Record<string, string | undefined>
 }
-type SolicitudCiudadanoEnCurso = {
-  requestId: string
-  puestoId: string
-  puestoNombre: string
-  puestoDireccion?: string
-  cantidades: Record<string, string>
-  productos: SolicitudCiudadanoQrItem[]
-  payload?: string
-  estado: 'BORRADOR' | 'PENDIENTE' | 'COMPLETADA'
-  updatedAt: number
-}
-
-const SOLICITUD_CIUDADANO_STORAGE_KEY = 'catlogistica-solicitud-ciudadano-en-curso'
 type ApiInventarioItem = {
   id: string
   tipo: 'DISPONIBLE' | 'NECESARIO' | 'disponible' | 'necesario'
@@ -1462,6 +1438,8 @@ export default function CiudadanoDashboard() {
   const [reportCategoria, setReportCategoria] = useState<CategoriaIncidenciaKey>('obstaculos_via')
   const [reportDescripcion, setReportDescripcion] = useState('')
   const [reportPosition, setReportPosition] = useState<[number, number] | null>(null)
+  const [reportAddress, setReportAddress] = useState<string | null>(null)
+  const [reportAddressLoading, setReportAddressLoading] = useState(false)
   const [isPickingLocation, setIsPickingLocation] = useState(false)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
@@ -1512,6 +1490,11 @@ export default function CiudadanoDashboard() {
   const selectedReportCategory = useMemo(() => (
     CATEGORIAS_INCIDENCIA.find((categoria) => categoria.value === reportCategoria) ?? CATEGORIAS_INCIDENCIA[1]
   ), [reportCategoria])
+  const reportLocationLabel = useMemo(() => {
+    if (!reportPosition) return 'Sin ubicacion marcada'
+    if (reportAddressLoading) return 'Buscando direccion...'
+    return reportAddress ?? `${reportPosition[0].toFixed(5)}, ${reportPosition[1].toFixed(5)}`
+  }, [reportAddress, reportAddressLoading, reportPosition])
 
   const destinoPuesto = useMemo<Omit<PuestoMarker, 'distanciaKm'> | null>(() => {
     const id = searchParams.get('destinoId')
@@ -1535,6 +1518,42 @@ export default function CiudadanoDashboard() {
       setVista('default')
     }
   }, [destinoPuesto, vista])
+
+  useEffect(() => {
+    if (!reportPosition) {
+      setReportAddress(null)
+      setReportAddressLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    const [lat, lon] = reportPosition
+    setReportAddress(null)
+    setReportAddressLoading(true)
+
+    const resolveAddress = async () => {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+          { signal: controller.signal, headers: { Accept: 'application/json' } },
+        )
+        if (!response.ok) throw new Error('reverse-geocode-failed')
+        const data = await response.json() as ReverseGeocodeResponse
+        const address = data.address ?? {}
+        const street = [address.road, address.house_number].filter(Boolean).join(' ')
+        const locality = address.city ?? address.town ?? address.village ?? address.municipality ?? address.suburb
+        const label = [street, locality].filter(Boolean).join(', ') || data.display_name?.split(',').slice(0, 2).join(', ')
+        setReportAddress(label || null)
+      } catch {
+        if (!controller.signal.aborted) setReportAddress(null)
+      } finally {
+        if (!controller.signal.aborted) setReportAddressLoading(false)
+      }
+    }
+
+    void resolveAddress()
+    return () => controller.abort()
+  }, [reportPosition])
 
   useEffect(() => {
     if (!position) return
@@ -1706,11 +1725,7 @@ export default function CiudadanoDashboard() {
       return
     }
 
-    const titulo = reportTitulo.trim()
-    if (titulo.length < 3) {
-      setReportError('Indica un titulo breve para la incidencia.')
-      return
-    }
+    const titulo = reportTitulo.trim() || selectedReportCategory.label
 
     const body = {
       catastrofeId: CATASTROFE_ID || undefined,
@@ -1825,7 +1840,6 @@ export default function CiudadanoDashboard() {
   }
 
   const abrirBusquedaProducto = () => {
-    const solicitudGuardada = readSolicitudCiudadanoEnCurso()
     setPanelReturnVista(getCurrentPanelReturnVista())
     setProductosSeleccionados([])
     setTextoBusquedaProducto('')
@@ -2211,7 +2225,6 @@ export default function CiudadanoDashboard() {
           onUserLocated={setUserPosition}
           onReportPointSelect={(pos) => {
             setReportPosition(pos)
-            setIsPickingLocation(false)
             setReportError(null)
             setReportSuccess(null)
           }}
@@ -2644,27 +2657,54 @@ export default function CiudadanoDashboard() {
 
       {/* Panel de reporte de calles */}
       {vista === 'reportar' && (
-        <div className="fixed inset-x-0 bottom-0 z-[2000] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[70vh]">
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        <div className={`fixed inset-x-0 bottom-0 z-[2000] flex flex-col rounded-t-2xl border-t border-gray-200 bg-white shadow-2xl ${isPickingLocation ? 'max-h-[34vh]' : 'max-h-[76vh]'}`}>
+          <div className="flex justify-center pt-2.5 pb-1">
+            <div className="h-1 w-10 rounded-full bg-gray-300" />
           </div>
 
-          <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 pb-3 pt-1">
             <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Nueva incidencia</p>
-              <p className="font-semibold text-gray-900">Reportar calle cortada</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Nueva incidencia</p>
+              <p className="text-lg font-semibold text-gray-950">Reportar calle</p>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setVista(panelReturnVista)
+                setIsPickingLocation(false)
+                setReportError(null)
+                setReportSuccess(null)
+                setPendingDuplicate(null)
+                setReportTitulo('')
+                setReportCategoria('obstaculos_via')
+                setReportDescripcion('')
+                setReportPosition(null)
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50"
+              aria-label="Cerrar reporte"
+            >
+              x
+            </button>
           </div>
 
           <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
             {isPickingLocation ? (
               <div className="space-y-3">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                <div className="rounded-xl border border-red-100 bg-red-50 p-3">
                   <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Seleccionar ubicación</p>
-                  <p className="text-sm text-slate-700">
+                  <p className="text-sm text-red-700">
                     Toca directamente sobre el mapa para colocar el punto exacto de la incidencia.
                   </p>
                 </div>
+
+                {reportPosition && (
+                  <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2">
+                    <p className="text-sm font-semibold text-green-900">Punto marcado</p>
+                    <p className="mt-0.5 text-xs text-green-700">
+                      {reportLocationLabel}
+                    </p>
+                  </div>
+                )}
 
                 {currentUserPosition && (
                   <Button
@@ -2673,7 +2713,6 @@ export default function CiudadanoDashboard() {
                     fullWidth
                     onClick={() => {
                       setReportPosition(currentUserPosition)
-                      setIsPickingLocation(false)
                       setReportError(null)
                     }}
                   >
@@ -2688,9 +2727,7 @@ export default function CiudadanoDashboard() {
               {reportPosition ? (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-700">Punto seleccionado correctamente.</p>
-                  <p className="text-xs text-slate-500">
-                    {reportPosition[0].toFixed(5)}, {reportPosition[1].toFixed(5)}
-                  </p>
+                  <p className="text-xs text-slate-500">{reportLocationLabel}</p>
                 </div>
               ) : (
                 <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -2698,69 +2735,55 @@ export default function CiudadanoDashboard() {
                 </p>
               )}
 
-              {currentUserPosition && (
-                <div className="mt-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    fullWidth
-                    onClick={() => {
-                      setIsPickingLocation(true)
-                      setReportError(null)
-                    }}
-                  >
-                    Cambiar punto en el mapa
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Titulo de la incidencia</label>
-              <input
-                type="text"
-                value={reportTitulo}
-                onChange={(e) => {
-                  setReportTitulo(e.target.value)
-                  setReportError(null)
-                }}
-                maxLength={120}
-                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
-                aria-label="Titulo de la incidencia"
-                placeholder="Ejemplo: Agua acumulada bloqueando la calle"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-              <select
-                value={reportCategoria}
-                onChange={(e) => {
-                  setReportCategoria(e.target.value as CategoriaIncidenciaKey)
-                  setReportError(null)
-                }}
-                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
-              >
-                {CATEGORIAS_INCIDENCIA.map((categoria) => (
-                  <option key={categoria.value} value={categoria.value}>
-                    {categoria.label}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-xs font-semibold uppercase text-amber-800">Equipamiento recomendado</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedReportCategory.equipment.map((item) => (
-                    <span key={item} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-100">
-                      {item}
-                    </span>
-                  ))}
-                </div>
+              <div className="mt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                  onClick={() => {
+                    setIsPickingLocation(true)
+                    setReportError(null)
+                  }}
+                >
+                  Cambiar ubicacion
+                </Button>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descripcion breve</label>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Tipo de problema</p>
+              <div className="grid grid-cols-2 gap-2">
+                {CATEGORIAS_INCIDENCIA.map((categoria) => {
+                  const selected = reportCategoria === categoria.value
+                  return (
+                    <button
+                      key={categoria.value}
+                      type="button"
+                      onClick={() => {
+                        setReportCategoria(categoria.value)
+                        setReportError(null)
+                      }}
+                      className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                        selected
+                          ? 'border-red-300 bg-red-50 text-red-800 shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold">{categoria.label}</span>
+                      <span className="mt-1 block truncate text-xs opacity-70">
+                        {categoria.equipment.slice(0, 2).join(', ')}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Detalle opcional</label>
+                <span className="text-xs text-gray-400">{reportDescripcion.length}/500</span>
+              </div>
               <textarea
                 rows={3}
                 value={reportDescripcion}
@@ -2769,8 +2792,8 @@ export default function CiudadanoDashboard() {
                   setReportError(null)
                 }}
                 maxLength={500}
-                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
-                placeholder="Ejemplo: Hay agua acumulada y coches bloqueando el paso"
+                className="w-full resize-none rounded-xl border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-red-500 focus:ring-red-500"
+                placeholder="Ejemplo: Hay agua acumulada y no pasan vehiculos."
               />
             </div>
 
@@ -2807,29 +2830,61 @@ export default function CiudadanoDashboard() {
               </p>
             )}
 
-            <Button fullWidth loading={reportLoading} onClick={handleReportarCalle} className="h-11">
-              Enviar reporte
-            </Button>
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Resumen</p>
+              <p className="mt-2 text-sm font-medium leading-snug text-gray-900">
+                Se reportara <span className="font-semibold text-red-700">{selectedReportCategory.label.toLocaleLowerCase('es')}</span>
+                {reportPosition ? <> en <span className="font-semibold">{reportLocationLabel}</span></> : ' cuando marques una ubicacion'}.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                {reportDescripcion.trim()
+                  ? `Detalle: ${reportDescripcion.trim()}`
+                  : 'No has anadido detalle. El reporte se enviara solo con tipo y ubicacion.'}
+              </p>
+            </div>
+
               </>
             )}
           </div>
           <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
-            <button
-              type="button"
-              onClick={() => {
-                setVista(panelReturnVista)
-                setIsPickingLocation(false)
-                setReportError(null)
-                setReportSuccess(null)
-                setPendingDuplicate(null)
-                setReportTitulo('')
-                setReportCategoria('obstaculos_via')
-                setReportPosition(null)
-              }}
-              className="mx-auto flex min-w-40 items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
-            >
-              Volver
-            </button>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => {
+                  setVista(panelReturnVista)
+                  setIsPickingLocation(false)
+                  setReportError(null)
+                  setReportSuccess(null)
+                  setPendingDuplicate(null)
+                  setReportTitulo('')
+                  setReportCategoria('obstaculos_via')
+                  setReportDescripcion('')
+                  setReportPosition(null)
+                }}
+                className="h-11"
+              >
+                Cancelar
+              </Button>
+              <Button
+                fullWidth
+                loading={!isPickingLocation && reportLoading}
+                disabled={!reportPosition}
+                onClick={() => {
+                  if (isPickingLocation) {
+                    setIsPickingLocation(false)
+                    setReportError(null)
+                    return
+                  }
+                  void handleReportarCalle()
+                }}
+                className="h-11 bg-red-600 hover:bg-red-700 active:bg-red-800"
+              >
+                {isPickingLocation
+                  ? (reportPosition ? 'Confirmar punto' : 'Toca el mapa')
+                  : (reportPosition ? 'Enviar reporte' : 'Marca una ubicacion')}
+              </Button>
+            </div>
           </div>
         </div>
       )}

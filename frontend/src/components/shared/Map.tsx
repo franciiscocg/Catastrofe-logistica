@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -324,6 +324,9 @@ export default function Map({
         {/* Punto de incidencia seleccionado */}
         {safeReportPoint && (
           <Marker position={safeReportPoint} icon={reportIcon()}>
+            <Tooltip permanent direction="top" offset={[0, -12]} opacity={1}>
+              Punto de incidencia
+            </Tooltip>
             <Popup>
               <div style={{ minWidth: 190, maxWidth: 230 }}>
                 <p style={{ fontWeight: 700, marginBottom: 4 }}>Nuevo reporte</p>
