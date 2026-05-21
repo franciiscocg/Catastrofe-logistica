@@ -34,6 +34,16 @@ vi.mock('../../../frontend/src/components/shared/QrScanner', () => ({
   default: ({ onResult, onClose }: { onResult: (text: string) => void; onClose: () => void }) => (
     <div role="dialog" aria-label="qr-scanner">
       <button onClick={() => onResult('QR-ENTREGA-123')}>Simular QR</button>
+      <button
+        onClick={() => onResult(JSON.stringify({
+          t: 'SC',
+          r: 'sol-1',
+          p: 'puesto-1',
+          i: [{ n: 'Agua embotellada', c: 'Bebidas', q: 3, u: 'litros' }],
+        }))}
+      >
+        Simular QR solicitud
+      </button>
       <button onClick={onClose}>Cerrar QR</button>
     </div>
   ),
@@ -68,6 +78,12 @@ const inventario = [
     cantidad: 12,
     tipo: 'NECESARIO',
     producto: { id: 'prod-botas', nombre: 'Botas de agua', categoria: 'Calzado', unidad: 'pares' },
+  },
+  {
+    id: 'item-radio',
+    cantidad: 0,
+    tipo: 'DISPONIBLE',
+    producto: { id: 'prod-radio', nombre: 'Radios', categoria: 'Equipamiento', unidad: 'unidades' },
   },
 ]
 
@@ -155,6 +171,24 @@ describe('PuestoDashboard', () => {
     })
   })
 
+  it('permite bajar de cero creando una necesidad en la misma tarjeta', async () => {
+    renderDashboard()
+
+    await screen.findByText('Radios')
+    const controls = screen.getByText('0 unidades').parentElement as HTMLElement
+    fireEvent.click(within(controls).getByText('−'))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/api/inventario/puesto/puesto-1/items', expect.objectContaining({
+        nombre: 'Radios',
+        categoria: 'Equipamiento',
+        unidad: 'unidades',
+        cantidad: 1,
+        tipo: 'NECESARIO',
+      }))
+    })
+  })
+
   it('anade un producto al inventario con sugerencia frecuente', async () => {
     renderDashboard()
 
@@ -211,5 +245,23 @@ describe('PuestoDashboard', () => {
     fireEvent.click(screen.getByText('Simular QR'))
 
     expect(screen.getByText('QR-ENTREGA-123')).toBeInTheDocument()
+  })
+
+  it('muestra un error informado si backend rechaza la confirmacion QR', async () => {
+    mockApiPost.mockRejectedValueOnce({
+      response: {
+        data: {
+          error: 'Este QR de solicitud ya se ha usado. Pide al ciudadano que genere uno nuevo.',
+        },
+      },
+    })
+    renderDashboard()
+
+    await screen.findByText('CEIP La Paz')
+    fireEvent.click(screen.getByText(/QR/))
+    fireEvent.click(screen.getByText('Simular QR solicitud'))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    expect(await screen.findByText('Este QR de solicitud ya se ha usado. Pide al ciudadano que genere uno nuevo.')).toBeInTheDocument()
   })
 })

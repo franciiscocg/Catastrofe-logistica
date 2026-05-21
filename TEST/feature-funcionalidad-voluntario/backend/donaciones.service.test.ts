@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../../backend/src/lib/prisma.js', () => ({
   prisma: {
-    voluntario: { findUnique: vi.fn() },
+    usuario: { findUnique: vi.fn() },
+    voluntario: { findUnique: vi.fn(), create: vi.fn() },
     donacion: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -46,7 +47,7 @@ const puestoBase   = {
 // ── listNecesidadesDonacion ───────────────────────────────────────────────────
 
 describe('listNecesidadesDonacion', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('devuelve necesidades con cantidadPendiente correcta tras restar comprometidas', async () => {
     mp.inventario.findMany.mockResolvedValue([
@@ -121,7 +122,7 @@ describe('listNecesidadesDonacion', () => {
 describe('createDonacion', () => {
   const input = { puestoId: PUESTO_ID, productoId: PRODUCTO_ID, cantidad: 5, unidad: 'litros' }
 
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('crea la donacion cuando hay necesidad pendiente suficiente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -141,12 +142,35 @@ describe('createDonacion', () => {
 
   it('lanza 400 si el usuario no tiene perfil de voluntario', async () => {
     mp.voluntario.findUnique.mockResolvedValue(null)
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO'] })
 
     await expect(createDonacion(USUARIO_ID, input)).rejects.toMatchObject({
       statusCode: 400,
       message: 'El usuario no tiene perfil de voluntario',
     })
     expect(mp.donacion.create).not.toHaveBeenCalled()
+  })
+
+  it('crea el perfil operativo si el usuario tiene rol voluntario pero aun no tiene fila Voluntario', async () => {
+    mp.voluntario.findUnique.mockResolvedValue(null)
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'VOLUNTARIO'] })
+    mp.voluntario.create.mockResolvedValue({ id: VOLUNTARIO_ID })
+    mp.inventario.findFirst.mockResolvedValue({ cantidad: 10, producto: productoBase, puesto: puestoBase })
+    mp.donacion.aggregate.mockResolvedValue({ _sum: { cantidad: 0 } })
+    mp.donacion.create.mockResolvedValue({
+      id: DONACION_ID, voluntarioId: VOLUNTARIO_ID, puestoId: PUESTO_ID,
+      estado: 'PENDIENTE', producto: productoBase, puesto: puestoBase,
+    })
+
+    await createDonacion(USUARIO_ID, input)
+
+    expect(mp.voluntario.create).toHaveBeenCalledWith({
+      data: { usuarioId: USUARIO_ID },
+      select: { id: true },
+    })
+    expect(mp.donacion.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ voluntarioId: VOLUNTARIO_ID }),
+    }))
   })
 
   it('lanza 404 si no existe necesidad para ese puesto y producto', async () => {
@@ -182,7 +206,7 @@ describe('createDonacion', () => {
 // ── listMisDonaciones ─────────────────────────────────────────────────────────
 
 describe('listMisDonaciones', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('devuelve las donaciones del voluntario con producto y puesto incluidos', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -209,7 +233,7 @@ describe('listMisDonaciones', () => {
 // ── updateDonacionEstado ──────────────────────────────────────────────────────
 
 describe('updateDonacionEstado', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('actualiza el estado de la donacion propia exitosamente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -238,7 +262,7 @@ describe('updateDonacionEstado', () => {
 // ── generarCodigoEntrega ──────────────────────────────────────────────────────
 
 describe('generarCodigoEntrega', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('genera un codigo QR de entrega cuando la donacion esta EN_CAMINO', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })

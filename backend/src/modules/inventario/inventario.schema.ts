@@ -16,5 +16,10 @@ export const updateCantidadSchema = z.object({
   { message: 'Proporciona cantidad o delta' },
 )
 
+export const confirmarQrSchema = z.object({
+  codigo: z.string().trim().min(1, 'Pega o escanea el codigo del QR'),
+})
+
 export type AddItemInput = z.infer<typeof addItemSchema>
 export type UpdateCantidadInput = z.infer<typeof updateCantidadSchema>
+export type ConfirmarQrInput = z.infer<typeof confirmarQrSchema>

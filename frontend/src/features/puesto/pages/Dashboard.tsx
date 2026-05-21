@@ -24,6 +24,18 @@ interface ItemInventario {
   producto: Producto
 }
 
+type InventarioAgrupado = {
+  key: string
+  producto: Producto
+  disponible?: ItemInventario
+  necesario?: ItemInventario
+  cantidadDisponible: number
+  cantidadNecesaria: number
+  balance: number
+  estado: 'DISPONIBLE' | 'NECESARIO' | 'SIN_STOCK'
+  itemActivo: ItemInventario
+}
+
 interface Puesto {
   id: string
   nombre: string
@@ -91,6 +103,50 @@ function formatCantidad(cantidad?: number) {
   return cantidad % 1 === 0 ? String(cantidad) : cantidad.toFixed(1)
 }
 
+function agruparInventario(items: ItemInventario[]): InventarioAgrupado[] {
+  const grouped = new Map<string, {
+    producto: Producto
+    disponible?: ItemInventario
+    necesario?: ItemInventario
+  }>()
+
+  for (const item of items) {
+    const key = item.producto.id
+    const current = grouped.get(key) ?? { producto: item.producto }
+    if (item.tipo === 'DISPONIBLE') current.disponible = item
+    if (item.tipo === 'NECESARIO') current.necesario = item
+    grouped.set(key, current)
+  }
+
+  return Array.from(grouped.entries())
+    .map(([key, group]) => {
+      const cantidadDisponible = group.disponible?.cantidad ?? 0
+      const cantidadNecesaria = group.necesario?.cantidad ?? 0
+      const balance = cantidadDisponible - cantidadNecesaria
+      const estado: InventarioAgrupado['estado'] = cantidadDisponible > 0
+        ? 'DISPONIBLE'
+        : cantidadNecesaria > 0
+          ? 'NECESARIO'
+          : 'SIN_STOCK'
+      const itemActivo = estado === 'NECESARIO'
+        ? group.necesario!
+        : group.disponible ?? group.necesario!
+
+      return {
+        key,
+        producto: group.producto,
+        disponible: group.disponible,
+        necesario: group.necesario,
+        cantidadDisponible,
+        cantidadNecesaria,
+        balance,
+        estado,
+        itemActivo,
+      }
+    })
+    .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre, 'es'))
+}
+
 function accionHistorialLabel(accion: string) {
   if (accion === 'INVENTARIO_CREADO') return 'Creado'
   if (accion === 'INVENTARIO_INCREMENTADO') return 'Sumado'
@@ -137,6 +193,91 @@ function estadoDonacionBadge(estado: DonacionPuesto['estado']) {
 
 function normalizeProductoNombre(nombre: string) {
   return nombre.trim().toLocaleLowerCase('es')
+}
+
+function generatedAtFromTimestamp(timestamp?: number) {
+  if (!timestamp || !Number.isFinite(timestamp)) return undefined
+  const date = new Date(timestamp)
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString()
+}
+
+function parseQrOperativo(text: string): QrOperativo | null {
+  try {
+    const data = JSON.parse(text) as Partial<QrOperativo> & {
+      t?: string
+      r?: string
+      p?: string
+      pn?: string
+      i?: Array<{ n?: string; c?: string; q?: number; u?: string }>
+      e?: string
+      d?: string
+      pr?: string
+      n?: string
+      c?: string
+      q?: number
+      u?: string
+      g?: number
+    }
+    if (data.t === 'SC' && data.p && Array.isArray(data.i)) {
+      return {
+        type: 'SOLICITUD_CIUDADANO',
+        requestId: data.r,
+        puestoId: data.p,
+        puestoNombre: data.pn,
+        productos: data.i
+          .filter((item) => item.n && typeof item.q === 'number' && Number.isFinite(item.q) && item.q > 0 && item.u)
+          .map((item) => ({
+            nombre: item.n,
+            categoria: item.c,
+            cantidad: item.q!,
+            unidad: item.u!,
+          })),
+        generatedAt: generatedAtFromTimestamp(data.g),
+      }
+    }
+    if (data.t === 'DE' && data.p && data.pr && typeof data.q === 'number' && Number.isFinite(data.q) && data.q > 0 && data.u) {
+      return {
+        type: 'DONACION_ENTREGA',
+        entregaCodigo: data.e,
+        donacionId: data.d,
+        puestoId: data.p,
+        productoId: data.pr,
+        productoNombre: data.n,
+        productoCategoria: data.c,
+        cantidad: data.q,
+        unidad: data.u,
+        generatedAt: generatedAtFromTimestamp(data.g),
+      }
+    }
+    if (data.type === 'SOLICITUD_CIUDADANO' && Array.isArray(data.productos) && data.puestoId) {
+      return data as QrOperativo
+    }
+    if (
+      data.type === 'DONACION_ENTREGA' &&
+      data.puestoId &&
+      (data as { productoId?: string }).productoId &&
+      typeof (data as { cantidad?: unknown }).cantidad === 'number' &&
+      Number.isFinite((data as { cantidad: number }).cantidad) &&
+      (data as { cantidad: number }).cantidad > 0
+    ) {
+      return data as QrOperativo
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function productosFromQr(qr: QrOperativo, inventario: ItemInventario[]): QrProducto[] {
+  if (qr.type === 'SOLICITUD_CIUDADANO') return qr.productos
+  const item = inventario.find((inv) => inv.producto.id === qr.productoId)
+  return [{
+    productoId: qr.productoId,
+    nombre: item?.producto.nombre ?? qr.productoNombre ?? qr.productoId,
+    categoria: item?.producto.categoria ?? qr.productoCategoria,
+    cantidad: qr.cantidad,
+    unidad: qr.unidad,
+  }]
 }
 
 const CATEGORIA_EMOJI: Record<string, string> = {
@@ -334,15 +475,25 @@ function AddItemSheet({
 
 function InventarioRow({
   item,
-  onUpdateCantidad,
+  onUpdateBalance,
   onDelete,
 }: {
-  item: ItemInventario
-  onUpdateCantidad: (id: string, delta: number) => void
+  item: InventarioAgrupado
+  onUpdateBalance: (item: InventarioAgrupado, delta: number) => void
   onDelete: (id: string) => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const nivel = nivelStock(item.cantidad)
+  const nivel = nivelStock(item.cantidadDisponible)
+  const cantidadLabel = item.balance > 0
+    ? formatCantidad(item.balance)
+    : item.balance < 0
+      ? `-${formatCantidad(Math.abs(item.balance))}`
+      : '0'
+  const borderClass = item.estado === 'NECESARIO'
+    ? 'border-red-200 bg-red-50/30'
+    : item.estado === 'SIN_STOCK'
+      ? 'border-gray-200 bg-gray-50'
+      : 'border-gray-200'
 
   return (
     <article className={`rounded-lg border bg-white px-4 py-3 shadow-sm transition-colors ${
@@ -923,7 +1074,9 @@ export default function PuestoDashboard() {
   const [showQr, setShowQr] = useState(false)
   const [showWorkers, setShowWorkers] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const [qrResult, setQrResult] = useState<{ text: string; ts: number } | null>(null)
+  const [qrResult, setQrResult] = useState<{ text: string; parsed: QrOperativo | null; ts: number } | null>(null)
+  const [qrConfirmando, setQrConfirmando] = useState(false)
+  const [qrError, setQrError] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'DISPONIBLE' | 'NECESARIO'>('todos')
   const qc = useQueryClient()
 
@@ -1008,6 +1161,21 @@ export default function PuestoDashboard() {
     },
   })
 
+  const mutCreateInventario = useMutation({
+    mutationFn: ({ producto, tipo, cantidad }: { producto: Producto; tipo: 'DISPONIBLE' | 'NECESARIO'; cantidad: number }) =>
+      apiClient.post(`/api/inventario/puesto/${puesto!.id}/items`, {
+        nombre: producto.nombre,
+        categoria: producto.categoria,
+        unidad: producto.unidad,
+        cantidad,
+        tipo,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] })
+      qc.invalidateQueries({ queryKey: ['inventario-historial', puesto?.id] })
+    },
+  })
+
   // Mutation: eliminar
   const mutDelete = useMutation({
     mutationFn: (id: string) => apiClient.delete(`/api/inventario/items/${id}`),
@@ -1017,13 +1185,61 @@ export default function PuestoDashboard() {
     },
   })
 
-  const handleUpdateCantidad = useCallback((id: string, delta: number) => {
-    mutCantidad.mutate({ id, delta })
-  }, [mutCantidad])
+  const handleUpdateBalance = useCallback((item: InventarioAgrupado, delta: number) => {
+    if (delta > 0) {
+      if (item.cantidadNecesaria > 0 && item.necesario) {
+        mutCantidad.mutate({ id: item.necesario.id, delta: -delta })
+        return
+      }
+      if (item.disponible) {
+        mutCantidad.mutate({ id: item.disponible.id, delta })
+        return
+      }
+      mutCreateInventario.mutate({ producto: item.producto, tipo: 'DISPONIBLE', cantidad: delta })
+      return
+    }
+
+    const absDelta = Math.abs(delta)
+    if (item.cantidadDisponible > 0 && item.disponible) {
+      mutCantidad.mutate({ id: item.disponible.id, delta })
+      return
+    }
+    if (item.necesario) {
+      mutCantidad.mutate({ id: item.necesario.id, delta: absDelta })
+      return
+    }
+    mutCreateInventario.mutate({ producto: item.producto, tipo: 'NECESARIO', cantidad: absDelta })
+  }, [mutCantidad, mutCreateInventario])
 
   const handleDelete = useCallback((id: string) => {
     mutDelete.mutate(id)
   }, [mutDelete])
+
+  const handleConfirmarQr = useCallback(async () => {
+    if (!qrResult?.parsed || !puesto?.id) return
+    const qr = qrResult.parsed
+    if (qr.puestoId !== puesto.id) {
+      setQrError('Este QR pertenece a otro puesto.')
+      return
+    }
+
+    setQrConfirmando(true)
+    setQrError('')
+    try {
+      await apiClient.post(`/api/inventario/puesto/${puesto.id}/confirmar-qr`, { codigo: qrResult.text })
+      await qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })
+      await qc.invalidateQueries({ queryKey: ['inventario-historial', puesto.id] })
+      await qc.invalidateQueries({ queryKey: ['mis-donaciones'] })
+      setQrResult(null)
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { error?: string; details?: Array<{ message?: string }> } } }).response?.data
+      const detail = data?.details?.[0]?.message
+      const message = data?.error && data.error !== 'Bad Request' ? data.error : detail
+      setQrError(message ?? 'No se pudo confirmar el QR. Revisa la conexion e intentalo de nuevo.')
+    } finally {
+      setQrConfirmando(false)
+    }
+  }, [puesto?.id, qc, qrResult])
 
   // Filtrado
   const listaFiltrada = filtro === 'todos'
@@ -1239,9 +1455,9 @@ export default function PuestoDashboard() {
           <div className="grid gap-3 xl:grid-cols-2">
             {listaFiltrada.map((item) => (
               <InventarioRow
-                key={item.id}
+                key={item.key}
                 item={item}
-                onUpdateCantidad={handleUpdateCantidad}
+                onUpdateBalance={handleUpdateBalance}
                 onDelete={handleDelete}
               />
             ))}
@@ -1251,12 +1467,57 @@ export default function PuestoDashboard() {
 
       {/* Resultado del último QR escaneado */}
       {qrResult && (
-        <div className="fixed bottom-4 left-4 right-4 z-[2500] bg-green-600 text-white rounded-xl px-4 py-3 shadow-lg flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-green-200">QR escaneado</p>
-            <p className="text-sm font-medium break-all mt-0.5">{qrResult.text}</p>
+        <div className="fixed bottom-4 left-4 right-4 z-[2500] max-h-[70vh] overflow-y-auto rounded-xl bg-white px-4 py-3 text-slate-900 shadow-2xl ring-1 ring-slate-200">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">QR escaneado</p>
+              <p className="text-sm font-semibold text-slate-950">
+                {qrResult.parsed?.type === 'SOLICITUD_CIUDADANO'
+                  ? 'Solicitud de ciudadano'
+                  : qrResult.parsed?.type === 'DONACION_ENTREGA'
+                    ? 'Donacion entrante'
+                    : 'Formato no reconocido'}
+              </p>
+            </div>
+            <button onClick={() => setQrResult(null)} className="flex-shrink-0 text-slate-400 hover:text-slate-700">x</button>
           </div>
-          <button onClick={() => setQrResult(null)} className="flex-shrink-0 text-green-200 hover:text-white">✕</button>
+
+          {qrResult.parsed ? (
+            <div className="mt-3 space-y-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs text-slate-500">
+                  {qrResult.parsed.type === 'SOLICITUD_CIUDADANO'
+                    ? 'Al confirmar, se restaran estos productos del inventario disponible.'
+                    : 'Al confirmar, se sumara la donacion al inventario disponible.'}
+                </p>
+                <div className="mt-2 space-y-1">
+                  {productosFromQr(qrResult.parsed, inventario).map((producto) => (
+                    <div key={`${producto.productoId ?? producto.nombre}-${producto.cantidad}`} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate font-medium">
+                        {producto.categoria ? `${CATEGORIA_EMOJI[producto.categoria] ?? ''} ` : ''}{producto.nombre ?? producto.productoId}
+                      </span>
+                      <span className="flex-shrink-0 font-semibold">
+                        {formatCantidad(producto.cantidad)} {producto.unidad}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {qrError && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{qrError}</p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="secondary" onClick={() => setQrResult(null)}>Cancelar</Button>
+                <Button loading={qrConfirmando} onClick={() => void handleConfirmarQr()}>
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 break-all rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {qrResult.text}
+            </p>
+          )}
         </div>
       )}
 
@@ -1264,7 +1525,8 @@ export default function PuestoDashboard() {
       {showQr && (
         <QrScanner
           onResult={(text) => {
-            setQrResult({ text, ts: Date.now() })
+            setQrResult({ text, parsed: parseQrOperativo(text), ts: Date.now() })
+            setQrError('')
             setShowQr(false)
           }}
           onClose={() => setShowQr(false)}

@@ -2,6 +2,8 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
 import { loginSchema, registerSchema } from './auth.schema.js'
 import { loginUser, registerUser } from './auth.service.js'
 
+const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '8h'
+
 export async function login(request: FastifyRequest, reply: FastifyReply) {
   const input = loginSchema.parse(request.body)
   const user = await loginUser(input)
@@ -9,7 +11,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   const accessToken = await reply.jwtSign(
     // Incluir tanto sub como id para que request.user.id funcione en todos los handlers
     { sub: user.id, id: user.id, email: user.email, roles: user.roles },
-    { expiresIn: process.env.JWT_EXPIRES_IN ?? '15m' },
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
   )
 
   return reply.send({ user, accessToken })
@@ -21,7 +23,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
 
   const accessToken = await reply.jwtSign(
     { sub: user.id, id: user.id, email: user.email, roles: user.roles },
-    { expiresIn: process.env.JWT_EXPIRES_IN ?? '15m' },
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
   )
 
   return reply.status(201).send({ user, puesto, solicitud, accessToken })

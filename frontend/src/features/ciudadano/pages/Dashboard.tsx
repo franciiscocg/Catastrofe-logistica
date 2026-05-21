@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { QRCodeSVG } from 'qrcode.react'
 import Map, { type IncidenciaAction, type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -11,6 +12,7 @@ import {
   blockedIncidenciasNearRoute,
 } from '@/utils/routing'
 import {
+  getInventarioNeto,
   getProductosDisponibles as _getProductosDisponibles,
   getProductoOptions as _getProductoOptions,
   getProductosRecomendados as _getProductosRecomendados,
@@ -34,6 +36,14 @@ import {
 
 type ItemInventario = { nombre: string; categoria: string; cantidad: number; unidad: string }
 // Re-export alias para compatibilidad con el resto del fichero
+
+type QrSolicitudState = {
+  requestId: string
+  payload: string
+  estado: 'PENDIENTE' | 'COMPLETADA'
+  completedAt?: string
+  error?: string
+}
 
 type CategoriaIncidenciaKey = 'inundacion' | 'obstaculos_via' | 'limpieza' | 'asistencia'
 
@@ -148,6 +158,25 @@ type RadioBusquedaProductos = 2 | 5 | 10 | 'todos'
 type OrdenProductos = 'relevancia' | 'cantidad' | 'nombre'
 
 type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
+type SolicitudCiudadanoQrItem = {
+  nombre: string
+  categoria: string
+  cantidad: number
+  unidad: string
+}
+type SolicitudCiudadanoEnCurso = {
+  requestId: string
+  puestoId: string
+  puestoNombre: string
+  puestoDireccion?: string
+  cantidades: Record<string, string>
+  productos: SolicitudCiudadanoQrItem[]
+  payload?: string
+  estado: 'BORRADOR' | 'PENDIENTE' | 'COMPLETADA'
+  updatedAt: number
+}
+
+const SOLICITUD_CIUDADANO_STORAGE_KEY = 'catlogistica-solicitud-ciudadano-en-curso'
 type ApiInventarioItem = {
   id: string
   tipo: 'DISPONIBLE' | 'NECESARIO' | 'disponible' | 'necesario'
@@ -454,7 +483,7 @@ function InventarioSheet({
 // ── Dashboard principal ───────────────────────────────────────────────────────
 
 function normalizeApiInventario(items: ApiInventarioItem[]) {
-  return items.reduce<{ disponible: ItemInventario[]; necesario: ItemInventario[] }>((acc, item) => {
+  const raw = items.reduce<{ disponible: ItemInventario[]; necesario: ItemInventario[] }>((acc, item) => {
     const normalized = {
       nombre: item.producto.nombre,
       categoria: item.producto.categoria,
@@ -470,6 +499,8 @@ function normalizeApiInventario(items: ApiInventarioItem[]) {
 
     return acc
   }, { disponible: [], necesario: [] })
+
+  return getInventarioNeto(raw)
 }
 
 function normalizeText(value: string) {
@@ -492,15 +523,9 @@ function mergeWithDemoInventario(
   apiInventario: { disponible: ItemInventario[]; necesario: ItemInventario[] },
 ) {
   const demoInventario = getDemoInventarioForPuesto(puesto)
+  const apiHasData = apiInventario.disponible.length > 0 || apiInventario.necesario.length > 0
 
-  return {
-    disponible: apiInventario.disponible.length > 0
-      ? apiInventario.disponible
-      : demoInventario.disponible,
-    necesario: apiInventario.necesario.length > 0
-      ? apiInventario.necesario
-      : demoInventario.necesario,
-  }
+  return apiHasData ? apiInventario : demoInventario
 }
 
 function getProductosDisponibles(puestos: PuestoMarker[], inventario: InventarioPorPuesto) {
@@ -1800,6 +1825,7 @@ export default function CiudadanoDashboard() {
   }
 
   const abrirBusquedaProducto = () => {
+    const solicitudGuardada = readSolicitudCiudadanoEnCurso()
     setPanelReturnVista(getCurrentPanelReturnVista())
     setProductosSeleccionados([])
     setTextoBusquedaProducto('')

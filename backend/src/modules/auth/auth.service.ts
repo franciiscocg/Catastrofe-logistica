@@ -26,6 +26,14 @@ export async function loginUser({ identifier, password }: LoginInput) {
 
   if (!user.activo) throw appError('Cuenta desactivada', 403)
 
+  if (user.roles.includes(RolUsuario.VOLUNTARIO)) {
+    await prisma.voluntario.upsert({
+      where: { usuarioId: user.id },
+      update: {},
+      create: { usuarioId: user.id },
+    })
+  }
+
   return {
     id: user.id,
     email: user.email,
@@ -79,6 +87,12 @@ export async function registerUser(input: RegisterInput) {
           longitud: input.puesto.longitud,
         },
         select: { id: true, nombre: true, estado: true },
+      })
+    }
+
+    if (!esPuesto) {
+      await tx.voluntario.create({
+        data: { usuarioId: created.id },
       })
     }
 

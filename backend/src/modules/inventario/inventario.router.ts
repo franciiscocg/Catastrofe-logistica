@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../../middleware/auth.middleware.js'
-import { addItemSchema, updateCantidadSchema } from './inventario.schema.js'
-import { listInventario, listInventarioHistorial, addItem, updateCantidad, deleteItem } from './inventario.service.js'
+import { addItemSchema, confirmarQrSchema, updateCantidadSchema } from './inventario.schema.js'
+import { listInventario, listInventarioHistorial, addItem, updateCantidad, deleteItem, confirmarQrInventario, getEstadoSolicitudQr } from './inventario.service.js'
 
 export async function inventarioRouter(app: FastifyInstance) {
   app.get('/puesto/:puestoId', async (req, reply) => {
@@ -27,6 +27,24 @@ export async function inventarioRouter(app: FastifyInstance) {
     const userId = (req.user as { id: string }).id
     const item = await addItem(puestoId, input, userId)
     return reply.status(201).send({ item })
+  })
+
+  app.post('/puesto/:puestoId/confirmar-qr', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const { puestoId } = req.params as { puestoId: string }
+    const input = confirmarQrSchema.parse(req.body)
+    const userId = (req.user as { id: string }).id
+    const result = await confirmarQrInventario(puestoId, input, userId)
+    return reply.send(result)
+  })
+
+  app.get('/qr-solicitudes/:requestId', {
+    preHandler: [requireAuth],
+  }, async (req, reply) => {
+    const { requestId } = req.params as { requestId: string }
+    const estado = await getEstadoSolicitudQr(requestId)
+    return reply.send(estado)
   })
 
   app.patch('/items/:itemId/cantidad', {
