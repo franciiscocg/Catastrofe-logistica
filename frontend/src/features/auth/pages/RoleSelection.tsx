@@ -98,9 +98,15 @@ export default function RoleSelection() {
   const activeInfo = infoRole ? (roles.find((r) => r.role === infoRole)?.info ?? null) : null
 
   const handleSelect = (role: Role) => {
+    if (!isAuthenticated) {
+      selectRole(role)
+      navigate(`/auth/login?role=${role}`)
+      return
+    }
+
     if (role === Role.PUESTO) {
+      selectRole(role)
       if (hasPuesto) {
-        selectRole(role)
         navigate(ROLE_ROUTES[role])
       } else {
         navigate('/auth/registro-puesto')

@@ -9,6 +9,20 @@ export interface IncidenciaRutaInput {
   pendingSync?: boolean
 }
 
+export type ModoTransporte = 'driving' | 'foot'
+
+type RouteCandidate = {
+  points: [number, number][]
+  distanciaKm: number
+  duracionMin: number
+  incidenciasCercanas: number
+}
+
+type SafeRouteCandidate = RouteCandidate & {
+  waypointSet: [number, number][]
+  incidenciasEvitadas: number
+}
+
 export function pointToSegmentDistanceKm(
   point: [number, number],
   a: [number, number],
@@ -59,22 +73,26 @@ export function blockedIncidenciasNearRoute<T extends IncidenciaRutaInput>(
   })
 }
 
-type RouteCandidate = {
-  points: [number, number][]
-  distanciaKm: number
-  duracionMin: number
-  incidenciasCercanas: number
+// router.project-osrm.org only has the driving profile. For foot we use
+// routing.openstreetmap.de, which exposes an OSRM instance for pedestrian routes.
+export function osrmUrl(modo: ModoTransporte, path: string): string {
+  if (modo === 'foot') {
+    return `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${path}?overview=full&geometries=geojson&alternatives=false`
+  }
+  return `https://router.project-osrm.org/route/v1/driving/${path}?overview=full&geometries=geojson&alternatives=false`
 }
 
 async function fetchRouteCandidates(
   coordinates: [number, number][],
   incidencias: IncidenciaRutaInput[],
+  modo: ModoTransporte = 'driving',
   signal?: AbortSignal,
 ): Promise<RouteCandidate[]> {
   const path = coordinates.map(([lat, lng]) => `${lng},${lat}`).join(';')
-  const url =
-    `https://router.project-osrm.org/route/v1/driving/${path}` +
-    `?overview=full&geometries=geojson&alternatives=true&continue_straight=false`
+  const base = osrmUrl(modo, path)
+  const url = modo === 'driving'
+    ? base.replace('alternatives=false', 'alternatives=true&continue_straight=false')
+    : base
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
   const data = await res.json()
@@ -93,7 +111,7 @@ async function fetchRouteCandidates(
   })
 }
 
-function sortRouteCandidates(candidates: RouteCandidate[]) {
+function sortRouteCandidates<T extends RouteCandidate>(candidates: T[]): T[] {
   return candidates.sort((a, b) => (
     a.incidenciasCercanas - b.incidenciasCercanas ||
     a.duracionMin - b.duracionMin ||
@@ -117,7 +135,11 @@ function detourPointsAroundIncidencia(incidencia: IncidenciaRutaInput): [number,
   ]
 }
 
-function buildDetourWaypointSets(desde: [number, number], hasta: [number, number], blocked: IncidenciaRutaInput[]) {
+function buildDetourWaypointSets(
+  desde: [number, number],
+  hasta: [number, number],
+  blocked: IncidenciaRutaInput[],
+) {
   const waypointSets: [number, number][][] = []
   const detoursByBlock = blocked.slice(0, 4).map((inc) => detourPointsAroundIncidencia(inc))
 
@@ -141,38 +163,47 @@ function buildDetourWaypointSets(desde: [number, number], hasta: [number, number
   return waypointSets
 }
 
-export async function fetchRutaEvitandoIncidencias(
+function waypointSetKey(waypointSet: [number, number][]) {
+  return waypointSet.map(([lat, lng]) => `${lat.toFixed(5)},${lng.toFixed(5)}`).join(';')
+}
+
+async function findSafeRoute(
   desde: [number, number],
   hasta: [number, number],
   incidencias: IncidenciaRutaInput[],
+  modo: ModoTransporte,
   signal?: AbortSignal,
-) {
-  const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias, signal)
+): Promise<SafeRouteCandidate> {
+  const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias, modo, signal)
   const directBest = sortRouteCandidates([...directCandidates])[0]
   if (!directBest) throw new Error('No se encontro ruta disponible')
 
-  const candidates: RouteCandidate[] = [...directCandidates]
-  const requestedWaypointSets = new Set<string>()
+  const candidates: SafeRouteCandidate[] = directCandidates.map((candidate) => ({
+    ...candidate,
+    waypointSet: [desde, hasta],
+    incidenciasEvitadas: Math.max(0, directBest.incidenciasCercanas - candidate.incidenciasCercanas),
+  }))
+  const requestedWaypointSets = new Set<string>([waypointSetKey([desde, hasta])])
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
     const best = sortRouteCandidates([...candidates])[0]
     if (!best) break
-    if (best.incidenciasCercanas === 0) {
-      return {
-        ...best,
-        incidenciasEvitadas: Math.max(0, directBest.incidenciasCercanas - best.incidenciasCercanas),
-      }
-    }
+    if (best.incidenciasCercanas === 0) return best
 
     const blocked = blockedIncidenciasNearRoute(best.points, incidencias)
     for (const waypointSet of buildDetourWaypointSets(desde, hasta, blocked)) {
-      const key = waypointSet.map(([lat, lng]) => `${lat.toFixed(5)},${lng.toFixed(5)}`).join(';')
+      const key = waypointSetKey(waypointSet)
       if (requestedWaypointSets.has(key)) continue
       requestedWaypointSets.add(key)
 
       try {
-        candidates.push(...await fetchRouteCandidates(waypointSet, incidencias, signal))
+        const detourCandidates = await fetchRouteCandidates(waypointSet, incidencias, modo, signal)
+        candidates.push(...detourCandidates.map((candidate) => ({
+          ...candidate,
+          waypointSet,
+          incidenciasEvitadas: Math.max(0, directBest.incidenciasCercanas - candidate.incidenciasCercanas),
+        })))
       } catch {
         if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
       }
@@ -180,4 +211,89 @@ export async function fetchRutaEvitandoIncidencias(
   }
 
   throw new Error('No hay una ruta segura que evite todas las incidencias cortadas reportadas.')
+}
+
+async function buildSafeWaypointPath(
+  waypoints: [number, number][],
+  incidencias: IncidenciaRutaInput[],
+  modo: ModoTransporte,
+  signal?: AbortSignal,
+): Promise<SafeRouteCandidate[]> {
+  if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos para calcular la ruta')
+
+  const safeLegs: SafeRouteCandidate[] = []
+  for (let i = 0; i < waypoints.length - 1; i += 1) {
+    safeLegs.push(await findSafeRoute(waypoints[i], waypoints[i + 1], incidencias, modo, signal))
+  }
+
+  return safeLegs
+}
+
+export async function fetchRutaMultiParada(
+  waypoints: [number, number][],
+  incidencias: IncidenciaRutaInput[],
+  modo: ModoTransporte = 'driving',
+  signal?: AbortSignal,
+): Promise<{ points: [number, number][]; distanciaKm: number; duracionMin: number; incidenciasCercanas: number }> {
+  if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos para calcular la ruta')
+
+  const safeLegs: SafeRouteCandidate[] = []
+  for (let i = 0; i < waypoints.length - 1; i += 1) {
+    safeLegs.push(await findSafeRoute(waypoints[i], waypoints[i + 1], incidencias, modo, signal))
+  }
+
+  const points = safeLegs.flatMap((leg, idx) => (idx === 0 ? leg.points : leg.points.slice(1)))
+  return {
+    points,
+    distanciaKm: safeLegs.reduce((total, leg) => total + leg.distanciaKm, 0),
+    duracionMin: safeLegs.reduce((total, leg) => total + leg.duracionMin, 0),
+    incidenciasCercanas: countBlockedIncidenciasNearRoute(points, incidencias),
+  }
+}
+
+// Fetches a route WITH step-by-step instructions (for turn-by-turn navigation).
+// Returns the polyline + the raw OSRM legs array so the caller can parse steps.
+export async function fetchRutaConPasos(
+  waypoints: [number, number][],
+  modo: ModoTransporte = 'driving',
+  incidencias: IncidenciaRutaInput[] = [],
+  signal?: AbortSignal,
+): Promise<{
+  points: [number, number][]
+  distanciaKm: number
+  duracionMin: number
+  legs: { steps: unknown[] }[]
+}> {
+  if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos')
+  const safeLegs = await buildSafeWaypointPath(waypoints, incidencias, modo, signal)
+  const stepLegs: { steps: unknown[] }[] = []
+
+  for (const safeLeg of safeLegs) {
+    const path = safeLeg.waypointSet.map(([lat, lng]) => `${lng},${lat}`).join(';')
+    const base = osrmUrl(modo, path)
+    const url = base.includes('?') ? `${base}&steps=true` : `${base}?steps=true`
+    const res = await fetch(url, { signal })
+    if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
+    const data = await res.json()
+    if (data.code !== 'Ok') throw new Error('No se encontro ruta disponible')
+    stepLegs.push(...(data.routes[0].legs as { steps: unknown[] }[]))
+  }
+
+  const points = safeLegs.flatMap((leg, idx) => (idx === 0 ? leg.points : leg.points.slice(1)))
+  return {
+    points,
+    distanciaKm: safeLegs.reduce((total, leg) => total + leg.distanciaKm, 0),
+    duracionMin: safeLegs.reduce((total, leg) => total + leg.duracionMin, 0),
+    legs: stepLegs,
+  }
+}
+
+export async function fetchRutaEvitandoIncidencias(
+  desde: [number, number],
+  hasta: [number, number],
+  incidencias: IncidenciaRutaInput[],
+  signal?: AbortSignal,
+  modo: ModoTransporte = 'driving',
+) {
+  return findSafeRoute(desde, hasta, incidencias, modo, signal)
 }

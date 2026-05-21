@@ -3,25 +3,37 @@ import { useAuthStore } from '@/store/auth.store'
 import { ROLE_LABELS } from '@/types/auth.types'
 import type { Role } from '@/types/auth.types'
 
-const ROLE_COLORS: Record<string, string> = {
-  ciudadano:    'bg-blue-100 text-blue-700',
-  voluntario:   'bg-green-100 text-green-700',
-  puesto:       'bg-amber-100 text-amber-700',
-  coordinador:  'bg-purple-100 text-purple-700',
+const ROLE_ACCENTS: Record<string, {
+  border: string
+  eyebrow: string
+  button: string
+}> = {
+  ciudadano: {
+    border: 'border-blue-500',
+    eyebrow: 'text-blue-700',
+    button: 'border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100',
+  },
+  voluntario: {
+    border: 'border-green-500',
+    eyebrow: 'text-green-700',
+    button: 'border-green-200 bg-green-50 text-green-800 hover:bg-green-100',
+  },
+  puesto: {
+    border: 'border-amber-500',
+    eyebrow: 'text-amber-700',
+    button: 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100',
+  },
+  coordinador: {
+    border: 'border-purple-500',
+    eyebrow: 'text-purple-700',
+    button: 'border-purple-200 bg-purple-50 text-purple-800 hover:bg-purple-100',
+  },
 }
 
-const HEADER_COLORS: Record<string, string> = {
-  ciudadano:   'bg-blue-600',
-  voluntario:  'bg-green-600',
-  puesto:      'bg-amber-500',
-  coordinador: 'bg-purple-600',
-}
-
-const ROLE_ICONS: Record<string, string> = {
-  ciudadano:   '🏠',
-  voluntario:  '🤝',
-  puesto:      '🏥',
-  coordinador: '📋',
+const DEFAULT_ACCENT = {
+  border: 'border-slate-400',
+  eyebrow: 'text-slate-600',
+  button: 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100',
 }
 
 export default function AppShell() {
@@ -33,40 +45,53 @@ export default function AppShell() {
     navigate('/')
   }
 
-  const roleLabel  = selectedRole ? ROLE_LABELS[selectedRole as Role] : ''
-  const roleColor  = selectedRole ? (ROLE_COLORS[selectedRole] ?? 'bg-gray-100 text-gray-700') : 'bg-gray-100 text-gray-700'
-  const roleIcon   = selectedRole ? (ROLE_ICONS[selectedRole] ?? '👤') : '👤'
-  const headerBg   = selectedRole ? (HEADER_COLORS[selectedRole] ?? 'bg-gray-700') : 'bg-gray-700'
+  const roleLabel = selectedRole ? ROLE_LABELS[selectedRole as Role] : ''
+  const accent = selectedRole ? (ROLE_ACCENTS[selectedRole] ?? DEFAULT_ACCENT) : DEFAULT_ACCENT
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <header className={`flex items-center justify-between px-4 py-2 ${headerBg} safe-top`}>
+    <div className="flex h-screen flex-col overflow-hidden">
+      <header className="safe-top border-b border-slate-200 bg-white">
+        <div className={`flex items-center justify-between gap-3 border-l-4 px-4 py-2.5 ${accent.border}`}>
+          <div className="min-w-0">
+            <p className={`text-[11px] font-semibold uppercase tracking-wide ${accent.eyebrow}`}>
+              {roleLabel || 'Sesión'}
+            </p>
+            {user ? (
+              <p className="truncate text-sm font-semibold text-slate-950">
+                {user.nombre} {user.apellidos}
+              </p>
+            ) : (
+              <p className="truncate text-sm font-semibold text-slate-950">Sesión activa</p>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{roleIcon}</span>
-          <span className="text-sm font-semibold text-white">{roleLabel}</span>
-          {user && (
-            <span className="text-xs text-white/60 hidden sm:block">
-              · {user.nombre} {user.apellidos}
-            </span>
+          {selectedRole !== 'coordinador' && (
+            <button
+              onClick={handleChangeRole}
+              className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${accent.button}`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M17 2l4 4-4 4" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <path d="M7 22l-4-4 4-4" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+              </svg>
+              Cambiar rol
+            </button>
           )}
         </div>
-
-        {selectedRole !== 'coordinador' && (
-          <button
-            onClick={handleChangeRole}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-full transition-all"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-            </svg>
-            Cambiar rol
-          </button>
-        )}
-
       </header>
 
-      <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
         <Outlet />
       </main>
     </div>

@@ -1,205 +1,168 @@
 import { test, expect, type Page } from '@playwright/test'
 
-// REQUISITO: frontend corriendo en http://localhost:5173
-// Arrancar con: cd frontend && npm run dev
+const puestos = [
+  {
+    id: '1',
+    nombre: 'CEIP La Paz',
+    direccion: 'Calle Mayor 12',
+    latitud: 39.4254,
+    longitud: -0.4178,
+    necesidades: 3,
+  },
+  {
+    id: '2',
+    nombre: 'Pabellon Municipal Benetusser',
+    direccion: 'Avenida del Polideportivo 4',
+    latitud: 39.4212,
+    longitud: -0.3975,
+    necesidades: 1,
+  },
+]
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-// Abre el panel de búsqueda y selecciona "Agua embotellada" rellenando el input
-// con el nombre exacto (disparar onChange → match), NO haciendo clic en el
-// dropdown porque el onBlur oculta las sugerencias antes del clic.
-async function abrirYSeleccionarAgua(page: Page) {
-  await page.goto('/ciudadano')
-  await page.getByText('Buscar producto').click()
-  const input = page.getByPlaceholder('Escribe o elige un producto')
-  await input.fill('Agua embotellada')
-  await expect(page.getByText('Recomendado')).toBeVisible({ timeout: 3000 })
+const rutaOsrm = {
+  code: 'Ok',
+  routes: [
+    {
+      distance: 1500,
+      duration: 420,
+      geometry: {
+        coordinates: [
+          [-0.4178, 39.4254],
+          [-0.4140, 39.4240],
+          [-0.3975, 39.4212],
+        ],
+      },
+      legs: [
+        {
+          steps: [
+            {
+              distance: 120,
+              name: 'Calle Mayor',
+              maneuver: { type: 'depart', modifier: 'straight', location: [-0.4178, 39.4254] },
+            },
+            {
+              distance: 1380,
+              name: 'Avenida del Polideportivo',
+              maneuver: { type: 'arrive', location: [-0.3975, 39.4212] },
+            },
+          ],
+        },
+      ],
+    },
+  ],
 }
 
-// Los elementos siguientes aparecen DOS veces en el DOM:
-//   1. En las tarjetas del listado de puestos (ocultas con class="hidden" cuando vista='buscar')
-//   2. En el BuscarProductoSheet (renderizado al FINAL del documento)
-// Playwright strict mode falla aunque uno esté oculto, y .first() devuelve el
-// oculto (está antes en el DOM). Usamos .last() para apuntar siempre al del sheet.
-const comoLlegarEnSheet    = (page: Page) => page.getByRole('button', { name: '🚗 Cómo llegar' }).last()
-const calculandoEnSheet    = (page: Page) => page.getByText('Calculando ruta segura...').last()
-const cancelarEnSheet      = (page: Page) => page.getByText('Cancelar busqueda de ruta').last()
-const errorUbicacionSheet  = (page: Page) => page.getByText('Comparte tu ubicación primero para calcular la ruta').last()
-
-// ── Panel de búsqueda ─────────────────────────────────────────────────────────
-
-test.describe('Panel de búsqueda de productos', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/ciudadano')
+async function prepararCiudadano(page: Page, conUbicacion = true) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('catlogistica-auth', JSON.stringify({
+      state: {
+        user: {
+          id: 'user-e2e',
+          email: 'ciudadano@example.com',
+          nombre: 'Maria',
+          apellidos: 'Garcia',
+          roles: ['CIUDADANO'],
+        },
+        accessToken: 'e2e-token',
+        selectedRole: 'ciudadano',
+        isAuthenticated: true,
+        puestoId: null,
+      },
+      version: 0,
+    }))
   })
 
-  test('el botón "Buscar producto" está visible en el dashboard', async ({ page }) => {
-    await expect(page.getByText('Buscar producto')).toBeVisible()
-  })
-
-  test('pulsar "Buscar producto" abre el panel de búsqueda', async ({ page }) => {
-    await page.getByText('Buscar producto').click()
-    await expect(page.getByText('Disponibilidad por puesto')).toBeVisible()
-    await expect(page.getByPlaceholder('Escribe o elige un producto')).toBeVisible()
-  })
-
-  test('abrir búsqueda oculta la lista de puestos', async ({ page }) => {
-    await expect(page.getByText('Puestos de emergencia')).toBeVisible()
-    await page.getByText('Buscar producto').click()
-    await expect(page.getByText('Puestos de emergencia')).not.toBeVisible()
-  })
-
-  test('abrir búsqueda oculta el botón "Reportar calle"', async ({ page }) => {
-    await expect(page.getByText('Reportar calle')).toBeVisible()
-    await page.getByText('Buscar producto').click()
-    await expect(page.getByText('Reportar calle')).not.toBeVisible()
-  })
-
-  test('cerrar el panel restaura la lista de puestos', async ({ page }) => {
-    await page.getByText('Buscar producto').click()
-    await page.getByRole('button', { name: 'x' }).click()
-    await expect(page.getByText('Puestos de emergencia')).toBeVisible()
-  })
-})
-
-// ── Autocompletado ────────────────────────────────────────────────────────────
-
-test.describe('Autocompletado de productos', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/ciudadano')
-    await page.getByText('Buscar producto').click()
-  })
-
-  test('las sugerencias aparecen al hacer foco en el input', async ({ page }) => {
-    const input = page.getByPlaceholder('Escribe o elige un producto')
-    await input.click()
-    // Debe mostrar al menos un producto del inventario
-    await expect(page.getByText('Agua embotellada')).toBeVisible()
-  })
-
-  test('escribir filtra las sugerencias por nombre', async ({ page }) => {
-    const input = page.getByPlaceholder('Escribe o elige un producto')
-    await input.click()
-    await input.fill('man')
-    await expect(page.getByText('Mantas')).toBeVisible()
-  })
-
-  test('rellenar el nombre exacto selecciona el producto y muestra "Recomendado"', async ({ page }) => {
-    const input = page.getByPlaceholder('Escribe o elige un producto')
-    await input.fill('Agua embotellada')
-    await expect(page.getByText('Recomendado')).toBeVisible()
-  })
-})
-
-// ── Recomendación de puesto ───────────────────────────────────────────────────
-
-test.describe('Recomendación de puesto', () => {
-  test('seleccionar producto muestra la tarjeta "Recomendado"', async ({ page }) => {
-    await abrirYSeleccionarAgua(page)
-    await expect(page.getByText('Recomendado')).toBeVisible()
-  })
-
-  test('la tarjeta recomendada muestra la cantidad disponible', async ({ page }) => {
-    await abrirYSeleccionarAgua(page)
-    // El texto "X litros disponibles" aparece en la tarjeta recomendada (y en las demás)
-    // Usamos first() para evitar strict-mode violation cuando hay varios puestos con litros
-    await expect(page.getByText(/\d+ litros disponibles/).first()).toBeVisible()
-  })
-
-  test('clicar la tarjeta recomendada muestra el botón "Cómo llegar"', async ({ page }) => {
-    await abrirYSeleccionarAgua(page)
-    await page.getByText('Recomendado').click()
-    // .last() porque hay dos botones con ese texto: uno en el sheet (visible)
-    // y otro en las tarjetas de puestos ocultas con class="hidden"
-    await expect(comoLlegarEnSheet(page)).toBeVisible()
-  })
-
-  test('la vista de detalle muestra los productos disponibles del puesto', async ({ page }) => {
-    await abrirYSeleccionarAgua(page)
-    await page.getByText('Recomendado').click()
-    await expect(page.getByText('Productos disponibles')).toBeVisible()
-    // exact:true evita ambigüedad con "Seleccionado: Agua embotellada"
-    await expect(page.getByText('Agua embotellada', { exact: true })).toBeVisible()
-  })
-
-  test('"Volver a puestos" sale de la vista de detalle', async ({ page }) => {
-    await abrirYSeleccionarAgua(page)
-    await page.getByText('Recomendado').click()
-    await page.getByText('Volver a puestos').click()
-    await expect(page.getByText('Recomendado')).toBeVisible()
-  })
-})
-
-// ── Alerta sin ubicación ──────────────────────────────────────────────────────
-
-test.describe('Mensaje cuando no hay ubicación', () => {
-  test('muestra aviso de ubicación cuando userPosition es null', async ({ page }) => {
-    await page.goto('/ciudadano')
-    await page.getByText('Buscar producto').click()
-    // Sin compartir ubicación, debe mostrar el aviso de recomendación sin distancia
-    await expect(page.getByText(/Comparte tu ubicacion/i)).toBeVisible()
-  })
-
-  test('al clicar "Cómo llegar" sin ubicación muestra error', async ({ page }) => {
-    await abrirYSeleccionarAgua(page)
-    await page.getByText('Recomendado').click()
-    await comoLlegarEnSheet(page).click()
-    await expect(errorUbicacionSheet(page)).toBeVisible({ timeout: 5000 })
-  })
-})
-
-// ── Indicador de carga y cancelación ─────────────────────────────────────────
-
-test.describe('Cálculo de ruta — indicador y cancelación', () => {
-  // Helper: localiza al usuario ANTES de abrir el panel de búsqueda.
-  // Si el panel ya está abierto, el sheet (z-2000) tapa el botón "Localizarme".
-  async function localizarYAbrirBusqueda(page: Page) {
-    await page.context().setGeolocation({ latitude: 39.4254, longitude: -0.4178 })
+  if (conUbicacion) {
     await page.context().grantPermissions(['geolocation'])
-    await page.goto('/ciudadano')
-    // Localizar con el panel cerrado (botón accesible)
-    await page.getByText(/Localizarme/i).click()
-    await page.waitForTimeout(800) // dejar que la Geolocation API resuelva
-    // Abrir panel y seleccionar producto
-    await page.getByText('Buscar producto').click()
-    const input = page.getByPlaceholder('Escribe o elige un producto')
-    await input.fill('Agua embotellada')
-    await expect(page.getByText('Recomendado')).toBeVisible({ timeout: 3000 })
-    await page.getByText('Recomendado').click()
+    await page.context().setGeolocation({ latitude: 39.4254, longitude: -0.4178 })
   }
 
-  test('aparece "Calculando ruta segura..." al clicar "Cómo llegar"', async ({ page }) => {
-    await page.route('**/router.project-osrm.org/**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 5000))
-      await route.continue()
-    })
+  await page.route('**/api/puestos', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ puestos }),
+  }))
 
-    await localizarYAbrirBusqueda(page)
-    await comoLlegarEnSheet(page).click()
-    await expect(calculandoEnSheet(page)).toBeVisible({ timeout: 4000 })
+  await page.route('**/api/incidencias**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ incidencias: [] }),
+  }))
+
+  await page.route('**/api/inventario/puesto/**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ inventario: [] }),
+  }))
+
+  await page.route('**/route/v1/**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(rutaOsrm),
+  }))
+}
+
+async function abrirBusqueda(page: Page) {
+  await page.goto('/ciudadano')
+  await page.getByRole('button', { name: /Buscar producto Encuentra/i }).click()
+}
+
+test.describe('Panel de busqueda de productos', () => {
+  test.beforeEach(async ({ page }) => {
+    await prepararCiudadano(page)
+    await abrirBusqueda(page)
   })
 
-  test('aparece el botón "Cancelar búsqueda de ruta" durante el cálculo', async ({ page }) => {
-    await page.route('**/router.project-osrm.org/**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 5000))
-      await route.continue()
-    })
-
-    await localizarYAbrirBusqueda(page)
-    await comoLlegarEnSheet(page).click()
-    await expect(cancelarEnSheet(page)).toBeVisible({ timeout: 4000 })
+  test('abre el selector de productos', async ({ page }) => {
+    await expect(page.getByText('Recursos disponibles')).toBeVisible()
+    await expect(page.getByText('Buscar productos')).toBeVisible()
+    await expect(page.getByPlaceholder('Buscar producto o categoria...')).toBeVisible()
   })
 
-  test('cancelar la búsqueda oculta el indicador de carga', async ({ page }) => {
-    await page.route('**/router.project-osrm.org/**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 15000))
-      await route.continue()
-    })
+  test('permite buscar y anadir productos a la lista', async ({ page }) => {
+    const input = page.getByPlaceholder('Buscar producto o categoria...')
+    await input.click()
+    await input.fill('agua')
+    await page.getByRole('button', { name: /Agua embotellada/i }).first().click()
 
-    await localizarYAbrirBusqueda(page)
-    await comoLlegarEnSheet(page).click()
-    await expect(calculandoEnSheet(page)).toBeVisible({ timeout: 4000 })
-    await cancelarEnSheet(page).click()
-    await expect(calculandoEnSheet(page)).not.toBeVisible()
+    await expect(page.getByText(/Tu lista \(1\)/i)).toBeVisible()
+    await expect(page.getByText('Agua embotellada').last()).toBeVisible()
+    await expect(page.getByText('Ver rutas disponibles')).toBeVisible()
+  })
+
+  test('cerrar el panel vuelve al dashboard', async ({ page }) => {
+    await page.getByRole('button', { name: 'Volver' }).click()
+
+    await expect(page.getByRole('button', { name: /Ver mapa Consulta puestos/i })).toBeVisible()
+  })
+})
+
+test.describe('Rutas de productos', () => {
+  test('calcula ruta en coche y permite cambiar a pie', async ({ page }) => {
+    await prepararCiudadano(page, true)
+    await abrirBusqueda(page)
+
+    await page.getByText('Agua embotellada').first().click()
+    await page.getByText('Ver rutas disponibles').click()
+
+    await expect(page.getByText('Planificacion de ruta')).toBeVisible()
+    await expect(page.getByRole('button', { name: /En coche/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /A pie/i })).toBeVisible()
+    await expect(page.getByText(/1\.5 km/)).toBeVisible()
+
+    await page.getByRole('button', { name: /A pie/i }).click()
+    await expect(page.getByText(/Calculando ruta a pie|1\.5 km/)).toBeVisible()
+  })
+
+  test('inicia navegacion con indicaciones paso a paso', async ({ page }) => {
+    await prepararCiudadano(page, true)
+    await abrirBusqueda(page)
+
+    await page.getByText('Agua embotellada').first().click()
+    await page.getByText('Ver rutas disponibles').click()
+    await page.getByRole('button', { name: /Iniciar navegaci.n/i }).click()
+
+    await expect(page.getByText(/Empieza por Calle Mayor|Has llegado a tu destino/).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Finalizar/i })).toBeVisible()
   })
 })

@@ -1,102 +1,103 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
-// REQUISITO: frontend corriendo en http://localhost:5173
-// Arrancar con: cd frontend && npm run dev
+const puestos = [
+  {
+    id: '1',
+    nombre: 'CEIP La Paz',
+    direccion: 'Calle Mayor 12',
+    latitud: 39.4254,
+    longitud: -0.4178,
+    necesidades: 3,
+  },
+  {
+    id: '2',
+    nombre: 'Pabellon Municipal Benetusser',
+    direccion: 'Avenida del Polideportivo 4',
+    latitud: 39.4212,
+    longitud: -0.3975,
+    necesidades: 1,
+  },
+]
 
-test.describe('Seleccion de rol', () => {
-  test('muestra las tarjetas de rol disponibles al abrir la app', async ({ page }) => {
-    await page.goto('/')
-    await expect(page.getByText('Ciudadano')).toBeVisible()
-    await expect(page.getByText('Voluntario')).toBeVisible()
-    await expect(page.getByText('Puesto de Emergencia')).toBeVisible()
-    await expect(page.getByText('Coordinador')).not.toBeVisible()
+async function prepararCiudadano(page: Page) {
+  await page.context().grantPermissions(['geolocation'])
+  await page.context().setGeolocation({ latitude: 39.4254, longitude: -0.4178 })
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem('catlogistica-auth', JSON.stringify({
+      state: {
+        user: {
+          id: 'user-e2e',
+          email: 'ciudadano@example.com',
+          nombre: 'Maria',
+          apellidos: 'Garcia',
+          roles: ['CIUDADANO'],
+        },
+        accessToken: 'e2e-token',
+        selectedRole: 'ciudadano',
+        isAuthenticated: true,
+        puestoId: null,
+      },
+      version: 0,
+    }))
   })
 
-  test('redirige a login al pulsar Ciudadano sin sesion', async ({ page }) => {
+  await page.route('**/api/puestos', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ puestos }),
+  }))
+
+  await page.route('**/api/incidencias**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ incidencias: [] }),
+  }))
+
+  await page.route('**/api/inventario/puesto/**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ inventario: [] }),
+  }))
+}
+
+test.describe('Acceso ciudadano', () => {
+  test('sin sesion la raiz redirige a login', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: /Acceder como Ciudadano/i }).click()
-    await expect(page).toHaveURL(/\/auth\/login.*role=ciudadano/)
+    await expect(page.getByRole('heading', { name: /iniciar sesion/i })).toBeVisible()
   })
 
-  test('redirige a login al pulsar Voluntario sin sesion', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /Acceder como Voluntario/i }).click()
-    await expect(page).toHaveURL(/\/auth\/login.*role=voluntario/)
-  })
-
-  test('abre el modal informativo del rol Ciudadano', async ({ page }) => {
-    await page.goto('/')
-    await page.getByRole('button', { name: /informaci.n sobre el rol Ciudadano/i }).click()
-    await expect(page.getByRole('dialog', { name: 'Ciudadano' })).toBeVisible()
-    await expect(page.getByText(/persona afectada por la emergencia/i)).toBeVisible()
-  })
-})
-
-test.describe('Dashboard ciudadano', () => {
-  test.beforeEach(async ({ page }) => {
+  test('con sesion muestra el dashboard ciudadano', async ({ page }) => {
+    await prepararCiudadano(page)
     await page.goto('/ciudadano')
+
+    await expect(page.getByText('Acceso ciudadano')).toBeVisible()
+    await expect(page.getByText('¿Qué necesitas hacer?')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Ver mapa/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Buscar producto/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Reportar incidencia/i })).toBeVisible()
   })
 
-  test('muestra el banner de catastrofe activa', async ({ page }) => {
-    await expect(page.getByText(/cat.strofe activa/i)).toBeVisible()
-  })
-
-  test('muestra el mapa (contenedor Leaflet)', async ({ page }) => {
-    const map = page.locator('.leaflet-container')
-    await expect(map).toBeVisible()
-  })
-
-  test('muestra la lista de puestos de emergencia', async ({ page }) => {
-    await expect(page.getByText('Puestos de emergencia')).toBeVisible()
-    const puestos = page.locator('text=CEIP La Paz')
-    await expect(puestos).toBeVisible()
-  })
-
-  test('muestra los botones de accion rapida', async ({ page }) => {
-    await expect(page.getByText('Reportar calle')).toBeVisible()
-    await expect(page.getByText('Buscar producto')).toBeVisible()
-  })
-})
-
-test.describe('Inventario de puesto', () => {
-  test.beforeEach(async ({ page }) => {
+  test('la accion Ver mapa muestra el mapa ciudadano', async ({ page }) => {
+    await prepararCiudadano(page)
     await page.goto('/ciudadano')
-  })
 
-  test('al pulsar un puesto aparecen los botones Ver inventario y Como llegar', async ({ page }) => {
-    await page.getByText('CEIP La Paz').click()
-    await expect(page.getByText('Ver inventario')).toBeVisible()
-    await expect(page.getByText(/C.mo llegar/)).toBeVisible()
-  })
-
-  test('al pulsar Ver inventario se abre el panel con productos disponibles', async ({ page }) => {
-    await page.getByText('CEIP La Paz').click()
-    await page.getByText('Ver inventario').click()
-    await expect(page.getByText('Disponible')).toBeVisible()
-    await expect(page.getByText('Agua embotellada')).toBeVisible()
-  })
-
-  test('el panel de inventario muestra la seccion Necesitamos', async ({ page }) => {
-    await page.getByText('CEIP La Paz').click()
-    await page.getByText('Ver inventario').click()
-    await expect(page.getByText('Necesitamos')).toBeVisible()
-  })
-
-  test('el panel de inventario se cierra con el boton cerrar', async ({ page }) => {
-    await page.getByText('CEIP La Paz').click()
-    await page.getByText('Ver inventario').click()
-    await page.getByRole('button', { name: /cerrar/i }).click()
-    await expect(page.getByText('Disponible')).not.toBeVisible()
+    await page.getByRole('button', { name: /Ver mapa/i }).click()
+    await expect(page.locator('.leaflet-container')).toBeVisible()
   })
 })
 
-test.describe('Reporte de incidencia', () => {
+test.describe('Reporte de incidencias', () => {
   test.beforeEach(async ({ page }) => {
+    await prepararCiudadano(page)
     await page.goto('/ciudadano')
   })
 
   test('al pulsar Reportar calle se muestra el formulario de reporte', async ({ page }) => {
-    await page.getByText('Reportar calle').click()
-    await expect(page.getByText(/reportar|incidencia|calle/i).nth(1)).toBeVisible()
+    await page.getByRole('button', { name: /Reportar incidencia/i }).click()
+
+    await expect(page.getByText('Reportar calle cortada')).toBeVisible()
+    await expect(page.getByText('Seleccionar ubicación')).toBeVisible()
+    await expect(page.getByRole('button', { name: /Usar mi ubicaci.n actual/i })).toBeVisible()
   })
 })

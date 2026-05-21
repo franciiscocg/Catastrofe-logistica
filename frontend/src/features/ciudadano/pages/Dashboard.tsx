@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
@@ -15,10 +15,22 @@ import {
   getInventarioNeto,
   getProductosDisponibles as _getProductosDisponibles,
   getProductoOptions as _getProductoOptions,
+  getProductosRecomendados as _getProductosRecomendados,
+  calcularOpcionesRutaProductos,
+  type OpcionRutaProductos,
 } from '@/utils/productos'
 import { apiClient } from '@/lib/api/client'
 import { useSyncStore } from '@/store/sync.store'
-import { fetchRutaEvitandoIncidencias as fetchRutaSegura } from '@/utils/routing'
+import { fetchRutaEvitandoIncidencias as fetchRutaSegura, fetchRutaMultiParada, fetchRutaConPasos, type ModoTransporte } from '@/utils/routing'
+import {
+  parsearStepsOsrm,
+  formatearDistanciaNav,
+  calcularBearing,
+  distanciaAlStep,
+  ROTACION_ICONO,
+  type StepNavegacion,
+  type DireccionIcono,
+} from '@/utils/navegacion'
 
 // PUESTOS_BASE ya no se usa — los puestos vienen de la API (/api/puestos)
 
@@ -142,6 +154,8 @@ type ProductoOption = {
   unidad: string
   total: number
 }
+type RadioBusquedaProductos = 2 | 5 | 10 | 'todos'
+type OrdenProductos = 'relevancia' | 'cantidad' | 'nombre'
 
 type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
 type SolicitudCiudadanoQrItem = {
@@ -522,560 +536,393 @@ function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[]
   return _getProductoOptions(disponibles)
 }
 
-function createSolicitudCiudadanoPayload(
-  puesto: PuestoMarker,
-  productos: SolicitudCiudadanoQrItem[],
-  existingRequestId?: string,
-) {
-  const requestId = existingRequestId ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
-
-  const payload = JSON.stringify({
-    t: 'SC',
-    v: 1,
-    r: requestId,
-    p: puesto.id,
-    pn: puesto.nombre,
-    i: productos.map((producto) => ({
-      n: producto.nombre,
-      c: producto.categoria,
-      q: producto.cantidad,
-      u: producto.unidad,
-    })),
-    g: Date.now(),
-  })
-
-  return { requestId, payload }
-}
-
-function readSolicitudCiudadanoEnCurso() {
-  if (typeof window === 'undefined') return null
-
-  try {
-    const raw = window.localStorage.getItem(SOLICITUD_CIUDADANO_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as SolicitudCiudadanoEnCurso
-    if (!parsed.requestId || !parsed.puestoId || !parsed.cantidades) return null
-    return parsed
-  } catch {
-    return null
+function getNivelDisponibilidad(total: number) {
+  if (total >= 100) {
+    return {
+      label: 'Alta disponibilidad',
+      className: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    }
+  }
+  if (total >= 25) {
+    return {
+      label: 'Stock medio',
+      className: 'bg-blue-50 text-blue-700 ring-blue-100',
+    }
+  }
+  return {
+    label: 'Quedan pocas unidades',
+    className: 'bg-amber-50 text-amber-700 ring-amber-100',
   }
 }
 
-function saveSolicitudCiudadanoEnCurso(solicitud: SolicitudCiudadanoEnCurso | null) {
-  if (typeof window === 'undefined') return
-
-  if (!solicitud) {
-    window.localStorage.removeItem(SOLICITUD_CIUDADANO_STORAGE_KEY)
-    return
-  }
-
-  window.localStorage.setItem(SOLICITUD_CIUDADANO_STORAGE_KEY, JSON.stringify(solicitud))
-}
-
-function BuscarProductoSheet({
-  producto,
+function SelectorProductosSheet({
+  productosSeleccionados,
+  productosRecomendados,
+  productoOptions,
   textoBusqueda,
-  productos,
-  resultados,
-  selectedPuesto,
-  inventarioPorPuesto,
+  radioBusqueda,
   userPosition,
-  routeLoading,
-  routeError,
   onTextoBusquedaChange,
-  onPreviewPuesto,
-  onComoLlegar,
-  onCancelRuta,
-  onBackToResults,
+  onAgregarProducto,
+  onQuitarProducto,
+  onLimpiarProductos,
+  onRadioBusquedaChange,
+  onVerRutas,
   onClose,
 }: {
-  producto: string
+  productosSeleccionados: string[]
+  productosRecomendados: ProductoOption[]
+  productoOptions: ProductoOption[]
   textoBusqueda: string
-  productos: ProductoOption[]
-  resultados: ProductoDisponible[]
-  selectedPuesto: PuestoMarker | null
-  inventarioPorPuesto: InventarioPorPuesto
+  radioBusqueda: RadioBusquedaProductos
   userPosition: [number, number] | null
-  routeLoading: boolean
-  routeError: string | null
   onTextoBusquedaChange: (texto: string) => void
-  onPreviewPuesto: (puestoId: string) => void
-  onComoLlegar: (puestoId: string) => void
-  onCancelRuta: () => void
-  onBackToResults: () => void
+  onAgregarProducto: (nombre: string) => void
+  onQuitarProducto: (nombre: string) => void
+  onLimpiarProductos: () => void
+  onRadioBusquedaChange: (radio: RadioBusquedaProductos) => void
+  onVerRutas: () => void
   onClose: () => void
 }) {
-  const recomendado = resultados[0]
   const [inputFocused, setInputFocused] = useState(false)
-  const [solicitudEnCurso, setSolicitudEnCurso] = useState<SolicitudCiudadanoEnCurso | null>(() =>
-    readSolicitudCiudadanoEnCurso(),
-  )
-  const [cantidades, setCantidades] = useState<Record<string, string>>(() =>
-    readSolicitudCiudadanoEnCurso()?.cantidades ?? {},
-  )
-  const [qrSolicitud, setQrSolicitud] = useState<QrSolicitudState | null>(() => {
-    const stored = readSolicitudCiudadanoEnCurso()
-    return stored?.payload
-      ? {
-          requestId: stored.requestId,
-          payload: stored.payload,
-          estado: stored.estado === 'COMPLETADA' ? 'COMPLETADA' : 'PENDIENTE',
-        }
-      : null
+  const [categoriaActiva, setCategoriaActiva] = useState<string>('Todas')
+  const [ordenProductos, setOrdenProductos] = useState<OrdenProductos>('relevancia')
+
+  const textoBusquedaNorm = textoBusqueda.trim().toLocaleLowerCase('es')
+  const sugerenciasBase = textoBusquedaNorm
+    ? productoOptions.filter((o) =>
+        o.nombre.toLocaleLowerCase('es').includes(textoBusquedaNorm) ||
+        o.categoria.toLocaleLowerCase('es').includes(textoBusquedaNorm),
+      )
+    : productoOptions
+  const sugerenciasFiltradas = categoriaActiva === 'Todas'
+    ? sugerenciasBase
+    : sugerenciasBase.filter((o) => o.categoria === categoriaActiva)
+  const recomendadosSet = new Set(productosRecomendados.map((p) => p.nombre))
+  const sugerencias = [...sugerenciasFiltradas].sort((a, b) => {
+    if (ordenProductos === 'cantidad') return b.total - a.total || a.nombre.localeCompare(b.nombre, 'es')
+    if (ordenProductos === 'nombre') return a.nombre.localeCompare(b.nombre, 'es')
+    const scoreA = recomendadosSet.has(a.nombre) ? 1 : 0
+    const scoreB = recomendadosSet.has(b.nombre) ? 1 : 0
+    return scoreB - scoreA || b.total - a.total || a.nombre.localeCompare(b.nombre, 'es')
   })
-  const inventarioSeleccionado = selectedPuesto
-    ? inventarioPorPuesto[selectedPuesto.id] ?? { disponible: [], necesario: [] }
-    : null
-  const showSugerencias = inputFocused
-  const hasTextoBusqueda = textoBusqueda.trim().length > 0
-  const productosSolicitud = selectedPuesto && inventarioSeleccionado
-    ? inventarioSeleccionado.disponible
-        .map((item) => {
-          const cantidad = Number(cantidades[item.nombre] ?? 0)
-          return {
-            nombre: item.nombre,
-            categoria: item.categoria,
-            cantidad: Math.min(Math.max(cantidad, 0), item.cantidad),
-            unidad: item.unidad,
-          }
-        })
-        .filter((item) => item.cantidad > 0)
-    : []
-
-  useEffect(() => {
-    if (!solicitudEnCurso || !selectedPuesto || solicitudEnCurso.puestoId !== selectedPuesto.id) return
-    setCantidades(solicitudEnCurso.cantidades)
-    if (solicitudEnCurso.payload) {
-      setQrSolicitud({
-        requestId: solicitudEnCurso.requestId,
-        payload: solicitudEnCurso.payload,
-        estado: solicitudEnCurso.estado === 'COMPLETADA' ? 'COMPLETADA' : 'PENDIENTE',
-      })
-    }
-  }, [selectedPuesto?.id, solicitudEnCurso])
-
-  const handleCantidadSolicitud = (item: ItemInventario, value: string) => {
-    if (!selectedPuesto || !inventarioSeleccionado) return
-    const cantidad = value === '' ? '' : String(Math.min(Math.max(Number(value), 0), item.cantidad))
-    const nextCantidades = { ...cantidades, [item.nombre]: cantidad }
-    const nextProductos = inventarioSeleccionado.disponible
-      .map((producto) => {
-        const nextCantidad = Number(nextCantidades[producto.nombre] ?? 0)
-        return {
-          nombre: producto.nombre,
-          categoria: producto.categoria,
-          cantidad: Math.min(Math.max(nextCantidad, 0), producto.cantidad),
-          unidad: producto.unidad,
-        }
-      })
-      .filter((producto) => producto.cantidad > 0)
-    const requestId = solicitudEnCurso?.puestoId === selectedPuesto.id
-      ? solicitudEnCurso.requestId
-      : createSolicitudCiudadanoPayload(selectedPuesto, nextProductos.length > 0 ? nextProductos : [{
-          nombre: item.nombre,
-          categoria: item.categoria,
-          cantidad: Math.max(Number(cantidad), 1),
-          unidad: item.unidad,
-        }]).requestId
-
-    setCantidades(nextCantidades)
-    setQrSolicitud(null)
-    const nextSolicitud = nextProductos.length > 0
-      ? {
-          requestId,
-          puestoId: selectedPuesto.id,
-          puestoNombre: selectedPuesto.nombre,
-          puestoDireccion: selectedPuesto.direccion,
-          cantidades: nextCantidades,
-          productos: nextProductos,
-          estado: 'BORRADOR' as const,
-          updatedAt: Date.now(),
-        }
-      : null
-    setSolicitudEnCurso(nextSolicitud)
-    saveSolicitudCiudadanoEnCurso(nextSolicitud)
-  }
-
-  const handleGenerarQrSolicitud = () => {
-    if (!selectedPuesto || productosSolicitud.length === 0) return
-    const solicitud = createSolicitudCiudadanoPayload(
-      selectedPuesto,
-      productosSolicitud,
-      solicitudEnCurso?.puestoId === selectedPuesto.id ? solicitudEnCurso.requestId : undefined,
-    )
-    const nextSolicitud = {
-      requestId: solicitud.requestId,
-      puestoId: selectedPuesto.id,
-      puestoNombre: selectedPuesto.nombre,
-      puestoDireccion: selectedPuesto.direccion,
-      cantidades,
-      productos: productosSolicitud,
-      payload: solicitud.payload,
-      estado: 'PENDIENTE' as const,
-      updatedAt: Date.now(),
-    }
-    setQrSolicitud({
-      ...solicitud,
-      estado: 'PENDIENTE',
-    })
-    setSolicitudEnCurso(nextSolicitud)
-    saveSolicitudCiudadanoEnCurso(nextSolicitud)
-  }
-
-  const handleCancelarSolicitudEnCurso = () => {
-    setCantidades({})
-    setQrSolicitud(null)
-    setSolicitudEnCurso(null)
-    saveSolicitudCiudadanoEnCurso(null)
-  }
-
-  useEffect(() => {
-    if (!qrSolicitud || qrSolicitud.estado === 'COMPLETADA') return
-
-    let cancelled = false
-    const checkEstadoSolicitud = async () => {
-      try {
-        const { data } = await apiClient.get<{
-          estado: 'PENDIENTE' | 'COMPLETADA'
-          completedAt?: string
-        }>(`/api/inventario/qr-solicitudes/${qrSolicitud.requestId}`)
-
-        if (cancelled) return
-        setQrSolicitud((current) => {
-          if (!current || current.requestId !== qrSolicitud.requestId) return current
-          return {
-            ...current,
-            estado: data.estado,
-            completedAt: data.completedAt,
-            error: undefined,
-          }
-        })
-        if (data.estado === 'COMPLETADA') {
-          setSolicitudEnCurso(null)
-          saveSolicitudCiudadanoEnCurso(null)
-        }
-      } catch {
-        if (cancelled) return
-        setQrSolicitud((current) => {
-          if (!current || current.requestId !== qrSolicitud.requestId) return current
-          return {
-            ...current,
-            error: 'No se pudo comprobar todavia el estado de la solicitud.',
-          }
-        })
-      }
-    }
-
-    void checkEstadoSolicitud()
-    const intervalId = window.setInterval(() => void checkEstadoSolicitud(), 5000)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [qrSolicitud?.requestId, qrSolicitud?.estado])
+  const sugerenciasVisibles = sugerencias.slice(0, 8)
+  const categoriasDisponibles = Array.from(new Set(productoOptions.map((o) => o.categoria))).slice(0, 7)
+  const productosEnCatalogo = productoOptions.length
+  const unidadesTotales = productoOptions.reduce((acc, item) => acc + item.total, 0)
+  const puedeVerRutas = productosSeleccionados.length > 0
+  const radios: Array<{ value: RadioBusquedaProductos; label: string }> = [
+    { value: 2, label: '2 km' },
+    { value: 5, label: '5 km' },
+    { value: 10, label: '10 km' },
+    { value: 'todos', label: 'Todos' },
+  ]
+  const ordenes: Array<{ value: OrdenProductos; label: string }> = [
+    { value: 'relevancia', label: 'Relevancia' },
+    { value: 'cantidad', label: 'Mas cantidad' },
+    { value: 'nombre', label: 'A-Z' },
+  ]
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-white">
-      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+    <div className="flex-1 min-h-0 flex flex-col bg-slate-50">
+      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center justify-between bg-white">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Buscar producto</p>
-          <p className="font-semibold text-gray-900">Disponibilidad por puesto</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Busqueda inteligente</p>
+          <p className="font-semibold text-gray-900">Buscar productos</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50"
+          aria-label="Cerrar busqueda"
+        >
+          x
+        </button>
       </div>
 
-      <div className="overflow-y-auto flex-1 px-4 pb-6 pt-4 space-y-4 bg-slate-50">
-        <div>
-          <label htmlFor="texto-producto-busqueda" className="block text-sm font-medium text-gray-700 mb-1">
-            Producto
-          </label>
-          <div>
+      <div className="mx-auto w-full max-w-5xl overflow-y-auto flex-1 px-4 pb-5 pt-4 space-y-4">
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-950">Que necesitas recoger?</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Selecciona uno o varios productos y calcularemos la mejor combinacion de puestos.</p>
+            </div>
+            <div className="rounded-xl bg-slate-900 px-2.5 py-1.5 text-right text-white">
+              <p className="text-sm font-semibold leading-none">{productosSeleccionados.length}</p>
+              <p className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-300">lista</p>
+            </div>
+          </div>
+
+          <div className="relative mb-3">
+            <label className="sr-only">Buscar producto o categoria</label>
             <input
-              id="texto-producto-busqueda"
               type="search"
               value={textoBusqueda}
               onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              onChange={(e) => {
-                onTextoBusquedaChange(e.target.value)
-                onBackToResults()
-              }}
-              className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
-              placeholder="Escribe o elige un producto"
+              onBlur={() => setTimeout(() => setInputFocused(false), 150)}
+              onChange={(e) => onTextoBusquedaChange(e.target.value)}
+              placeholder="Buscar agua, mantas, medicamentos..."
               autoComplete="off"
+              className="h-12 w-full rounded-xl border border-gray-300 bg-white px-4 pr-24 text-sm text-gray-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
             />
-
-            {showSugerencias && productos.length > 0 && (
-              <div className="mt-2 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-                {productos.map((item) => (
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+              {sugerencias.length} items
+            </span>
+            {inputFocused && sugerencias.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
+                {sugerenciasVisibles.map((item) => (
                   <button
                     key={item.nombre}
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      onTextoBusquedaChange(item.nombre)
-                      onBackToResults()
+                      if (!productosSeleccionados.includes(item.nombre)) onAgregarProducto(item.nombre)
                       setInputFocused(false)
                     }}
-                    className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
-                      item.nombre === producto ? 'bg-blue-50 text-blue-800' : 'text-gray-800'
+                    disabled={productosSeleccionados.includes(item.nombre)}
+                    className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm transition-colors ${
+                      productosSeleccionados.includes(item.nombre)
+                        ? 'bg-gray-50 text-gray-400 cursor-default'
+                        : 'hover:bg-slate-50 text-gray-800'
                     }`}
                   >
-                    <span className="font-medium">{item.nombre}</span>
-                    <span className="ml-2 text-xs text-gray-500">
-                      {item.total} {item.unidad}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
+                        {item.categoria.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{item.nombre}</span>
+                        <span className="block truncate text-xs text-gray-400">{item.categoria}</span>
+                      </span>
                     </span>
+                    {productosSeleccionados.includes(item.nombre)
+                      ? <span className="text-xs text-emerald-700 font-medium">Anadido</span>
+                      : <span className="ml-3 flex-shrink-0 text-xs text-gray-400">{item.total} {item.unidad}</span>
+                    }
                   </button>
                 ))}
+                {sugerencias.length > sugerenciasVisibles.length && (
+                  <p className="border-t border-gray-100 px-3.5 py-2 text-xs text-gray-500">
+                    Afina la busqueda para ver menos resultados.
+                  </p>
+                )}
               </div>
             )}
           </div>
-          {productos.length === 0 && hasTextoBusqueda && (
-            <p className="text-xs text-gray-500 mt-1">No hay productos que coincidan con la busqueda.</p>
-          )}
-          {productos.length > 0 && producto && (
-            <p className="text-xs text-gray-500 mt-1">
-              Seleccionado: {producto}
-            </p>
-          )}
-          {!producto && (
-            <p className="text-xs text-gray-500 mt-1">Selecciona un producto para ver los puestos con stock.</p>
-          )}
-        </div>
 
-        {!userPosition && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Comparte tu ubicacion para que la recomendacion use el puesto mas cercano.
-          </p>
-        )}
-
-        {selectedPuesto && inventarioSeleccionado ? (
-          <section className="space-y-4">
-            <button
-              type="button"
-              onClick={onBackToResults}
-              className="text-xs font-medium text-blue-700 hover:text-blue-800"
-            >
-              Volver a puestos
-            </button>
-
-            <div className="border-2 border-blue-400 bg-blue-50 rounded-xl p-3.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-900 text-sm">{selectedPuesto.nombre}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{selectedPuesto.direccion}</p>
-                </div>
-                {selectedPuesto.distanciaKm !== undefined && (
-                  <span className="text-xs font-medium text-blue-700 flex-shrink-0">{selectedPuesto.distanciaKm.toFixed(1)} km</span>
-                )}
-              </div>
-              <div className="mt-3">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  fullWidth
-                  loading={routeLoading}
-                  onClick={() => onComoLlegar(selectedPuesto.id)}
-                >
-                  🚗 Cómo llegar
-                </Button>
-                {routeLoading && (
-                  <div className="mt-2 text-xs text-blue-800 bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="animate-spin h-3.5 w-3.5 border-2 border-blue-700 border-t-transparent rounded-full flex-shrink-0" />
-                      <span>Calculando ruta segura...</span>
-                    </div>
+          {productosRecomendados.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Accesos rapidos</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {productosRecomendados.map((p) => {
+                  const selected = productosSeleccionados.includes(p.nombre)
+                  return (
                     <button
+                      key={p.nombre}
                       type="button"
-                      onClick={onCancelRuta}
-                      className="w-full rounded-md border border-blue-300 bg-white/70 px-2 py-1 font-medium text-blue-800 hover:bg-white"
+                      onClick={() => { if (!selected) onAgregarProducto(p.nombre) }}
+                      disabled={selected}
+                      className={`flex flex-shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                        selected
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
                     >
-                      Cancelar busqueda de ruta
+                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-700">
+                        {p.categoria.slice(0, 1).toUpperCase()}
+                      </span>
+                      {p.nombre}
                     </button>
-                  </div>
-                )}
-                {routeError && (
-                  <p className="mt-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    {routeError}
-                  </p>
-                )}
+                  )
+                })}
               </div>
             </div>
+          )}
 
-            <section>
-              <h3 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                Productos disponibles ({inventarioSeleccionado.disponible.length})
-              </h3>
-              {inventarioSeleccionado.disponible.length === 0 ? (
-                <p className="text-sm text-gray-400 italic">Sin productos disponibles</p>
-              ) : (
-                <div className="space-y-1">
-                  {inventarioSeleccionado.disponible.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between gap-3 py-2 border-b border-gray-50">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-lg flex-shrink-0">{CATEGORIA_EMOJI[item.categoria] ?? '📦'}</span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{item.nombre}</p>
-                          <p className="text-xs text-gray-400">{item.categoria}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        <span className="text-xs font-semibold text-green-700">
-                          {item.cantidad} {item.unidad}
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          max={item.cantidad}
-                          step="1"
-                          value={cantidades[item.nombre] ?? ''}
-                          onChange={(e) => handleCantidadSolicitud(item, e.target.value)}
-                          className="w-20 rounded-lg border-gray-300 text-right text-sm focus:border-blue-500 focus:ring-blue-500"
-                          aria-label={`Cantidad solicitada de ${item.nombre}`}
-                          placeholder="0"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-xl border border-blue-200 bg-white p-3 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">Solicitud por QR</p>
-                  <p className="text-xs text-gray-500">
-                    Elige cantidades y enseña el QR en el puesto para retirar productos.
-                  </p>
-                </div>
-                <Badge variant={productosSolicitud.length > 0 ? 'info' : 'warning'}>
-                  {productosSolicitud.length} producto{productosSolicitud.length === 1 ? '' : 's'}
-                </Badge>
-              </div>
-              {solicitudEnCurso && solicitudEnCurso.puestoId === selectedPuesto.id && (
-                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">
-                        Solicitud en curso para {solicitudEnCurso.puestoNombre}
-                      </p>
-                      <p className="mt-1">
-                        {solicitudEnCurso.productos.map((item) => `${item.cantidad} ${item.unidad} de ${item.nombre}`).join(' · ')}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCancelarSolicitudEnCurso}
-                      className="flex-shrink-0 rounded-md border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-              <Button
-                size="sm"
-                variant="primary"
-                fullWidth
-                disabled={productosSolicitud.length === 0}
-                onClick={handleGenerarQrSolicitud}
-                className="mt-3"
-              >
-                Generar QR de solicitud
-              </Button>
-              {qrSolicitud && (
-                <div className={`mt-3 flex flex-col items-center rounded-lg border p-3 ${
-                  qrSolicitud.estado === 'COMPLETADA'
-                    ? 'border-green-200 bg-green-50'
-                    : 'border-blue-100 bg-blue-50'
-                }`}>
-                  <QRCodeSVG value={qrSolicitud.payload} size={280} level="M" includeMargin />
-                  <div className="mt-2 flex flex-col items-center gap-1 text-center">
-                    <Badge variant={qrSolicitud.estado === 'COMPLETADA' ? 'success' : 'info'}>
-                      {qrSolicitud.estado === 'COMPLETADA' ? 'Completado' : 'Pendiente de entrega'}
-                    </Badge>
-                    <p className={`text-xs font-medium ${
-                      qrSolicitud.estado === 'COMPLETADA' ? 'text-green-900' : 'text-blue-900'
-                    }`}>
-                      {qrSolicitud.estado === 'COMPLETADA'
-                        ? 'Solicitud cerrada por el puesto'
-                        : `QR listo para ${selectedPuesto.nombre}`}
-                    </p>
-                    {qrSolicitud.error && (
-                      <p className="text-xs text-amber-700">{qrSolicitud.error}</p>
-                    )}
-                  </div>
+          <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 md:grid-cols-2">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Ordenar por</p>
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-gray-200 bg-slate-50 p-1">
+                {ordenes.map((orden) => (
                   <button
+                    key={orden.value}
                     type="button"
-                    onClick={() => void navigator.clipboard?.writeText(qrSolicitud.payload)}
-                    className="mt-2 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                    onClick={() => setOrdenProductos(orden.value)}
+                    className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                      ordenProductos === orden.value
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-gray-500 hover:bg-white/70'
+                    }`}
                   >
-                    Copiar codigo
+                    {orden.label}
                   </button>
-                </div>
-              )}
-            </section>
-          </section>
-        ) : recomendado && (
-          <button
-            type="button"
-            onClick={() => onPreviewPuesto(recomendado.puesto.id)}
-            className="w-full text-left border-2 border-blue-400 bg-blue-50 rounded-xl p-3.5 transition-colors hover:bg-blue-100"
-          >
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Recomendado</span>
-              {recomendado.puesto.distanciaKm !== undefined && (
-                <span className="text-xs font-medium text-blue-700">{recomendado.puesto.distanciaKm.toFixed(1)} km</span>
-              )}
+                ))}
+              </div>
             </div>
-            <p className="font-semibold text-gray-900 text-sm">{recomendado.puesto.nombre}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{recomendado.puesto.direccion}</p>
-            <p className="text-sm text-blue-800 mt-2">
-              {CATEGORIA_EMOJI[recomendado.categoria] ?? '📦'} {recomendado.cantidad} {recomendado.unidad} disponibles
-            </p>
-          </button>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Radio de busqueda</p>
+              <div className="grid grid-cols-4 gap-1 rounded-xl border border-gray-200 bg-slate-50 p-1">
+                {radios.map((radio) => (
+                  <button
+                    key={String(radio.value)}
+                    type="button"
+                    onClick={() => onRadioBusquedaChange(radio.value)}
+                    className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
+                      radioBusqueda === radio.value
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-gray-500 hover:bg-white/70'
+                    }`}
+                  >
+                    {radio.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {categoriasDisponibles.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Filtrar categoria</p>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {['Todas', ...categoriasDisponibles].map((categoria) => (
+                  <button
+                    key={categoria}
+                    type="button"
+                    onClick={() => setCategoriaActiva(categoria)}
+                    className={`flex-shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                      categoriaActiva === categoria
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {categoria}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {productosSeleccionados.length > 0 && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-950">Lista de recogida</h3>
+                <p className="text-xs text-gray-500">{productosSeleccionados.length} producto{productosSeleccionados.length !== 1 ? 's' : ''} seleccionado{productosSeleccionados.length !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                  Planificable
+                </span>
+                <button
+                  type="button"
+                  onClick={onLimpiarProductos}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              {productosSeleccionados.map((nombre) => {
+                const option = productoOptions.find((o) => o.nombre === nombre)
+                const nivel = option ? getNivelDisponibilidad(option.total) : null
+                return (
+                  <div key={nombre} className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
+                        {(option?.categoria ?? nombre).slice(0, 1).toUpperCase()}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{nombre}</p>
+                        <p className="truncate text-xs text-gray-500">
+                          {option ? `${option.total} ${option.unidad} disponibles` : 'Producto seleccionado'}
+                        </p>
+                        {nivel && (
+                          <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${nivel.className}`}>
+                            {nivel.label}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onQuitarProducto(nombre)}
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      aria-label={`Quitar ${nombre}`}
+                    >
+                      x
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
         )}
 
-        {!selectedPuesto && (
-          <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Otros puestos con stock
-            </h3>
-            <div className="space-y-2">
-              {resultados.slice(1).map((item) => (
-                <button
-                  key={`${item.puesto.id}-${item.nombre}`}
-                  type="button"
-                  onClick={() => onPreviewPuesto(item.puesto.id)}
-                  className="w-full text-left border border-gray-200 bg-white rounded-xl p-3 transition-colors hover:border-blue-200 hover:bg-gray-50"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 text-sm truncate">{item.puesto.nombre}</p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{item.puesto.direccion}</p>
-                    </div>
-                    {item.puesto.distanciaKm !== undefined && (
-                      <span className="text-xs text-gray-400 flex-shrink-0">{item.puesto.distanciaKm.toFixed(1)} km</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    {item.cantidad} {item.unidad} disponibles
-                  </p>
-                </button>
+        {!userPosition && productosSeleccionados.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
+            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para ordenar resultados por cercania y calcular rutas reales.</p>
+          </div>
+        )}
+
+        {productosSeleccionados.length === 0 && productosRecomendados.length === 0 && (
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
+            <p className="text-sm font-semibold text-gray-900">No hay productos disponibles</p>
+            <p className="mt-1 text-xs text-gray-500">Cuando un puesto publique inventario, aparecera aqui.</p>
+          </div>
+        )}
+
+        {productoOptions.length > 0 && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-slate-50 px-2 py-3">
+                <p className="text-base font-semibold text-gray-950">{productosEnCatalogo}</p>
+                <p className="text-[11px] text-gray-500">productos</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-2 py-3">
+                <p className="text-base font-semibold text-gray-950">{categoriasDisponibles.length}</p>
+                <p className="text-[11px] text-gray-500">categorias</p>
+              </div>
+              <div className="rounded-xl bg-slate-50 px-2 py-3">
+                <p className="text-base font-semibold text-gray-950">{Math.round(unidadesTotales)}</p>
+                <p className="text-[11px] text-gray-500">unidades</p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {categoriasDisponibles.map((categoria) => (
+                <span key={categoria} className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+                  {categoria}
+                </span>
               ))}
             </div>
           </section>
         )}
       </div>
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+
+      <div className="mx-auto w-full max-w-5xl flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+        {puedeVerRutas && (
+          <p className="mb-2 text-center text-xs text-gray-500">
+            Radio: {radioBusqueda === 'todos' ? 'todos los puestos' : `${radioBusqueda} km`}
+            {!userPosition && ' · se afinara al activar ubicacion'}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onVerRutas}
+          disabled={!puedeVerRutas}
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none"
+        >
+          {puedeVerRutas
+            ? `Ver mejores opciones (${productosSeleccionados.length})`
+            : 'Selecciona productos para continuar'}
+        </button>
         <button
           type="button"
           onClick={onClose}
-          className="mx-auto flex min-w-40 items-center justify-center rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700"
+          className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
         >
           Volver
         </button>
@@ -1083,8 +930,257 @@ function BuscarProductoSheet({
     </div>
   )
 }
+function tiempoEstimadoMin(distanciaKm: number, modo: ModoTransporte): number {
+  // Road distance is ~1.3x straight-line; speed: driving 25 km/h urban, walking 4.5 km/h
+  const velocidad = modo === 'driving' ? 25 : 4.5
+  return Math.max(1, Math.round(distanciaKm * 1.3 / velocidad * 60))
+}
 
-type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar'
+function formatearTiempo(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`
+  const horas = Math.floor(minutos / 60)
+  const mins = minutos % 60
+  return mins > 0 ? `${horas}h ${mins} min` : `${horas}h`
+}
+
+function OpcionesRutaProductosPanel({
+  opciones,
+  opcionIdx,
+  productosSeleccionados,
+  modo,
+  loading,
+  navLoading,
+  error,
+  userPosition,
+  onSeleccionarOpcion,
+  onCambiarModo,
+  onIniciarNavegacion,
+  onVolver,
+}: {
+  opciones: OpcionRutaProductos<PuestoMarker>[]
+  opcionIdx: number
+  productosSeleccionados: string[]
+  modo: ModoTransporte
+  loading: boolean
+  navLoading: boolean
+  error: string | null
+  userPosition: [number, number] | null
+  onSeleccionarOpcion: (idx: number) => void
+  onCambiarModo: (modo: ModoTransporte) => void
+  onIniciarNavegacion: () => void
+  onVolver: () => void
+}) {
+  const opcionActual = opciones[opcionIdx]
+  const coberturaActual = opcionActual
+    ? `${opcionActual.productosEncontrados.length}/${productosSeleccionados.length}`
+    : `0/${productosSeleccionados.length}`
+  const etiquetaModo = modo === 'driving' ? 'Coche' : 'A pie'
+
+  return (
+    <div className="flex min-h-full flex-col bg-slate-50">
+      <div className="border-b border-gray-100 bg-white px-4 py-3">
+        <div className="mx-auto w-full max-w-5xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-400">Plan de recogida</p>
+            <p className="font-semibold text-gray-950">Mejores opciones</p>
+          </div>
+          <button
+            type="button"
+            onClick={onVolver}
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+          >
+            Editar lista
+          </button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl bg-slate-50 px-2 py-2">
+            <p className="text-sm font-semibold text-gray-950">{productosSeleccionados.length}</p>
+            <p className="text-[11px] text-gray-500">productos</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 px-2 py-2">
+            <p className="text-sm font-semibold text-gray-950">{opcionActual?.paradas.length ?? 0}</p>
+            <p className="text-[11px] text-gray-500">paradas</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 px-2 py-2">
+            <p className="text-sm font-semibold text-gray-950">{coberturaActual}</p>
+            <p className="text-[11px] text-gray-500">cubierto</p>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-5xl px-4 py-3 space-y-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              type="button"
+              onClick={() => onCambiarModo('driving')}
+              className={`h-10 rounded-xl text-sm font-semibold transition-colors ${
+                modo === 'driving'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-slate-50'
+              }`}
+            >
+              En coche
+            </button>
+            <button
+              type="button"
+              onClick={() => onCambiarModo('foot')}
+              className={`h-10 rounded-xl text-sm font-semibold transition-colors ${
+                modo === 'foot'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-slate-50'
+              }`}
+            >
+              A pie
+            </button>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+            <span className="h-4 w-4 flex-shrink-0 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            <span className="text-xs font-medium text-blue-800">Calculando ruta en modo {etiquetaModo.toLowerCase()}...</span>
+          </div>
+        )}
+
+        {error && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            {error}
+          </p>
+        )}
+
+        {!userPosition && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
+            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para mostrar la ruta exacta sobre el mapa.</p>
+          </div>
+        )}
+
+        {opciones.length === 0 && !loading && (
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
+            <p className="text-sm font-semibold text-gray-900">No hay opciones disponibles</p>
+            <p className="mt-1 text-xs text-gray-500">Prueba con menos productos o con otro recurso similar.</p>
+          </div>
+        )}
+
+        {opciones.map((opcion, idx) => {
+          const isSelected = idx === opcionIdx
+          const cubreTodo = opcion.productosNoEncontrados.length === 0
+          const totalParadas = opcion.paradas.length
+          const distanciaEstimada = opcion.paradas.reduce(
+            (acc, p) => acc + (p.puesto.distanciaKm ?? 0),
+            0,
+          )
+          const tiempoEstimado = distanciaEstimada > 0
+            ? tiempoEstimadoMin(distanciaEstimada, modo)
+            : null
+          const titulo = idx === 0
+            ? 'Opcion recomendada'
+            : opcion.tipo === 'multi'
+              ? 'Opcion completa'
+              : 'Alternativa cercana'
+
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => onSeleccionarOpcion(idx)}
+              className={`w-full rounded-2xl border p-3.5 text-left shadow-sm transition-colors ${
+                isSelected
+                  ? 'border-slate-900 bg-white ring-2 ring-slate-900/10'
+                  : 'border-gray-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-950">{titulo}</p>
+                    {isSelected && (
+                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        Seleccionada
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {totalParadas} parada{totalParadas !== 1 ? 's' : ''}
+                    {tiempoEstimado !== null ? ` · aprox. ${formatearTiempo(tiempoEstimado)}` : ''}
+                    {distanciaEstimada > 0 ? ` · ${distanciaEstimada.toFixed(1)} km estimados` : ''}
+                  </p>
+                </div>
+                {cubreTodo
+                  ? <span className="flex-shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">Completa</span>
+                  : <span className="flex-shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">Parcial</span>
+                }
+              </div>
+
+              <div className="mt-3 space-y-2.5">
+                {opcion.paradas.map((parada, pIdx) => (
+                  <div key={parada.puesto.id} className="rounded-xl border border-gray-100 bg-slate-50 px-3 py-2.5">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-white text-xs font-bold text-slate-700 ring-1 ring-gray-200">
+                        {pIdx + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">{parada.puesto.nombre}</p>
+                            <p className="mt-0.5 truncate text-xs text-gray-500">{parada.puesto.direccion}</p>
+                          </div>
+                          {parada.puesto.distanciaKm !== undefined && (
+                            <span className="flex-shrink-0 text-xs font-medium text-gray-500">{parada.puesto.distanciaKm.toFixed(1)} km</span>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {parada.productos.map((p) => (
+                            <span key={p} className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {opcion.productosNoEncontrados.length > 0 && (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  No disponible: {opcion.productosNoEncontrados.join(', ')}
+                </p>
+              )}
+            </button>
+          )
+        })}
+
+        {userPosition && opciones.length > 0 && (
+          <button
+            type="button"
+            onClick={onIniciarNavegacion}
+            disabled={loading || navLoading}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-slate-800 disabled:opacity-60"
+          >
+            {navLoading
+              ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Preparando guia...</>
+              : 'Iniciar navegacion'
+            }
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={onVolver}
+          className="flex h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Volver a la busqueda
+        </button>
+      </div>
+    </div>
+  )
+}
+type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar' | 'ruta-productos' | 'navegacion'
 type PanelReturnVista = 'inicio' | 'default'
 type EstadoVia = 'CORTADA' | 'TRANSITABLE'
 
@@ -1098,6 +1194,184 @@ type DuplicateIncidencia = {
 }
 
 const CATASTROFE_ID = import.meta.env.VITE_CATASTROFE_ID ?? ''
+
+// ── Arrow SVG used in the navigation compass ─────────────────────────────────
+function FlechaNavegacion({
+  icono,
+  rotacion,
+  grande = false,
+}: {
+  icono: DireccionIcono
+  rotacion: number
+  grande?: boolean
+}) {
+  const size = grande ? 80 : 56
+  if (icono === 'destino') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <circle cx="40" cy="40" r="28" fill="#16a34a" />
+        <text x="40" y="47" textAnchor="middle" fontSize="24" fill="white">★</text>
+      </svg>
+    )
+  }
+  if (icono === 'rotonda') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <circle cx="40" cy="40" r="28" stroke="#2563EB" strokeWidth="6" fill="none" />
+        <path d="M54 30 L62 38 L54 46" stroke="#2563EB" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    )
+  }
+  return (
+    <div style={{ transform: `rotate(${rotacion}deg)`, transition: 'transform 0.3s ease' }}>
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <path d="M40 8 L58 62 L40 50 L22 62 Z" fill="#2563EB" />
+      </svg>
+    </div>
+  )
+}
+
+function PanelNavegacionActiva({
+  steps,
+  stepIdx,
+  userPosition,
+  headingDispositivo,
+  modo,
+  vozActiva,
+  onToggleVoz,
+  onAvanzar,
+  onRetroceder,
+  onFinalizar,
+}: {
+  steps: StepNavegacion[]
+  stepIdx: number
+  userPosition: [number, number] | null
+  headingDispositivo: number | null
+  modo: ModoTransporte
+  vozActiva: boolean
+  onToggleVoz: () => void
+  onAvanzar: () => void
+  onRetroceder: () => void
+  onFinalizar: () => void
+}) {
+  const step     = steps[stepIdx]
+  const nextStep = steps[stepIdx + 1]
+  if (!step) return null
+
+  const esUltimo = stepIdx === steps.length - 1
+
+  const distanciaM = userPosition
+    ? Math.round(distanciaAlStep(userPosition[0], userPosition[1], step))
+    : null
+
+  const bearingAbsoluto = userPosition && !esUltimo
+    ? calcularBearing(userPosition[0], userPosition[1], step.lat, step.lng)
+    : null
+
+  const brujulaDisponible = headingDispositivo !== null && bearingAbsoluto !== null
+  const rotacion = brujulaDisponible
+    ? (bearingAbsoluto! - headingDispositivo! + 360) % 360
+    : ROTACION_ICONO[step.icono]
+
+  return (
+    <div className="bg-white rounded-t-2xl shadow-2xl border-t border-gray-200">
+      {/* Drag handle */}
+      <div className="flex justify-center pt-2.5 pb-1">
+        <div className="w-10 h-1 bg-gray-300 rounded-full" />
+      </div>
+
+      {/* Header: step counter + modo + voz + finalizar */}
+      <div className="flex items-center justify-between px-4 py-1.5 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-500">
+            {stepIdx + 1}/{steps.length}
+          </span>
+          <span className="text-xs text-gray-400">·</span>
+          <span className="text-xs text-gray-500">{modo === 'foot' ? '🚶 A pie' : '🚗 En coche'}</span>
+          {brujulaDisponible && (
+            <span className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-1.5 py-0.5">🧭</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onToggleVoz}
+            className={`rounded-full p-1.5 text-base transition-colors ${vozActiva ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-400'}`}
+            aria-label={vozActiva ? 'Silenciar voz' : 'Activar voz'}
+          >
+            {vozActiva ? '🔊' : '🔇'}
+          </button>
+          <button
+            type="button"
+            onClick={onFinalizar}
+            className="rounded-full px-2.5 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors"
+          >
+            Finalizar
+          </button>
+        </div>
+      </div>
+
+      {/* Main row: compass arrow + instruction + distance */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        {/* Direction indicator */}
+        <div className={`flex-shrink-0 flex items-center justify-center w-16 h-16 rounded-xl border-2 shadow-sm ${brujulaDisponible ? 'bg-slate-100 border-blue-200' : 'bg-blue-50 border-blue-200'}`}>
+          {brujulaDisponible ? (
+            <div className="relative flex items-center justify-center w-full h-full">
+              <span className="absolute top-1 text-[9px] font-bold text-slate-400">N</span>
+              <span className="absolute bottom-1 text-[9px] font-bold text-slate-400">S</span>
+              <span className="absolute left-1 text-[9px] font-bold text-slate-400">O</span>
+              <span className="absolute right-1 text-[9px] font-bold text-slate-400">E</span>
+              <FlechaNavegacion icono={step.icono} rotacion={rotacion} />
+            </div>
+          ) : (
+            <FlechaNavegacion icono={step.icono} rotacion={rotacion} />
+          )}
+        </div>
+
+        {/* Instruction text + distance */}
+        <div className="flex-1 min-w-0">
+          <p className="text-lg font-bold text-gray-900 leading-tight">{step.instruccion}</p>
+          {step.calle && step.tipo !== 'depart' && step.tipo !== 'arrive' && (
+            <p className="text-sm text-gray-500 mt-0.5 truncate">{step.calle}</p>
+          )}
+          {distanciaM !== null && !esUltimo && (
+            <p className="text-2xl font-extrabold text-blue-700 mt-1 tabular-nums leading-none">
+              {formatearDistanciaNav(distanciaM)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Next step */}
+      {nextStep && (
+        <div className="mx-4 mb-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 flex items-center gap-2">
+          <span className="text-xs text-gray-400 whitespace-nowrap">A continuación</span>
+          <span className="text-sm text-gray-600 flex-1 truncate">{nextStep.instruccion}</span>
+        </div>
+      )}
+
+      {/* Step controls */}
+      <div className="flex gap-2 px-4 pb-4">
+        <button
+          type="button"
+          onClick={onRetroceder}
+          disabled={stepIdx === 0}
+          className="flex-1 rounded-xl border border-gray-200 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+        >
+          ← Anterior
+        </button>
+        <button
+          type="button"
+          onClick={onAvanzar}
+          disabled={esUltimo}
+          className="flex-1 rounded-xl border border-blue-200 bg-blue-50 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-40 transition-colors"
+        >
+          Siguiente →
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function CiudadanoInicio({
   onVerMapa,
@@ -1195,17 +1469,28 @@ export default function CiudadanoDashboard() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const [pendingDuplicate, setPendingDuplicate] = useState<DuplicateIncidencia | null>(null)
   const [incidencias, setIncidencias] = useState<IncidenciaMarker[]>([])
-  const [incidenciasLoading, setIncidenciasLoading] = useState(false)
-  const [incidenciasError, setIncidenciasError] = useState<string | null>(null)
   const [comentarioIncidencia, setComentarioIncidencia] = useState<IncidenciaMarker | null>(null)
   const [comentarioEstado, setComentarioEstado] = useState<EstadoVia>('CORTADA')
   const [comentarioTexto, setComentarioTexto] = useState('')
   const [comentarioLoading, setComentarioLoading] = useState(false)
   const [comentarioError, setComentarioError] = useState<string | null>(null)
   const [historialComentariosIncidencia, setHistorialComentariosIncidencia] = useState<IncidenciaMarker | null>(null)
-  const [productoBusqueda, setProductoBusqueda] = useState('')
-  const [textoProductoBusqueda, setTextoProductoBusqueda] = useState('')
-  const [busquedaPuestoId, setBusquedaPuestoId] = useState<string | null>(null)
+  const [productosSeleccionados, setProductosSeleccionados] = useState<string[]>([])
+  const [textoBusquedaProducto, setTextoBusquedaProducto] = useState('')
+  const [radioBusquedaProductos, setRadioBusquedaProductos] = useState<RadioBusquedaProductos>('todos')
+  const [opcionesRutaProductos, setOpcionesRutaProductos] = useState<OpcionRutaProductos<PuestoMarker>[] | null>(null)
+  const [opcionRutaIdx, setOpcionRutaIdx] = useState(0)
+  const [modoTransporte, setModoTransporte] = useState<ModoTransporte>('driving')
+  const [rutaProductosPoints, setRutaProductosPoints] = useState<[number, number][] | null>(null)
+  const [rutaProductosInfo, setRutaProductosInfo] = useState<{ distanciaKm: number; duracionMin: number; incidenciasCercanas: number } | null>(null)
+  const [rutaProductosLoading, setRutaProductosLoading] = useState(false)
+  const [rutaProductosError, setRutaProductosError] = useState<string | null>(null)
+  const [stepsNavegacion, setStepsNavegacion] = useState<StepNavegacion[]>([])
+  const [stepActualIdx, setStepActualIdx] = useState(0)
+  const [navLoading, setNavLoading] = useState(false)
+  const [vozActiva, setVozActiva] = useState(true)
+  const [headingDispositivo, setHeadingDispositivo] = useState<number | null>(null)
+  const anunciosRef = useRef<Set<string>>(new Set())
   const [focusUserPositionKey, setFocusUserPositionKey] = useState(0)
   const [pendingUserPositionFocus, setPendingUserPositionFocus] = useState(false)
 
@@ -1287,23 +1572,6 @@ export default function CiudadanoDashboard() {
   useEffect(() => () => {
     routeAbortControllerRef.current?.abort()
     if (routeTimeoutRef.current !== null) window.clearTimeout(routeTimeoutRef.current)
-  }, [])
-
-  const refreshIncidencias = useCallback(async () => {
-    setIncidenciasLoading(true)
-    setIncidenciasError(null)
-    try {
-      const params = CATASTROFE_ID ? { catastrofeId: CATASTROFE_ID } : undefined
-      const { data } = await apiClient.get('/api/incidencias', { params })
-      setIncidencias((prev) => {
-        const pendientes = prev.filter((inc) => inc.pendingSync)
-        return [...pendientes, ...(data.incidencias ?? [])]
-      })
-    } catch {
-      setIncidenciasError('No se pudieron actualizar las incidencias. Se muestran las disponibles en este dispositivo.')
-    } finally {
-      setIncidenciasLoading(false)
-    }
   }, [])
 
   useEffect(() => {
@@ -1413,7 +1681,16 @@ export default function CiudadanoDashboard() {
     setRouteInfo(null)
     setRouteError(null)
     setSelectedId(null)
-    setBusquedaPuestoId(null)
+    setProductosSeleccionados([])
+    setTextoBusquedaProducto('')
+    setRadioBusquedaProductos('todos')
+    setOpcionesRutaProductos(null)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
+    setStepsNavegacion([])
+    setStepActualIdx(0)
+    setHeadingDispositivo(null)
+    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
     setComentarioIncidencia(null)
     setHistorialComentariosIncidencia(null)
     setIsPickingLocation(false)
@@ -1550,42 +1827,108 @@ export default function CiudadanoDashboard() {
   const abrirBusquedaProducto = () => {
     const solicitudGuardada = readSolicitudCiudadanoEnCurso()
     setPanelReturnVista(getCurrentPanelReturnVista())
-    setProductoBusqueda(solicitudGuardada?.productos[0]?.nombre ?? '')
-    setTextoProductoBusqueda(solicitudGuardada?.productos[0]?.nombre ?? '')
-    setBusquedaPuestoId(solicitudGuardada?.puestoId ?? null)
+    setProductosSeleccionados([])
+    setTextoBusquedaProducto('')
+    setRadioBusquedaProductos('todos')
+    setOpcionesRutaProductos(null)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
     setVista('buscar')
   }
 
-  const handleTextoProductoBusqueda = (texto: string) => {
-    setTextoProductoBusqueda(texto)
-    setBusquedaPuestoId(null)
+  const handleAgregarProducto = (nombre: string) => {
+    setProductosSeleccionados((prev) => (prev.includes(nombre) ? prev : [...prev, nombre]))
+    setTextoBusquedaProducto('')
+  }
 
-    const normalizado = texto.trim().toLocaleLowerCase('es')
-    if (!normalizado) {
-      setProductoBusqueda('')
-      return
+  const handleQuitarProducto = (nombre: string) => {
+    setProductosSeleccionados((prev) => prev.filter((p) => p !== nombre))
+  }
+
+  const handleLimpiarProductos = () => {
+    setProductosSeleccionados([])
+    setTextoBusquedaProducto('')
+    setOpcionesRutaProductos(null)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
+    setRutaProductosError(null)
+  }
+
+  const calcularRutaOpcion = async (opcion: OpcionRutaProductos<PuestoMarker>, idx: number, modo: ModoTransporte) => {
+    setOpcionRutaIdx(idx)
+    if (!currentUserPosition || opcion.paradas.length === 0) return
+    setRutaProductosLoading(true)
+    setRutaProductosError(null)
+    setRutaProductosPoints(null)
+    try {
+      const waypoints: [number, number][] = [
+        currentUserPosition,
+        ...opcion.paradas.map((p) => [p.puesto.latitud, p.puesto.longitud] as [number, number]),
+      ]
+      const resultado = await fetchRutaMultiParada(waypoints, incidencias, modo)
+      setRutaProductosPoints(resultado.points)
+      setRutaProductosInfo({ distanciaKm: resultado.distanciaKm, duracionMin: resultado.duracionMin, incidenciasCercanas: resultado.incidenciasCercanas })
+    } catch (e) {
+      setRutaProductosError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
+    } finally {
+      setRutaProductosLoading(false)
     }
-
-    const match = productoOptions.find((item) => (
-      item.nombre.toLocaleLowerCase('es') === normalizado
-    ))
-    setProductoBusqueda(match?.nombre ?? '')
   }
 
-  const handlePreviewPuestoBusqueda = (puestoId: string) => {
-    setSelectedId(puestoId)
-    setBusquedaPuestoId(puestoId)
-    setRoute(null)
-    setRouteInfo(null)
-    setRouteError(null)
+  const handleVerRutasProductos = () => {
+    const puestosEnRadio = currentUserPosition && radioBusquedaProductos !== 'todos'
+      ? puestos.filter((puesto) => puesto.distanciaKm === undefined || puesto.distanciaKm <= radioBusquedaProductos)
+      : puestos
+    const opciones = calcularOpcionesRutaProductos(productosSeleccionados, puestosEnRadio, inventarioPorPuesto)
+    setOpcionesRutaProductos(opciones)
+    setOpcionRutaIdx(0)
+    setRutaProductosPoints(null)
+    setRutaProductosInfo(null)
+    setVista('ruta-productos')
+    if (opciones.length > 0) void calcularRutaOpcion(opciones[0], 0, modoTransporte)
   }
 
-  const handleComoLlegarBusqueda = async (puestoId: string) => {
-    const puesto = puestos.find((p) => p.id === puestoId)
-    if (!puesto) return
+  const handleSeleccionarOpcionRuta = (idx: number) => {
+    if (!opcionesRutaProductos?.[idx]) return
+    void calcularRutaOpcion(opcionesRutaProductos[idx], idx, modoTransporte)
+  }
 
-    setSelectedId(puestoId)
-    await calcularRutaPuesto(puesto)
+  const handleCambiarModoTransporte = (modo: ModoTransporte) => {
+    setModoTransporte(modo)
+    const opcion = opcionesRutaProductos?.[opcionRutaIdx]
+    if (opcion) void calcularRutaOpcion(opcion, opcionRutaIdx, modo)
+  }
+
+  const handleIniciarNavegacionProductos = async () => {
+    if (!opcionesRutaProductos?.[opcionRutaIdx] || !currentUserPosition) return
+    const opcion = opcionesRutaProductos[opcionRutaIdx]
+    if (opcion.paradas.length === 0) return
+    setNavLoading(true)
+    setRutaProductosError(null)
+    try {
+      const waypoints: [number, number][] = [
+        currentUserPosition,
+        ...opcion.paradas.map((p) => [p.puesto.latitud, p.puesto.longitud] as [number, number]),
+      ]
+      const resultado = await fetchRutaConPasos(waypoints, modoTransporte, incidencias)
+      const steps = parsearStepsOsrm(resultado.legs as Parameters<typeof parsearStepsOsrm>[0])
+      setSelectedId(opcion.paradas[opcion.paradas.length - 1].puesto.id)
+      setRoute(resultado.points)
+      setStepsNavegacion(steps)
+      setStepActualIdx(0)
+      anunciosRef.current = new Set()
+      setVista('navegacion')
+      // Request compass permission on iOS 13+
+      type DoeWithPerm = typeof DeviceOrientationEvent & { requestPermission?: () => Promise<string> }
+      const DoE = DeviceOrientationEvent as DoeWithPerm
+      if (typeof DoE.requestPermission === 'function') {
+        DoE.requestPermission().catch(() => undefined)
+      }
+    } catch (e) {
+      setRutaProductosError(e instanceof Error ? e.message : 'No se pudo iniciar la navegación')
+    } finally {
+      setNavLoading(false)
+    }
   }
 
   const abrirComentarioIncidencia = (
@@ -1721,32 +2064,9 @@ export default function CiudadanoDashboard() {
 
   const productosDisponibles = getProductosDisponibles(puestos, inventarioPorPuesto)
   const productoOptions = getProductoOptions(productosDisponibles)
-  const textoProductoNormalizado = textoProductoBusqueda.trim().toLocaleLowerCase('es')
-  const productoOptionsFiltradas = textoProductoNormalizado
-    ? productoOptions.filter((item) => (
-      item.nombre.toLocaleLowerCase('es').includes(textoProductoNormalizado) ||
-      item.categoria.toLocaleLowerCase('es').includes(textoProductoNormalizado)
-    ))
-    : productoOptions
-  const productoSeleccionado = productoOptions.some((item) => item.nombre === productoBusqueda)
-    ? productoBusqueda
-    : textoProductoNormalizado && productoOptionsFiltradas.length === 1
-      ? productoOptionsFiltradas[0].nombre
-    : ''
-  const resultadosProducto = productosDisponibles.filter((item) => {
-    if (productoSeleccionado) return item.nombre === productoSeleccionado
-    if (!textoProductoNormalizado) return false
-
-    return (
-      item.nombre.toLocaleLowerCase('es').includes(textoProductoNormalizado) ||
-      item.categoria.toLocaleLowerCase('es').includes(textoProductoNormalizado)
-    )
-  })
+  const productosRecomendados = _getProductosRecomendados(productosDisponibles)
   const selectedPuesto = selectedId ? puestos.find((p) => p.id === selectedId) ?? null : null
-  const selectedPuestoBusqueda = busquedaPuestoId ? puestos.find((p) => p.id === busquedaPuestoId) ?? null : null
-  const totalCortadas = incidencias.filter((inc) => inc.estado === 'CORTADA').length
-  const totalTransitables = incidencias.filter((inc) => inc.estado === 'TRANSITABLE').length
-  const totalPendientes = incidencias.filter((inc) => inc.pendingSync).length
+  const puestosOpcionActual = opcionesRutaProductos?.[opcionRutaIdx]?.paradas.map((p) => p.puesto) ?? []
 
   useEffect(() => {
     if (!destinoPuesto || !currentUserPosition || routeLoading) return
@@ -1760,6 +2080,77 @@ export default function CiudadanoDashboard() {
     void calcularRutaPuesto(puesto)
   }, [currentUserPosition, destinoPuesto, puestos, routeLoading])
 
+  // ── Brújula (DeviceOrientation) ───────────────────────────────────────────
+  useEffect(() => {
+    if (vista !== 'navegacion') return
+    type OrientationEvt = DeviceOrientationEvent & { webkitCompassHeading?: number }
+    const handler = (e: OrientationEvt) => {
+      // webkitCompassHeading (iOS): degrees clockwise from North, already absolute
+      // alpha (Android absolute): degrees counter-clockwise → convert to clockwise
+      const heading =
+        e.webkitCompassHeading != null
+          ? e.webkitCompassHeading
+          : e.alpha != null
+            ? (360 - e.alpha) % 360
+            : null
+      if (heading != null) setHeadingDispositivo(Math.round(heading))
+    }
+    window.addEventListener('deviceorientationabsolute', handler as EventListener, true)
+    window.addEventListener('deviceorientation', handler as EventListener, true)
+    return () => {
+      window.removeEventListener('deviceorientationabsolute', handler as EventListener, true)
+      window.removeEventListener('deviceorientation', handler as EventListener, true)
+    }
+  }, [vista])
+
+  // ── Seguimiento de paso + avance automático ───────────────────────────────
+  useEffect(() => {
+    if (vista !== 'navegacion' || !currentUserPosition || stepsNavegacion.length === 0) return
+    const step = stepsNavegacion[stepActualIdx]
+    if (!step || step.tipo === 'arrive') return
+    const distM = distanciaAlStep(currentUserPosition[0], currentUserPosition[1], step)
+    // Auto-advance when within 20 m of the maneuver point
+    if (distM < 20 && stepActualIdx < stepsNavegacion.length - 1) {
+      setStepActualIdx((prev) => prev + 1)
+      return
+    }
+    // Voice pre-announcements: 200 m and 50 m thresholds
+    for (const threshold of [200, 50] as const) {
+      const key = `${stepActualIdx}-${threshold}`
+      if (!anunciosRef.current.has(key) && distM <= threshold + 10 && distM > threshold - 40) {
+        anunciosRef.current.add(key)
+        if (vozActiva && typeof speechSynthesis !== 'undefined') {
+          speechSynthesis.cancel()
+          const u = new SpeechSynthesisUtterance(
+            `En ${formatearDistanciaNav(Math.round(distM))}, ${step.instruccion}`,
+          )
+          u.lang = 'es-ES'
+          u.rate = 0.95
+          speechSynthesis.speak(u)
+        }
+      }
+    }
+    // Keep map centered on user during navigation
+    setFocusUserPositionKey((k) => k + 1)
+  }, [currentUserPosition, stepActualIdx, stepsNavegacion, vista, vozActiva])
+
+  // ── Announce step on change ───────────────────────────────────────────────
+  useEffect(() => {
+    if (vista !== 'navegacion' || stepsNavegacion.length === 0) return
+    const step = stepsNavegacion[stepActualIdx]
+    if (!step) return
+    if (vozActiva && typeof speechSynthesis !== 'undefined') {
+      speechSynthesis.cancel()
+      const u = new SpeechSynthesisUtterance(step.instruccion)
+      u.lang = 'es-ES'
+      u.rate = 0.95
+      speechSynthesis.speak(u)
+    }
+    anunciosRef.current = new Set()
+  // Only re-run when step index or vozActiva changes (not on every render)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepActualIdx, vista])
+
   return (
     <div className="flex flex-col h-full">
 
@@ -1767,8 +2158,9 @@ export default function CiudadanoDashboard() {
       {vista === 'ruta' && routeInfo && (
         <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
           <span className="text-sm">
-            🚗 <strong>{routeInfo.distanciaKm.toFixed(1)} km</strong>
-            {' · ~'}<strong>{routeInfo.duracionMin} min</strong>
+            {modoTransporte === 'foot' ? '🚶' : '🚗'}
+            {' '}<strong>{routeInfo.distanciaKm.toFixed(1)} km</strong>
+            {' · '}<strong>{formatearTiempo(routeInfo.duracionMin)}</strong>
             {selectedPuesto && ` · ${selectedPuesto.nombre}`}
             {routeInfo.incidenciasEvitadas > 0 && ` · evita ${routeInfo.incidenciasEvitadas} corte${routeInfo.incidenciasEvitadas === 1 ? '' : 's'}`}
             {routeInfo.incidenciasCercanas > 0 && ` · ${routeInfo.incidenciasCercanas} corte${routeInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
@@ -1801,13 +2193,13 @@ export default function CiudadanoDashboard() {
         />
       )}
 
-      {(vista === 'default' || vista === 'ruta' || vista === 'reportar' || vista === 'inventario') && (
+      {(vista === 'default' || vista === 'ruta' || vista === 'reportar' || vista === 'inventario' || vista === 'navegacion') && (
       <div
         className="relative flex-1 min-h-0"
       >
         <Map
           center={currentUserPosition ?? [39.4250, -0.4000]}
-          zoom={13}
+          zoom={vista === 'navegacion' ? 17 : 13}
           userPosition={currentUserPosition}
           reportPoint={reportPosition}
           selectingReportPoint={vista === 'reportar'}
@@ -1815,6 +2207,7 @@ export default function CiudadanoDashboard() {
           incidencias={incidencias}
           selectedPuestoId={selectedId}
           onPuestoSelect={handleSelectPuesto}
+          onVerInventarioPuesto={(id) => { setSelectedId(id); setVista('inventario') }}
           onUserLocated={setUserPosition}
           onReportPointSelect={(pos) => {
             setReportPosition(pos)
@@ -1866,6 +2259,37 @@ export default function CiudadanoDashboard() {
               ? 'Toca el mapa para marcar la calle de la incidencia.'
               : 'Punto marcado. Puedes cambiarlo pulsando "Cambiar punto".'}
           </div>
+        )}
+
+        {/* ── Overlay navegación paso a paso ────────────────────────────── */}
+        {vista === 'navegacion' && (
+          <>
+            {navLoading && (
+              <div className="absolute inset-0 z-[1300] flex items-center justify-center bg-white/70">
+                <div className="flex items-center gap-3 rounded-xl bg-white border border-gray-200 shadow-xl px-5 py-4">
+                  <span className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                  <span className="text-sm font-medium text-gray-800">Calculando guía…</span>
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 z-[1200]">
+              <PanelNavegacionActiva
+                steps={stepsNavegacion}
+                stepIdx={stepActualIdx}
+                userPosition={currentUserPosition}
+                headingDispositivo={headingDispositivo}
+                modo={modoTransporte}
+                vozActiva={vozActiva}
+                onToggleVoz={() => {
+                  if (vozActiva && typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+                  setVozActiva((v) => !v)
+                }}
+                onAvanzar={() => setStepActualIdx((i) => Math.min(i + 1, stepsNavegacion.length - 1))}
+                onRetroceder={() => setStepActualIdx((i) => Math.max(i - 1, 0))}
+                onFinalizar={volverInicioCiudadano}
+              />
+            </div>
+          </>
         )}
 
       </div>
@@ -1998,23 +2422,93 @@ export default function CiudadanoDashboard() {
       )}
 
       {vista === 'buscar' && (
-        <BuscarProductoSheet
-          producto={productoSeleccionado}
-          textoBusqueda={textoProductoBusqueda}
-          productos={productoOptionsFiltradas}
-          resultados={resultadosProducto}
-          selectedPuesto={selectedPuestoBusqueda}
-          inventarioPorPuesto={inventarioPorPuesto}
+        <SelectorProductosSheet
+          productosSeleccionados={productosSeleccionados}
+          productosRecomendados={productosRecomendados}
+          productoOptions={productoOptions}
+          textoBusqueda={textoBusquedaProducto}
+          radioBusqueda={radioBusquedaProductos}
           userPosition={currentUserPosition}
-          routeLoading={routeLoading}
-          routeError={routeError}
-          onTextoBusquedaChange={handleTextoProductoBusqueda}
-          onPreviewPuesto={handlePreviewPuestoBusqueda}
-          onComoLlegar={(puestoId) => void handleComoLlegarBusqueda(puestoId)}
-          onCancelRuta={handleCancelarBusquedaRuta}
-          onBackToResults={() => setBusquedaPuestoId(null)}
+          onTextoBusquedaChange={setTextoBusquedaProducto}
+          onAgregarProducto={handleAgregarProducto}
+          onQuitarProducto={handleQuitarProducto}
+          onLimpiarProductos={handleLimpiarProductos}
+          onRadioBusquedaChange={setRadioBusquedaProductos}
+          onVerRutas={handleVerRutasProductos}
           onClose={() => setVista(panelReturnVista)}
         />
+      )}
+
+      {vista === 'ruta-productos' && (
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Banner con info de ruta calculada */}
+          {rutaProductosInfo && !rutaProductosLoading && (
+            <div className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <span className="text-sm">
+                {modoTransporte === 'driving' ? '🚗' : '🚶'}
+                {' '}<strong>{rutaProductosInfo.distanciaKm.toFixed(1)} km</strong>
+                {' · '}<strong>{formatearTiempo(rutaProductosInfo.duracionMin)}</strong>
+                {opcionesRutaProductos?.[opcionRutaIdx]?.paradas.length === 1
+                  ? ` · ${opcionesRutaProductos[opcionRutaIdx].paradas[0].puesto.nombre}`
+                  : ` · ${opcionesRutaProductos?.[opcionRutaIdx]?.paradas.length ?? 0} paradas`}
+                {rutaProductosInfo.incidenciasCercanas > 0 && ` · ${rutaProductosInfo.incidenciasCercanas} incidencia${rutaProductosInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
+              </span>
+            </div>
+          )}
+
+          {/* Mapa — porción superior */}
+          <div className="relative h-52 flex-shrink-0">
+            <Map
+              center={
+                puestosOpcionActual[0]
+                  ? [puestosOpcionActual[0].latitud, puestosOpcionActual[0].longitud]
+                  : currentUserPosition ?? [39.4250, -0.4000]
+              }
+              zoom={13}
+              userPosition={currentUserPosition}
+              reportPoint={null}
+              selectingReportPoint={false}
+              puestos={puestos}
+              incidencias={incidencias}
+              selectedPuestoId={puestosOpcionActual[0]?.id ?? null}
+              onPuestoSelect={() => undefined}
+              onUserLocated={setUserPosition}
+              onReportPointSelect={() => undefined}
+              onIncidenciaAction={() => undefined}
+              onIncidenciaCommentsOpen={() => undefined}
+              route={rutaProductosPoints}
+              focusUserPositionKey={focusUserPositionKey}
+              markerVariant="neutral"
+              className="h-full w-full"
+            />
+            <button
+              type="button"
+              onClick={handleLocalizarme}
+              disabled={geoLoading}
+              className="absolute top-2 right-2 z-[1000] bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
+            >
+              {geoLoading ? '🔄' : '📍'} Localizarme
+            </button>
+          </div>
+
+          {/* Panel de opciones — porción inferior scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+            <OpcionesRutaProductosPanel
+              opciones={opcionesRutaProductos ?? []}
+              opcionIdx={opcionRutaIdx}
+              productosSeleccionados={productosSeleccionados}
+              modo={modoTransporte}
+              loading={rutaProductosLoading}
+              navLoading={navLoading}
+              error={rutaProductosError}
+              userPosition={currentUserPosition}
+              onSeleccionarOpcion={handleSeleccionarOpcionRuta}
+              onCambiarModo={handleCambiarModoTransporte}
+              onIniciarNavegacion={() => void handleIniciarNavegacionProductos()}
+              onVolver={() => setVista('buscar')}
+            />
+          </div>
+        </div>
       )}
 
       {historialComentariosIncidencia && (
