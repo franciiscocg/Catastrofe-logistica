@@ -32,7 +32,7 @@ type InventarioAgrupado = {
   cantidadDisponible: number
   cantidadNecesaria: number
   balance: number
-  estado: 'DISPONIBLE' | 'NECESARIO' | 'SIN_STOCK'
+  estado: 'SOBRANTE' | 'FALTANTE' | 'CUBIERTO' | 'SIN_MOVIMIENTO'
   itemActivo: ItemInventario
 }
 
@@ -90,6 +90,36 @@ interface DonacionPuesto {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+type QrProducto = {
+  productoId?: string
+  nombre?: string
+  categoria?: string
+  cantidad: number
+  unidad: string
+}
+
+type QrOperativo =
+  | {
+      type: 'SOLICITUD_CIUDADANO'
+      requestId?: string
+      puestoId: string
+      puestoNombre?: string
+      productos: QrProducto[]
+      generatedAt?: string
+    }
+  | {
+      type: 'DONACION_ENTREGA'
+      entregaCodigo?: string
+      donacionId?: string
+      puestoId: string
+      productoId: string
+      productoNombre?: string
+      productoCategoria?: string
+      cantidad: number
+      unidad: string
+      generatedAt?: string
+    }
+
 function nivelStock(cantidad: number): { label: string; variant: 'success' | 'info' | 'warning' | 'danger' } {
   if (cantidad <= 0)  return { label: 'Sin stock',  variant: 'danger'  }
   if (cantidad <= 5)  return { label: 'Crítico',    variant: 'danger'  }
@@ -123,12 +153,14 @@ function agruparInventario(items: ItemInventario[]): InventarioAgrupado[] {
       const cantidadDisponible = group.disponible?.cantidad ?? 0
       const cantidadNecesaria = group.necesario?.cantidad ?? 0
       const balance = cantidadDisponible - cantidadNecesaria
-      const estado: InventarioAgrupado['estado'] = cantidadDisponible > 0
-        ? 'DISPONIBLE'
-        : cantidadNecesaria > 0
-          ? 'NECESARIO'
-          : 'SIN_STOCK'
-      const itemActivo = estado === 'NECESARIO'
+      const estado: InventarioAgrupado['estado'] = balance > 0
+        ? 'SOBRANTE'
+        : balance < 0
+          ? 'FALTANTE'
+          : cantidadDisponible > 0 || cantidadNecesaria > 0
+            ? 'CUBIERTO'
+            : 'SIN_MOVIMIENTO'
+      const itemActivo = estado === 'FALTANTE'
         ? group.necesario!
         : group.disponible ?? group.necesario!
 
@@ -483,71 +515,75 @@ function InventarioRow({
   onDelete: (id: string) => void
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const nivel = nivelStock(item.cantidadDisponible)
-  const cantidadLabel = item.balance > 0
-    ? formatCantidad(item.balance)
-    : item.balance < 0
-      ? `-${formatCantidad(Math.abs(item.balance))}`
-      : '0'
-  const borderClass = item.estado === 'NECESARIO'
+  const unidad = item.producto.unidad
+  const netoAbs = Math.abs(item.balance)
+  const nivel = nivelStock(Math.max(item.balance, 0))
+  const cantidadLabel = formatCantidad(netoAbs)
+  const estadoLabel = item.estado === 'FALTANTE'
+    ? `Faltan ${cantidadLabel} ${unidad}`
+    : item.estado === 'SOBRANTE'
+      ? `Disponible ${cantidadLabel} ${unidad}`
+      : 'Necesidad cubierta'
+  const borderClass = item.estado === 'FALTANTE'
     ? 'border-red-200 bg-red-50/30'
-    : item.estado === 'SIN_STOCK'
-      ? 'border-gray-200 bg-gray-50'
+    : item.estado === 'CUBIERTO'
+      ? 'border-emerald-200 bg-emerald-50/30'
       : 'border-gray-200'
+  const deleteId = item.itemActivo.id
 
   return (
-    <article className={`rounded-lg border bg-white px-4 py-3 shadow-sm transition-colors ${
-      item.tipo === 'NECESARIO' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 hover:border-gray-300'
-    }`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-            item.tipo === 'NECESARIO' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+    <article className={`rounded-lg border px-3 py-2 shadow-sm transition-colors hover:border-gray-300 ${borderClass}`}>
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_1.7fr_auto] md:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
+            item.estado === 'FALTANTE' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
           }`}>
             {item.producto.categoria.slice(0, 2).toUpperCase()}
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-gray-950">{item.producto.nombre}</p>
-            <p className="mt-0.5 text-xs text-gray-500">{item.producto.categoria}</p>
+            <p className="truncate text-xs text-gray-500">{item.producto.categoria}</p>
           </div>
         </div>
 
-        {item.tipo === 'NECESARIO' ? (
-          <Badge variant="danger" className="flex-shrink-0">Solicitud</Badge>
-        ) : (
-          <Badge variant={nivel.variant} className="flex-shrink-0">{nivel.label}</Badge>
-        )}
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
-          <button
-            type="button"
-            onClick={() => onUpdateCantidad(item.id, -1)}
-            disabled={item.cantidad <= 0}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-base font-semibold text-gray-600 hover:bg-white disabled:opacity-30"
-            aria-label={`Reducir ${item.producto.nombre}`}
-          >
-            -
-          </button>
-          <span className="min-w-[5.25rem] truncate px-2 text-center text-sm font-semibold text-gray-950">
-            {item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(1)} {item.producto.unidad}
-          </span>
-          <button
-            type="button"
-            onClick={() => onUpdateCantidad(item.id, +1)}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-base font-semibold text-gray-600 hover:bg-white"
-            aria-label={`Aumentar ${item.producto.nombre}`}
-          >
-            +
-          </button>
+        <div className="rounded-lg bg-slate-50 px-3 py-2">
+          <p className={`text-sm font-semibold ${item.estado === 'FALTANTE' ? 'text-red-700' : 'text-emerald-700'}`}>
+            {estadoLabel}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Stock {formatCantidad(item.cantidadDisponible)} · necesidad abierta {formatCantidad(item.cantidadNecesaria)}
+          </p>
         </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 md:justify-end">
+          {item.estado === 'FALTANTE' ? (
+            <Badge variant="danger" className="flex-shrink-0">Faltante</Badge>
+          ) : item.estado === 'CUBIERTO' ? (
+            <Badge variant="success" className="flex-shrink-0">Cubierto</Badge>
+          ) : (
+            <Badge variant={nivel.variant} className="flex-shrink-0">{nivel.label}</Badge>
+          )}
+          <button
+            type="button"
+            onClick={() => onUpdateBalance(item, -1)}
+            disabled={item.cantidadDisponible <= 0 && item.cantidadNecesaria <= 0}
+            className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-30"
+          >
+            Salida
+          </button>
+            <button
+              type="button"
+              onClick={() => onUpdateBalance(item, +1)}
+              className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              Entrada
+            </button>
 
         {confirmDelete ? (
           <div className="flex flex-shrink-0 items-center gap-1.5">
             <button
               type="button"
-              onClick={() => onDelete(item.id)}
+              onClick={() => onDelete(deleteId)}
               className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white"
             >
               Eliminar
@@ -570,6 +606,7 @@ function InventarioRow({
             Eliminar
           </button>
         )}
+        </div>
       </div>
     </article>
   )
@@ -1074,10 +1111,12 @@ export default function PuestoDashboard() {
   const [showQr, setShowQr] = useState(false)
   const [showWorkers, setShowWorkers] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showDeliveries, setShowDeliveries] = useState(false)
   const [qrResult, setQrResult] = useState<{ text: string; parsed: QrOperativo | null; ts: number } | null>(null)
   const [qrConfirmando, setQrConfirmando] = useState(false)
   const [qrError, setQrError] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'DISPONIBLE' | 'NECESARIO'>('todos')
+  const [inventarioSearch, setInventarioSearch] = useState('')
   const qc = useQueryClient()
 
   const { puestoId: storedPuestoId } = useAuthStore()
@@ -1150,6 +1189,9 @@ export default function PuestoDashboard() {
 
   const historialInventario = historialData ?? []
   const donacionesPuesto = donacionesData ?? []
+  const donacionesActivas = donacionesPuesto.filter((donacion) =>
+    donacion.estado === 'PENDIENTE' || donacion.estado === 'EN_CAMINO',
+  )
 
   // Mutation: actualizar cantidad
   const mutCantidad = useMutation({
@@ -1242,27 +1284,38 @@ export default function PuestoDashboard() {
   }, [puesto?.id, qc, qrResult])
 
   // Filtrado
-  const listaFiltrada = filtro === 'todos'
-    ? inventario
-    : inventario.filter((i) => i.tipo === filtro)
+  const inventarioAgrupado = agruparInventario(inventario)
+  const inventarioOrdenado = [...inventarioAgrupado].sort((a, b) => {
+    const urgenciaA = a.balance < 0 ? 0 : a.cantidadDisponible > 0 && a.cantidadDisponible <= 5 ? 1 : 2
+    const urgenciaB = b.balance < 0 ? 0 : b.cantidadDisponible > 0 && b.cantidadDisponible <= 5 ? 1 : 2
+    return urgenciaA - urgenciaB || a.producto.nombre.localeCompare(b.producto.nombre, 'es')
+  })
+  const searchNorm = inventarioSearch.trim().toLocaleLowerCase('es')
+  const listaFiltrada = (filtro === 'todos'
+    ? inventarioOrdenado
+    : inventarioOrdenado.filter((i) => (
+        filtro === 'DISPONIBLE' ? i.balance > 0 : i.balance < 0
+      )))
+    .filter((i) => !searchNorm || (
+      i.producto.nombre.toLocaleLowerCase('es').includes(searchNorm) ||
+      i.producto.categoria.toLocaleLowerCase('es').includes(searchNorm)
+    ))
   const inventarioTitle =
     filtro === 'DISPONIBLE' ? 'Tenemos disponible'
     : filtro === 'NECESARIO' ? 'Necesitamos recibir'
     : 'Inventario operativo'
-  const inventarioDescription =
-    filtro === 'DISPONIBLE' ? 'Productos que el puesto puede entregar o utilizar ahora.'
-    : filtro === 'NECESARIO' ? 'Necesidades abiertas que conviene priorizar.'
-    : 'Vista conjunta de stock disponible y necesidades abiertas.'
-
-  const criticos = inventario.filter((i) => i.tipo === 'DISPONIBLE' && i.cantidad <= 5).length
-  const necesitamos = inventario.filter((i) => i.tipo === 'NECESARIO').length
-  const disponibles = inventario.filter((i) => i.tipo === 'DISPONIBLE')
+  const criticos = inventarioAgrupado.filter((i) => i.balance > 0 && i.balance <= 5).length
+  const necesitamos = inventarioAgrupado.filter((i) => i.balance < 0).length
+  const disponibles = inventarioAgrupado.filter((i) => i.balance > 0)
   const solicitudesPendientes = solicitudesParticipacionData?.filter((s) => s.estado === 'PENDIENTE').length ?? 0
   const voluntariosActivos = participantesData?.length ?? 0
-  const unidadesDisponibles = disponibles.reduce((total, item) => total + item.cantidad, 0)
-  const unidadesNecesarias = inventario
-    .filter((i) => i.tipo === 'NECESARIO')
-    .reduce((total, item) => total + item.cantidad, 0)
+  const unidadesDisponibles = disponibles.reduce((total, item) => total + item.balance, 0)
+  const unidadesNecesarias = inventarioAgrupado
+    .filter((i) => i.balance < 0)
+    .reduce((total, item) => total + Math.abs(item.balance), 0)
+  const proximaEntrega = donacionesActivas
+    .map((donacion) => ({ donacion, llegada: donacion.eta ? new Date(donacion.eta).getTime() : Number.POSITIVE_INFINITY }))
+    .sort((a, b) => a.llegada - b.llegada)[0]?.donacion
 
   // ── Loading / Sin puesto ──────────────────────────────────────────────────
 
@@ -1296,29 +1349,29 @@ export default function PuestoDashboard() {
     <div className="flex min-h-full flex-col bg-slate-100">
 
       <section className="flex-shrink-0 border-b border-slate-200 bg-white">
-        <div className="px-4 py-4 sm:px-6">
+        <div className="px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-semibold uppercase text-amber-700">Panel operativo</p>
               <Badge variant={puesto.activo ? 'success' : 'danger'}>{puesto.activo ? 'Activo' : 'Inactivo'}</Badge>
             </div>
-            <h1 className="mt-1 truncate text-xl font-semibold text-gray-950 sm:text-2xl">{puesto.nombre}</h1>
-            <p className="mt-1 text-sm text-gray-500">{puesto.direccion}</p>
+            <h1 className="mt-1 truncate text-lg font-semibold text-gray-950 sm:text-xl">{puesto.nombre}</h1>
+            <p className="truncate text-sm text-gray-500">{puesto.direccion}</p>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          <div className="mt-3 grid grid-cols-3 gap-2 lg:grid-cols-6">
             {[
-              { label: 'Tenemos', value: disponibles.length, helper: 'productos en stock', tone: 'text-gray-950' },
+              { label: 'Disponible neto', value: disponibles.length, helper: 'productos con sobrante', tone: 'text-gray-950' },
               { label: 'Críticos', value: criticos, helper: 'requieren revisión', tone: criticos > 0 ? 'text-red-600' : 'text-gray-950' },
-              { label: 'Necesitamos', value: necesitamos, helper: 'peticiones abiertas', tone: necesitamos > 0 ? 'text-amber-700' : 'text-gray-950' },
-              { label: 'Unidades', value: formatCantidad(unidadesDisponibles), helper: 'disponibles totales', tone: 'text-gray-950' },
+              { label: 'Faltan', value: necesitamos, helper: 'productos sin cubrir', tone: necesitamos > 0 ? 'text-amber-700' : 'text-gray-950' },
+              { label: 'Unid. netas', value: formatCantidad(unidadesDisponibles), helper: 'sobrante total', tone: 'text-gray-950' },
               { label: 'Solicitudes', value: solicitudesPendientes, helper: 'voluntarios esperando', tone: solicitudesPendientes > 0 ? 'text-amber-700' : 'text-gray-950' },
               { label: 'Voluntarios', value: voluntariosActivos, helper: 'activos ahora', tone: 'text-emerald-700' },
             ].map((stat) => (
-              <div key={stat.label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className={`text-xl font-semibold ${stat.tone}`}>{stat.value}</p>
+              <div key={stat.label} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+                <p className={`text-lg font-semibold leading-none ${stat.tone}`}>{stat.value}</p>
                 <p className="text-xs font-medium text-slate-600">{stat.label}</p>
-                <p className="mt-0.5 text-xs text-slate-400">{stat.helper}</p>
+                <p className="hidden text-xs text-slate-400 xl:block">{stat.helper}</p>
               </div>
             ))}
           </div>
@@ -1334,19 +1387,42 @@ export default function PuestoDashboard() {
             <Button size="sm" variant="secondary" onClick={() => setShowQr(true)}>
               Escanear QR
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => setShowHistory(true)}>
-              Historial
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setShowWorkers(true)}>
-              Voluntarios
-            </Button>
+            <details className="relative col-span-2 sm:col-span-1">
+              <summary className="flex h-full cursor-pointer list-none items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50">
+                Mas acciones
+              </summary>
+              <div className="absolute left-0 top-full z-[1500] mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(true)}
+                  className="w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Historial
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowWorkers(true)}
+                  className="w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Voluntarios
+                </button>
+              </div>
+            </details>
           </div>
 
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="search"
+            value={inventarioSearch}
+            onChange={(e) => setInventarioSearch(e.target.value)}
+            placeholder="Buscar producto"
+            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 sm:w-56"
+          />
           <div className="grid grid-cols-3 rounded-lg border border-slate-200 bg-slate-100 p-1">
             {([
               ['todos', 'Todo'],
-              ['DISPONIBLE', 'Tenemos'],
-              ['NECESARIO', 'Necesitamos'],
+                ['DISPONIBLE', 'Disponible'],
+                ['NECESARIO', 'Faltan'],
             ] as const).map(([id, label]) => (
               <button
                 key={id}
@@ -1360,34 +1436,45 @@ export default function PuestoDashboard() {
               </button>
             ))}
           </div>
+          </div>
         </div>
       </section>
 
-      <section className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
-        <div className="mb-3 flex items-center justify-between gap-3">
+      <section className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-2.5 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-gray-950">Entregas en camino</h2>
-            <p className="text-sm text-gray-500">Donaciones pendientes o en ruta hacia este puesto.</p>
+            <p className="text-xs text-gray-500">
+              {donacionesActivas.length === 0
+                ? 'Sin entregas activas.'
+                : `${donacionesActivas.length} activas${proximaEntrega ? ` - próxima: ${proximaEntrega.producto.nombre}` : ''}`}
+            </p>
           </div>
-          <Badge variant={donacionesPuesto.length > 0 ? 'info' : 'default'}>{donacionesPuesto.length}</Badge>
+          <button
+            type="button"
+            onClick={() => setShowDeliveries((current) => !current)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            {showDeliveries ? 'Ocultar' : 'Ver entregas'} ({donacionesActivas.length})
+          </button>
         </div>
 
-        {loadingDonaciones ? (
+        {showDeliveries && loadingDonaciones ? (
           <div className="flex justify-center rounded-lg border border-slate-200 bg-slate-50 py-6">
             <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-amber-600" />
           </div>
-        ) : donacionesPuesto.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+        ) : showDeliveries && donacionesActivas.length === 0 ? (
+          <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">
             No hay entregas pendientes o en camino ahora mismo.
           </p>
-        ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {donacionesPuesto.slice(0, 4).map((donacion) => {
+        ) : showDeliveries ? (
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {donacionesActivas.slice(0, 6).map((donacion) => {
               const voluntario = donacion.voluntario.usuario
               const llegada = formatLlegadaEstimada(donacion.eta)
 
               return (
-                <article key={donacion.id} className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <article key={donacion.id} className="w-72 flex-shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-gray-950">
@@ -1402,7 +1489,7 @@ export default function PuestoDashboard() {
                     </div>
                     {estadoDonacionBadge(donacion.estado)}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                     {llegada && <span className="rounded-full bg-white px-2 py-1">{llegada}</span>}
                     {donacion.comentario && (
                       <span className="rounded-full bg-white px-2 py-1">{donacion.comentario}</span>
@@ -1412,15 +1499,43 @@ export default function PuestoDashboard() {
               )
             })}
           </div>
-        )}
+        ) : null}
       </section>
 
-      <section className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mb-3 flex items-end justify-between gap-3">
+      <section className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:px-6">
+        {(necesitamos > 0 || criticos > 0) && (
+          <div className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+            <p className="font-medium">
+              {necesitamos} productos faltan tras compensar stock y necesidades
+              {criticos > 0 ? ` - ${criticos} critico${criticos === 1 ? '' : 's'}` : ''}
+            </p>
+            <div className="flex gap-2">
+              {necesitamos > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFiltro('NECESARIO')}
+                  className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200"
+                >
+                  Ver necesidades
+                </button>
+              )}
+              {criticos > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFiltro('DISPONIBLE')}
+                  className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200"
+                >
+                  Ver criticos
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-base font-semibold text-gray-950">{inventarioTitle}</h2>
-            <p className="text-sm text-gray-500">
-              {inventarioDescription} {listaFiltrada.length} registros visibles
+            <p className="text-xs text-gray-500 sm:text-sm">
+              {listaFiltrada.length} productos visibles
               {unidadesNecesarias > 0 ? ` - ${formatCantidad(unidadesNecesarias)} unidades solicitadas` : ''}
             </p>
           </div>
@@ -1452,7 +1567,7 @@ export default function PuestoDashboard() {
             )}
           </div>
         ) : (
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-2">
             {listaFiltrada.map((item) => (
               <InventarioRow
                 key={item.key}
