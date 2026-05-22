@@ -49,10 +49,6 @@ interface PuestoCoordinador {
   solicitudesPendientes: number
   necesidades: number
   estadoOperativo: EstadoOperativo
-  catastrofe: {
-    nombre: string
-    fase: string
-  }
   admin: {
     nombre: string
     apellidos: string

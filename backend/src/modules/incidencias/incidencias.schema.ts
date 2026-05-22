@@ -9,7 +9,6 @@ export const categoriaIncidenciaSchema = z.enum([
 ])
 
 export const createIncidenciaSchema = z.object({
-  catastrofeId: z.string().min(1).optional(),
   titulo: z.string().trim().min(3).max(120).optional(),
   categoria: categoriaIncidenciaSchema.optional(),
   latitud: z.number().min(-90).max(90),
@@ -20,7 +19,6 @@ export const createIncidenciaSchema = z.object({
 })
 
 export const listIncidenciasQuerySchema = z.object({
-  catastrofeId: z.string().min(1).optional(),
   estado: estadoViaSchema.optional(),
 })
 

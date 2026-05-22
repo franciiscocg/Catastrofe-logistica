@@ -84,7 +84,6 @@ const puestoPublicSelect = {
   longitud: true,
   tipo: true,
   activo: true,
-  catastrofeId: true,
 } as const
 
 function formatPuesto(puesto: {
@@ -97,7 +96,6 @@ function formatPuesto(puesto: {
   tipo: string
   activo: boolean
   capacidadTrabajo: number
-  catastrofeId: string
   _count: { asignacionesVoluntarios: number; inventario: number }
 }) {
   return {
@@ -112,7 +110,6 @@ function formatPuesto(puesto: {
     capacidadTrabajo: puesto.capacidadTrabajo,
     necesidades: puesto._count.inventario,
     voluntariosTrabajando: puesto._count.asignacionesVoluntarios,
-    catastrofeId: puesto.catastrofeId,
   }
 }
 
@@ -130,7 +127,6 @@ function formatPuestoCoordinador(puesto: {
   capacidadTrabajo: number
   createdAt: Date
   updatedAt: Date
-  catastrofe: { id: string; nombre: string; fase: string }
   admin: { id: string; nombre: string; apellidos: string; email: string; telefono: string | null }
   _count: {
     asignacionesVoluntarios: number
@@ -173,7 +169,6 @@ function formatPuestoCoordinador(puesto: {
     estadoOperativo,
     createdAt: puesto.createdAt,
     updatedAt: puesto.updatedAt,
-    catastrofe: puesto.catastrofe,
     admin: puesto.admin,
   }
 }
@@ -257,7 +252,6 @@ async function findPuestoCoordinador(id: string) {
   const puesto = await prisma.puestoEmergencia.findUnique({
     where: { id },
     include: {
-      catastrofe: { select: { id: true, nombre: true, fase: true } },
       admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
       _count: {
         select: {
@@ -289,8 +283,7 @@ export async function puestosRouter(app: FastifyInstance) {
         tipo: true,
         activo: true,
         capacidadTrabajo: true,
-        catastrofeId: true,
-        _count: {
+              _count: {
           select: {
             inventario: { where: { tipo: 'NECESARIO' } },
             asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
@@ -355,8 +348,7 @@ export async function puestosRouter(app: FastifyInstance) {
             longitud: true,
             tipo: true,
             activo: true,
-            catastrofeId: true,
-          },
+                    },
         },
       },
     })
@@ -471,8 +463,7 @@ export async function puestosRouter(app: FastifyInstance) {
     const puestos = await prisma.puestoEmergencia.findMany({
       orderBy: [{ activo: 'desc' }, { updatedAt: 'desc' }],
       include: {
-        catastrofe: { select: { id: true, nombre: true, fase: true } },
-        admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+          admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
         _count: {
           select: {
             inventario: { where: { tipo: 'NECESARIO' } },
@@ -570,8 +561,7 @@ export async function puestosRouter(app: FastifyInstance) {
     const puesto = await prisma.puestoEmergencia.findUnique({
       where: { id },
       include: {
-        catastrofe: { select: { id: true, nombre: true, fase: true } },
-        admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+          admin: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
         inventario: {
           orderBy: [{ tipo: 'asc' }, { producto: { nombre: 'asc' } }],
           include: { producto: true },
@@ -779,12 +769,6 @@ export async function puestosRouter(app: FastifyInstance) {
       if (!solicitud) throw notFound('Solicitud no encontrada')
       if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
 
-      const catastrofe = await tx.catastrofe.findFirst({
-        where: { activa: true },
-        orderBy: { createdAt: 'desc' },
-      })
-      if (!catastrofe) throw badRequest('No hay ninguna catastrofe activa para asociar el puesto')
-
       const puestoExistente = await tx.puestoEmergencia.findFirst({
         where: {
           OR: [
@@ -806,7 +790,6 @@ export async function puestosRouter(app: FastifyInstance) {
           tipo: solicitud.tipo,
           activo: true,
           estadoSolicitud: 'APROBADO',
-          catastrofeId: catastrofe.id,
           adminId: solicitud.usuarioId,
         },
         select: puestoSelect,
@@ -1202,5 +1185,4 @@ const puestoSelect = {
   longitud: true,
   tipo: true,
   activo: true,
-  catastrofe: { select: { id: true, nombre: true, fase: true } },
 } as const

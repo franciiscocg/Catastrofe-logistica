@@ -253,7 +253,6 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
       direccion: 'Calle Mayor 12', latitud: 39.4254, longitud: -0.4178,
       tipo: 'colegio', estado: 'PENDIENTE',
     })
-    mp.catastrofe.findFirst.mockResolvedValue({ id: 'cat-1' })
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
     mp.puestoEmergencia.create.mockResolvedValue({
       id: 'puesto-1', nombre: 'CEIP La Paz', activo: true,
@@ -268,7 +267,6 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
       data: expect.objectContaining({
         activo: true,
         adminId: 'user-1',
-        catastrofeId: 'cat-1',
       }),
     }))
     expect(mp.solicitudPuesto.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -278,16 +276,25 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
     await app.close()
   })
 
-  it('devuelve 400 si no hay ninguna catastrofe activa', async () => {
+  it('acepta la solicitud aunque no haya ninguna catastrofe activa', async () => {
     const app = await buildApp()
-    mp.solicitudPuesto.findUnique.mockResolvedValue({ id: 'solicitud-1', usuarioId: 'user-1', estado: 'PENDIENTE' })
-    mp.catastrofe.findFirst.mockResolvedValue(null)
+    mp.solicitudPuesto.findUnique.mockResolvedValue({
+      id: 'solicitud-1', usuarioId: 'user-1',
+      nombre: 'CEIP La Paz', descripcion: null,
+      direccion: 'Calle Mayor 12', latitud: 39.4254, longitud: -0.4178,
+      tipo: 'colegio', estado: 'PENDIENTE',
+    })
+    mp.puestoEmergencia.findFirst.mockResolvedValue(null)
+    mp.puestoEmergencia.create.mockResolvedValue({
+      id: 'puesto-1', nombre: 'CEIP La Paz', activo: true,
+    })
+    mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'ACEPTADA' })
 
     const res = await app.inject({ method: 'POST', url: '/api/puestos/solicitudes/solicitud-1/aceptar' })
 
-    expect(res.statusCode).toBe(400)
-    expect(res.json().message).toMatch(/catastrofe/)
-    expect(mp.puestoEmergencia.create).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(200)
+    expect(mp.catastrofe.findFirst).not.toHaveBeenCalled()
+    expect(mp.puestoEmergencia.create).toHaveBeenCalledOnce()
     await app.close()
   })
 

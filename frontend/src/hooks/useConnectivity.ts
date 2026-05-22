@@ -12,6 +12,7 @@ export function useConnectivity() {
     navigator.onLine ? 'online' : 'offline',
   )
   const flush = useSyncStore((s) => s.flush)
+  const loadPendingCount = useSyncStore((s) => s.loadPendingCount)
 
   useEffect(() => {
     const handleOnline = () => {
@@ -20,8 +21,14 @@ export function useConnectivity() {
     }
     const handleOffline = () => setMode('offline')
 
+    loadPendingCount()
+    if (navigator.onLine) flush()
+
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
+    const retryInterval = window.setInterval(() => {
+      if (navigator.onLine) flush()
+    }, 15000)
 
     // Detectar conexión lenta vía Network Information API (Chrome/Android)
     const connection = (navigator as Navigator & { connection?: NetworkInformation }).connection
@@ -35,6 +42,7 @@ export function useConnectivity() {
       return () => {
         window.removeEventListener('online', handleOnline)
         window.removeEventListener('offline', handleOffline)
+        window.clearInterval(retryInterval)
         connection.removeEventListener('change', checkSpeed)
       }
     }
@@ -42,8 +50,9 @@ export function useConnectivity() {
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+      window.clearInterval(retryInterval)
     }
-  }, [flush])
+  }, [flush, loadPendingCount])
 
   return { mode, isOnline: mode !== 'offline', isSlow: mode === 'slow' }
 }

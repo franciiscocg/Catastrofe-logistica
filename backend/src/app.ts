@@ -5,13 +5,13 @@ import rateLimit from '@fastify/rate-limit'
 import jwt from '@fastify/jwt'
 import { authRouter } from './modules/auth/auth.router.js'
 import { usersRouter } from './modules/users/users.router.js'
-import { catastrofesRouter } from './modules/catastrofes/catastrofes.router.js'
 import { puestosRouter } from './modules/puestos/puestos.router.js'
 import { inventarioRouter } from './modules/inventario/inventario.router.js'
 import { voluntariosRouter } from './modules/voluntarios/voluntarios.router.js'
 import { incidenciasRouter } from './modules/incidencias/incidencias.router.js'
 import { donacionesRouter } from './modules/donaciones/donaciones.router.js'
 import { errorHandler } from './middleware/error.middleware.js'
+import { registerIdempotency } from './middleware/idempotency.middleware.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -34,10 +34,11 @@ export async function buildApp() {
     secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-prod',
   })
 
+  await registerIdempotency(app)
+
   // Rutas
   await app.register(authRouter, { prefix: '/api/auth' })
   await app.register(usersRouter, { prefix: '/api/users' })
-  await app.register(catastrofesRouter, { prefix: '/api/catastrofes' })
   await app.register(puestosRouter, { prefix: '/api/puestos' })
   await app.register(inventarioRouter, { prefix: '/api/inventario' })
   await app.register(voluntariosRouter, { prefix: '/api/voluntarios' })

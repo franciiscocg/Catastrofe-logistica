@@ -19,7 +19,6 @@ const puestoDonacionSelect = {
   longitud: true,
   tipo: true,
   activo: true,
-  catastrofeId: true,
 } as const
 
 async function getVoluntarioByUsuario(usuarioId: string) {
@@ -67,8 +66,7 @@ export async function listNecesidadesDonacion() {
           longitud: true,
           tipo: true,
           activo: true,
-          catastrofeId: true,
-        },
+                },
       },
     },
   })

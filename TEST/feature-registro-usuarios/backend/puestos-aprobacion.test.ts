@@ -130,7 +130,6 @@ describe('aprobacion de solicitudes de puesto', () => {
       tipo: 'colegio',
       estado: 'PENDIENTE',
     })
-    mp.catastrofe.findFirst.mockResolvedValue({ id: 'cat-1' })
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
     mp.puestoEmergencia.create.mockResolvedValue({
       id: 'puesto-1',
@@ -146,7 +145,6 @@ describe('aprobacion de solicitudes de puesto', () => {
     expect(mp.puestoEmergencia.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         adminId: 'user-1',
-        catastrofeId: 'cat-1',
         activo: true,
       }),
     }))

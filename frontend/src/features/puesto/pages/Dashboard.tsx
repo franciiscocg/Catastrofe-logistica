@@ -43,7 +43,6 @@ interface Puesto {
   tipo: string
   activo: boolean
   esAdmin?: boolean
-  catastrofe?: { id: string; nombre: string; fase: string }
 }
 
 interface SolicitudPuesto {

@@ -14,12 +14,6 @@ enum RolUsuario {
   COORDINADOR
 }
 
-enum FaseCatastrofe {
-  RESCATE
-  LIMPIEZA
-  RECONSTRUCCION
-}
-
 enum TipoInventario {
   DISPONIBLE
   NECESARIO
@@ -94,28 +88,8 @@ model Usuario {
   @@map("usuarios")
 }
 
-model Catastrofe {
-  id          String         @id @default(cuid())
-  nombre      String
-  descripcion String
-  tipo        String
-  latitud     Float
-  longitud    Float
-  radio       Float
-  activa      Boolean        @default(true)
-  fase        FaseCatastrofe @default(RESCATE)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  puestos PuestoEmergencia[]
-  incidencias IncidenciaVia[]
-
-  @@map("catastrofes")
-}
-
 model IncidenciaVia {
   id           String    @id @default(cuid())
-  catastrofeId String
   reportanteId String?
   titulo       String?
   categoria    String?
@@ -126,12 +100,11 @@ model IncidenciaVia {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  catastrofe Catastrofe @relation(fields: [catastrofeId], references: [id])
   reportante Usuario?   @relation("ReportanteIncidencia", fields: [reportanteId], references: [id])
   comentarios ComentarioIncidenciaVia[]
   asignacionesVoluntarios AsignacionIncidencia[]
 
-  @@index([catastrofeId, createdAt])
+  @@index([createdAt])
   @@index([estado])
   @@map("incidencias_via")
 }
@@ -163,12 +136,10 @@ model PuestoEmergencia {
   estadoSolicitud EstadoPuesto @default(PENDIENTE)
   motivoRechazo   String?
   capacidadTrabajo Int         @default(6)
-  catastrofeId String
   adminId      String
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  catastrofe   Catastrofe       @relation(fields: [catastrofeId], references: [id])
   admin        Usuario          @relation("AdminPuesto", fields: [adminId], references: [id])
   inventario   Inventario[]
   donaciones   Donacion[]
@@ -357,4 +328,20 @@ model AuditLog {
 
   @@index([entidad, entidadId])
   @@map("audit_logs")
+}
+
+model IdempotencyRecord {
+  key        String   @id
+  method     String
+  url        String
+  bodyHash   String
+  status     String   @default("PENDING")
+  statusCode Int?
+  response   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  expiresAt  DateTime
+
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

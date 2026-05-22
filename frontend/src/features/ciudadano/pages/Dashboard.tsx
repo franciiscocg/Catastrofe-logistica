@@ -65,77 +65,10 @@ const CATEGORIAS_INCIDENCIA: Array<{
   },
 ]
 
-const INVENTARIO: Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }> = {
-  '1': {
-    disponible: [
-      { nombre: 'Agua embotellada',        categoria: 'Bebidas',       cantidad: 240, unidad: 'litros'    },
-      { nombre: 'Alimentos no perecederos', categoria: 'Alimentación', cantidad: 80,  unidad: 'kg'         },
-      { nombre: 'Mantas',                  categoria: 'Abrigo',        cantidad: 15,  unidad: 'unidades'   },
-    ],
-    necesario: [
-      { nombre: 'Medicamentos básicos',    categoria: 'Sanidad',       cantidad: 0,   unidad: 'kits'       },
-      { nombre: 'Ropa de abrigo (M/L)',    categoria: 'Ropa',          cantidad: 0,   unidad: 'prendas'    },
-      { nombre: 'Pañales talla 3-5',       categoria: 'Bebés',         cantidad: 0,   unidad: 'paquetes'   },
-      { nombre: 'Linternas y pilas',       categoria: 'Equipamiento',  cantidad: 0,   unidad: 'unidades'   },
-    ],
-  },
-  '2': {
-    disponible: [
-      { nombre: 'Agua embotellada',        categoria: 'Bebidas',       cantidad: 320, unidad: 'litros'    },
-      { nombre: 'Ropa de abrigo',          categoria: 'Ropa',          cantidad: 60,  unidad: 'prendas'   },
-      { nombre: 'Productos de higiene',    categoria: 'Higiene',       cantidad: 45,  unidad: 'kits'       },
-    ],
-    necesario: [
-      { nombre: 'Alimentos infantiles',    categoria: 'Alimentación',  cantidad: 0,   unidad: 'unidades'   },
-      { nombre: 'Sillas de ruedas',        categoria: 'Movilidad',     cantidad: 0,   unidad: 'unidades'   },
-    ],
-  },
-  '3': {
-    disponible: [
-      { nombre: 'Agua embotellada',        categoria: 'Bebidas',       cantidad: 180, unidad: 'litros'    },
-      { nombre: 'Alimentos no perecederos', categoria: 'Alimentación', cantidad: 120, unidad: 'kg'         },
-      { nombre: 'Medicamentos básicos',    categoria: 'Sanidad',       cantidad: 8,   unidad: 'kits'       },
-      { nombre: 'Calzado (tallas varias)', categoria: 'Calzado',       cantidad: 30,  unidad: 'pares'      },
-    ],
-    necesario: [
-      { nombre: 'Generadores eléctricos',  categoria: 'Equipamiento',  cantidad: 0,   unidad: 'unidades'   },
-    ],
-  },
-  '4': {
-    disponible: [
-      { nombre: 'Agua embotellada',        categoria: 'Bebidas',       cantidad: 500, unidad: 'litros'    },
-      { nombre: 'Alimentos no perecederos', categoria: 'Alimentación', cantidad: 200, unidad: 'kg'         },
-      { nombre: 'Ropa de abrigo',          categoria: 'Ropa',          cantidad: 90,  unidad: 'prendas'   },
-      { nombre: 'Productos de higiene',    categoria: 'Higiene',       cantidad: 60,  unidad: 'kits'       },
-      { nombre: 'Mantas',                  categoria: 'Abrigo',        cantidad: 40,  unidad: 'unidades'   },
-    ],
-    necesario: [],
-  },
-  '5': {
-    disponible: [
-      { nombre: 'Agua embotellada',        categoria: 'Bebidas',       cantidad: 95,  unidad: 'litros'    },
-      { nombre: 'Alimentos no perecederos', categoria: 'Alimentación', cantidad: 30,  unidad: 'kg'         },
-    ],
-    necesario: [
-      { nombre: 'Medicamentos básicos',    categoria: 'Sanidad',       cantidad: 0,   unidad: 'kits'       },
-      { nombre: 'Ropa de abrigo',          categoria: 'Ropa',          cantidad: 0,   unidad: 'prendas'   },
-      { nombre: 'Productos de higiene',    categoria: 'Higiene',       cantidad: 0,   unidad: 'kits'       },
-    ],
-  },
-}
-
 const CATEGORIA_EMOJI: Record<string, string> = {
   Bebidas: '💧', Alimentación: '🍱', Abrigo: '🛏', Sanidad: '💊',
   Ropa: '🧥', Bebés: '👶', Equipamiento: '🔦', Higiene: '🧴',
   Herramientas: '🔧', Calzado: '👟', Movilidad: '♿',
-}
-
-const INVENTARIO_DEMO_POR_NOMBRE: Record<string, keyof typeof INVENTARIO> = {
-  'ceip la paz': '1',
-  'pabellon municipal benetusser': '2',
-  'ies sedavi': '3',
-  'centro civico catarroja': '4',
-  'poliesportiu alfafar': '5',
 }
 
 type ProductoDisponible = ItemInventario & { puesto: PuestoMarker }
@@ -153,6 +86,7 @@ type ReverseGeocodeResponse = {
   display_name?: string
   address?: Record<string, string | undefined>
 }
+
 type ApiInventarioItem = {
   id: string
   tipo: 'DISPONIBLE' | 'NECESARIO' | 'disponible' | 'necesario'
@@ -167,7 +101,7 @@ type ApiInventarioItem = {
 const ROUTE_SEARCH_TIMEOUT_MS = 90000
 
 
-// ── Routing via OSRM (demo público) ──────────────────────────────────────────
+// ── Routing via OSRM (servicio público) ──────────────────────────────────────
 
 export async function fetchRuta(
   desde: [number, number],
@@ -345,7 +279,6 @@ function InventarioSheet({
   puesto: PuestoMarker
   onClose: () => void
 }) {
-  // Intentar cargar inventario real desde la API; si falla usar los datos locales de ejemplo
   const { data: apiInv, isLoading } = useQuery({
     queryKey: ['inventario-ciudadano', puesto.id],
     queryFn: () =>
@@ -366,9 +299,7 @@ function InventarioSheet({
     retry: false,
   })
 
-  // Fallback a datos de ejemplo si la API falla o no tiene datos todavía
-  const fallback = INVENTARIO[puesto.id] ?? { disponible: [], necesario: [] }
-  const inv = apiInv ?? fallback
+  const inv = apiInv ?? { disponible: [], necesario: [] }
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[2000] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[70vh]">
@@ -477,31 +408,6 @@ function normalizeApiInventario(items: ApiInventarioItem[]) {
   }, { disponible: [], necesario: [] })
 
   return getInventarioNeto(raw)
-}
-
-function normalizeText(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('es')
-}
-
-function getDemoInventarioForPuesto(puesto: Pick<PuestoMarker, 'id' | 'nombre'>) {
-  const byId = INVENTARIO[puesto.id]
-  if (byId) return byId
-
-  const demoId = INVENTARIO_DEMO_POR_NOMBRE[normalizeText(puesto.nombre)]
-  return demoId ? INVENTARIO[demoId] : { disponible: [], necesario: [] }
-}
-
-function mergeWithDemoInventario(
-  puesto: Pick<PuestoMarker, 'id' | 'nombre'>,
-  apiInventario: { disponible: ItemInventario[]; necesario: ItemInventario[] },
-) {
-  const demoInventario = getDemoInventarioForPuesto(puesto)
-  const apiHasData = apiInventario.disponible.length > 0 || apiInventario.necesario.length > 0
-
-  return apiHasData ? apiInventario : demoInventario
 }
 
 function getProductosDisponibles(puestos: PuestoMarker[], inventario: InventarioPorPuesto) {
@@ -1169,8 +1075,6 @@ type DuplicateIncidencia = {
   createdAt: string
 }
 
-const CATASTROFE_ID = import.meta.env.VITE_CATASTROFE_ID ?? ''
-
 // ── Arrow SVG used in the navigation compass ─────────────────────────────────
 function FlechaNavegacion({
   icono,
@@ -1596,8 +1500,7 @@ export default function CiudadanoDashboard() {
   useEffect(() => {
     const loadIncidencias = async () => {
       try {
-        const params = CATASTROFE_ID ? { catastrofeId: CATASTROFE_ID } : undefined
-        const { data } = await apiClient.get('/api/incidencias', { params })
+        const { data } = await apiClient.get('/api/incidencias')
         setIncidencias(data.incidencias ?? [])
       } catch {
         // Si falla, mantenemos estado local vacío sin bloquear la UI.
@@ -1728,7 +1631,6 @@ export default function CiudadanoDashboard() {
     const titulo = reportTitulo.trim() || selectedReportCategory.label
 
     const body = {
-      catastrofeId: CATASTROFE_ID || undefined,
       titulo,
       categoria: reportCategoria,
       latitud: reportPosition[0],
@@ -2056,9 +1958,9 @@ export default function CiudadanoDashboard() {
             const response = await apiClient.get<{ inventario: ApiInventarioItem[] }>(
               `/api/inventario/puesto/${puesto.id}`,
             )
-            return [puesto.id, mergeWithDemoInventario(puesto, normalizeApiInventario(response.data.inventario))] as const
+            return [puesto.id, normalizeApiInventario(response.data.inventario)] as const
           } catch {
-            return [puesto.id, getDemoInventarioForPuesto(puesto)] as const
+            return [puesto.id, { disponible: [], necesario: [] }] as const
           }
         }),
       )
@@ -2071,10 +1973,7 @@ export default function CiudadanoDashboard() {
     placeholderData: {},
   })
 
-  const inventarioPorPuesto = useMemo<InventarioPorPuesto>(() => ({
-    ...INVENTARIO,
-    ...(inventarioApiData ?? {}),
-  }), [inventarioApiData])
+  const inventarioPorPuesto = useMemo<InventarioPorPuesto>(() => inventarioApiData ?? {}, [inventarioApiData])
 
   const productosDisponibles = getProductosDisponibles(puestos, inventarioPorPuesto)
   const productoOptions = getProductoOptions(productosDisponibles)

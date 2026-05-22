@@ -4,7 +4,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { apiClient } from '@/lib/api/client'
-import type { PuestoEmergencia } from '@/types/catastrofe.types'
+import type { PuestoEmergencia } from '@/types/puesto.types'
 import type { ItemInventario } from '@/types/inventario.types'
 import Map, { type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import QrScanner from '@/components/shared/QrScanner'
@@ -156,73 +156,6 @@ const SUGERENCIAS_INVENTARIO_PUESTO = [
   { nombre: 'Linternas y pilas', categoria: 'Equipamiento', unidad: 'unidades' },
   { nombre: 'Ropa de abrigo', categoria: 'Ropa', unidad: 'prendas' },
 ]
-
-const PUESTOS_FALLBACK: PuestoEmergencia[] = [
-  {
-    id: 'demo-1',
-    nombre: 'CEIP La Paz',
-    direccion: 'C/ Mayor 12, Valencia',
-    latitud: 39.4254,
-    longitud: -0.4178,
-    tipo: 'Distribucion',
-    activo: true,
-    catastrofeId: 'demo',
-  },
-  {
-    id: 'demo-2',
-    nombre: 'Pabellon Municipal Benetusser',
-    direccion: 'Av. del Deportiu 3, Benetusser',
-    latitud: 39.4328,
-    longitud: -0.3948,
-    tipo: 'Asistencia',
-    activo: true,
-    catastrofeId: 'demo',
-  },
-  {
-    id: 'demo-3',
-    nombre: 'Centro Civico Catarroja',
-    direccion: "Pl. de l'Ajuntament 1, Catarroja",
-    latitud: 39.399,
-    longitud: -0.4019,
-    tipo: 'Logistica',
-    activo: true,
-    catastrofeId: 'demo',
-  },
-]
-
-const NECESIDADES_FALLBACK: Record<string, ItemInventario[]> = {
-  'demo-1': [
-    necesidadDemo('med-1', 'Medicamentos basicos', 'Sanidad', 'kits', 12, 'critico', 'demo-1'),
-    necesidadDemo('ropa-1', 'Ropa de abrigo', 'Ropa', 'prendas', 40, 'bajo', 'demo-1'),
-  ],
-  'demo-2': [
-    necesidadDemo('alim-1', 'Alimentos infantiles', 'Alimentacion', 'unidades', 60, 'critico', 'demo-2'),
-    necesidadDemo('hig-1', 'Productos de higiene', 'Higiene', 'kits', 25, 'bajo', 'demo-2'),
-  ],
-  'demo-3': [
-    necesidadDemo('herr-1', 'Herramientas de limpieza', 'Herramientas', 'unidades', 18, 'medio', 'demo-3'),
-  ],
-}
-
-function necesidadDemo(
-  id: string,
-  nombre: string,
-  categoria: string,
-  unidad: string,
-  cantidad: number,
-  nivelStock: ItemInventario['nivelStock'],
-  puestoId: string,
-): ItemInventario {
-  return {
-    id,
-    puestoId,
-    producto: { id, nombre, categoria, unidad },
-    cantidad,
-    tipo: 'necesario',
-    nivelStock,
-    updatedAt: new Date().toISOString(),
-  }
-}
 
 function EmptyState({ children }: { children: React.ReactNode }) {
   return (
@@ -523,14 +456,9 @@ function productoDonableKey(producto: ItemInventario['producto']) {
 }
 
 function ocupacionInicialPuesto(puesto: PuestoEmergencia, index: number): OcupacionPuesto {
-  const fallback: Record<string, OcupacionPuesto> = {
-    'demo-1': { capacidad: 6, trabajando: 4 },
-    'demo-2': { capacidad: 4, trabajando: 4 },
-    'demo-3': { capacidad: 8, trabajando: 2 },
-  }
-  const base = fallback[puesto.id] ?? {
+  const base = {
     capacidad: puesto.capacidadTrabajo ?? 4 + (index % 3) * 2,
-    trabajando: puesto.voluntariosTrabajando ?? Math.min(3 + index, 4 + (index % 3) * 2),
+    trabajando: puesto.voluntariosTrabajando ?? 0,
   }
 
   return {
@@ -1041,17 +969,13 @@ export default function VoluntarioDashboard() {
 
         const apiNecesidades: NecesidadDonacionApi[] = necesidadesResult.data.necesidades ?? []
         const asignacionActiva = asignacionPuestoResult.data.asignacion as AsignacionPuestoActiva | null
-        const puestosBase: PuestoEmergencia[] = puestosData.puestos?.length || apiNecesidades.length > 0
-          ? puestosData.puestos ?? []
-          : PUESTOS_FALLBACK
+        const puestosBase: PuestoEmergencia[] = puestosData.puestos ?? []
         const loadedPuestos: PuestoEmergencia[] = asignacionActiva?.puesto && !puestosBase.some((puesto) => puesto.id === asignacionActiva.puestoId)
           ? [asignacionActiva.puesto, ...puestosBase]
           : puestosBase
 
         const inventarios = await Promise.all(
           loadedPuestos.map(async (puesto) => {
-            if (puesto.id.startsWith('demo-')) return [puesto.id, NECESIDADES_FALLBACK[puesto.id] ?? []] as const
-
             const { data } = await apiClient.get(`/api/inventario/puesto/${puesto.id}`)
             return [puesto.id, data.inventario ?? []] as const
           }),
@@ -1106,9 +1030,9 @@ export default function VoluntarioDashboard() {
         }
       } catch {
         if (!cancelled) {
-          setPuestos(PUESTOS_FALLBACK)
-          setOcupacionPorPuesto(Object.fromEntries(PUESTOS_FALLBACK.map((puesto, index) => [puesto.id, ocupacionInicialPuesto(puesto, index)] as const)))
-          setInventarioPorPuesto(NECESIDADES_FALLBACK)
+          setPuestos([])
+          setOcupacionPorPuesto({})
+          setInventarioPorPuesto({})
           setIncidencias([])
           setMisAsignacionesPuesto([])
           setMisAsignacionesIncidencia([])
@@ -1353,7 +1277,7 @@ export default function VoluntarioDashboard() {
 
     setErrorDonacion('')
     try {
-      if (!isOnline && !puesto.id.startsWith('demo-')) {
+      if (!isOnline) {
         await enqueueSync({
           entity: 'solicitud-participacion-puesto',
           method: 'POST',
@@ -1362,15 +1286,13 @@ export default function VoluntarioDashboard() {
         })
       }
 
-      if (!puesto.id.startsWith('demo-')) {
-        if (isOnline) {
-          const { data } = await apiClient.post(`/api/puestos/${puesto.id}/participaciones`)
-          if (data.solicitud) {
-            setMisSolicitudesParticipacion((current) => [
-              data.solicitud,
-              ...current.filter((item) => item.id !== data.solicitud.id && item.puestoId !== data.solicitud.puestoId),
-            ])
-          }
+      if (isOnline) {
+        const { data } = await apiClient.post(`/api/puestos/${puesto.id}/participaciones`)
+        if (data.solicitud) {
+          setMisSolicitudesParticipacion((current) => [
+            data.solicitud,
+            ...current.filter((item) => item.id !== data.solicitud.id && item.puestoId !== data.solicitud.puestoId),
+          ])
         }
       }
 
@@ -1390,29 +1312,27 @@ export default function VoluntarioDashboard() {
   const finalizarAyudaManual = async () => {
     setErrorDonacion('')
     if (actividadManualActiva?.tipo === 'puesto') {
-      if (!actividadManualActiva.id.startsWith('demo-')) {
-        try {
-          if (isOnline) {
-            const { data } = await apiClient.post(`/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`)
-            if (data.asignacion) {
-              setMisAsignacionesPuesto((current) => [data.asignacion, ...current.filter((item) => item.id !== data.asignacion.id)])
-            }
-          } else {
-            await enqueueSync({
-              entity: 'asignacion-puesto',
-              method: 'POST',
-              url: `/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`,
-              priority: 'high',
-            })
-            setMensajeDonacion('Sin conexion: finalizacion guardada para sincronizar.')
+      try {
+        if (isOnline) {
+          const { data } = await apiClient.post(`/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`)
+          if (data.asignacion) {
+            setMisAsignacionesPuesto((current) => [data.asignacion, ...current.filter((item) => item.id !== data.asignacion.id)])
           }
-        } catch (err: unknown) {
-          const message = err && typeof err === 'object' && 'response' in err
-            ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-            : undefined
-          setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo finalizar la ayuda en el puesto.')
-          return
+        } else {
+          await enqueueSync({
+            entity: 'asignacion-puesto',
+            method: 'POST',
+            url: `/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`,
+            priority: 'high',
+          })
+          setMensajeDonacion('Sin conexion: finalizacion guardada para sincronizar.')
         }
+      } catch (err: unknown) {
+        const message = err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+          : undefined
+        setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo finalizar la ayuda en el puesto.')
+        return
       }
 
       setOcupacionPorPuesto((current) => {
@@ -1584,7 +1504,6 @@ export default function VoluntarioDashboard() {
       longitud: incidencia.longitud,
       tipo: incidencia.estado === 'CORTADA' ? 'Incidencia cortada' : 'Incidencia transitable',
       activo: true,
-      catastrofeId: 'incidencia',
     }
 
     void handleComoLlegar(destinoIncidencia, `incidencia:${incidencia.id}`, incidencia.id)
@@ -1826,7 +1745,7 @@ export default function VoluntarioDashboard() {
   }
 
   useEffect(() => {
-    if (actividadManualActiva?.tipo !== 'puesto' || actividadManualActiva.id.startsWith('demo-')) {
+    if (actividadManualActiva?.tipo !== 'puesto') {
       setInventarioPuestoActivo([])
       return
     }
@@ -2114,11 +2033,6 @@ export default function VoluntarioDashboard() {
         return
       }
 
-      if (selectedNeed.puesto.id.startsWith('demo-')) {
-        setErrorDonacion('Estas viendo datos demo. Recarga cuando haya necesidades reales para registrar una donacion.')
-        return
-      }
-
       const { data } = await apiClient.post('/api/donaciones', {
         puestoId: selectedNeed.puesto.id,
         productoId: selectedNeed.item.producto.id,
@@ -2163,12 +2077,6 @@ export default function VoluntarioDashboard() {
   }
 
   const handleActualizarEstadoDonacion = async (donacion: Donacion, estado: 'EN_CAMINO' | 'ENTREGADA' | 'CANCELADA') => {
-    if (donacion.id.startsWith('demo-')) {
-      setMisDonaciones((current) => current.map((item) => (
-        item.id === donacion.id ? { ...item, estado } : item
-      )))
-      return
-    }
 
     if (!isOnline) {
       if (!donacion.id.startsWith('offline-')) {
@@ -2698,7 +2606,7 @@ export default function VoluntarioDashboard() {
                   center={[rutaActiva.puesto.latitud, rutaActiva.puesto.longitud]}
                   userPosition={userPosition}
                   onUserLocated={setUserPosition}
-                  puestos={rutaActiva.puesto.catastrofeId === 'incidencia' ? [] : puestoRutaMarker}
+                  puestos={rutaActiva.puesto.id.startsWith('incidencia-') ? [] : puestoRutaMarker}
                   incidencias={incidencias as IncidenciaMarker[]}
                   selectedPuestoId={rutaActiva.puesto.id}
                   route={rutaActiva.points}

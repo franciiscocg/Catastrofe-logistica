@@ -39,50 +39,11 @@ async function getVoluntarioByUsuario(usuarioId: string) {
   return voluntario
 }
 
-async function resolveCatastrofeId(input: CreateIncidenciaInput) {
-  if (input.catastrofeId) {
-    const catastrofe = await prisma.catastrofe.findUnique({
-      where: { id: input.catastrofeId },
-      select: { id: true },
-    })
-
-    if (!catastrofe) {
-      const error = new Error('Catástrofe no encontrada') as Error & { statusCode?: number }
-      error.statusCode = 404
-      throw error
-    }
-
-    return catastrofe.id
-  }
-
-  const activas = await prisma.catastrofe.findMany({
-    where: { activa: true },
-    select: { id: true, latitud: true, longitud: true, radio: true },
-  })
-
-  const candidatas = activas
-    .map((catastrofe) => ({
-      ...catastrofe,
-      distanciaKm: haversineKm(input.latitud, input.longitud, catastrofe.latitud, catastrofe.longitud),
-    }))
-    .filter((catastrofe) => catastrofe.distanciaKm <= catastrofe.radio)
-    .sort((a, b) => a.distanciaKm - b.distanciaKm)
-
-  if (candidatas.length === 0) {
-    const error = new Error('No hay una catástrofe activa para ese punto') as Error & { statusCode?: number }
-    error.statusCode = 400
-    throw error
-  }
-
-  return candidatas[0].id
-}
-
-async function assertNotDuplicateIncidencia(input: CreateIncidenciaInput, catastrofeId: string) {
+async function assertNotDuplicateIncidencia(input: CreateIncidenciaInput) {
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
 
   const recientes = await prisma.incidenciaVia.findMany({
     where: {
-      catastrofeId,
       estado: 'CORTADA',
       createdAt: { gte: twoHoursAgo },
     },
@@ -125,7 +86,6 @@ async function assertNotDuplicateIncidencia(input: CreateIncidenciaInput, catast
 
 export async function listIncidencias(query: ListIncidenciasQuery) {
   const where: Prisma.IncidenciaViaWhereInput = {
-    ...(query.catastrofeId ? { catastrofeId: query.catastrofeId } : {}),
     ...(query.estado ? { estado: query.estado } : {}),
   }
 
@@ -155,14 +115,12 @@ export async function listIncidencias(query: ListIncidenciasQuery) {
 }
 
 export async function createIncidencia(input: CreateIncidenciaInput, reportanteId?: string) {
-  const catastrofeId = await resolveCatastrofeId(input)
   if (!input.force) {
-    await assertNotDuplicateIncidencia(input, catastrofeId)
+    await assertNotDuplicateIncidencia(input)
   }
 
   return prisma.incidenciaVia.create({
     data: {
-      catastrofeId,
       reportanteId,
       titulo: input.titulo,
       categoria: input.categoria,

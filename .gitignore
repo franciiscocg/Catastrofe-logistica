@@ -48,13 +48,14 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260509191000_add_solicitudes_participacion_puesto/migration.sql
 !backend/prisma/migrations/20260509193000_add_puesto_trabajadores/
 !backend/prisma/migrations/20260509193000_add_puesto_trabajadores/migration.sql
-<<<<<<< feature/coordinar-puesto-19-estados-puestos
 !backend/prisma/migrations/20260510180000_add_estado_puesto/
 !backend/prisma/migrations/20260510180000_add_estado_puesto/migration.sql
-=======
 !backend/prisma/migrations/20260510103000_add_incidencia_title_category/
 !backend/prisma/migrations/20260510103000_add_incidencia_title_category/migration.sql
->>>>>>> main
+!backend/prisma/migrations/20260522143000_remove_catastrofes_flow/
+!backend/prisma/migrations/20260522143000_remove_catastrofes_flow/migration.sql
+!backend/prisma/migrations/20260522150000_add_idempotency_records/
+!backend/prisma/migrations/20260522150000_add_idempotency_records/migration.sql
 
 # Coverage
 coverage/

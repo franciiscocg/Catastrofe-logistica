@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { SyncOperation } from '@/types/sync.types'
-import type { Catastrofe, PuestoEmergencia } from '@/types/catastrofe.types'
+import type { PuestoEmergencia } from '@/types/puesto.types'
 import type { ItemInventario } from '@/types/inventario.types'
 
 interface MapTile {
@@ -11,7 +11,6 @@ interface MapTile {
 
 class CatLogisticaDB extends Dexie {
   syncQueue!: Table<SyncOperation, string>
-  catastrofes!: Table<Catastrofe, string>
   puestos!: Table<PuestoEmergencia, string>
   inventario!: Table<ItemInventario, string>
   mapTiles!: Table<MapTile, string>
@@ -19,10 +18,16 @@ class CatLogisticaDB extends Dexie {
   constructor() {
     super('CatLogisticaDB')
 
-    this.version(1).stores({
+    this.version(2).stores({
       syncQueue: 'id, status, priority, createdAt, entity',
-      catastrofes: 'id, activa',
-      puestos: 'id, catastrofeId, activo',
+      puestos: 'id, activo',
+      inventario: 'id, puestoId, tipo',
+      mapTiles: 'key, cachedAt',
+    })
+
+    this.version(3).stores({
+      syncQueue: 'id, status, priority, createdAt, nextRunAt, entity, idempotencyKey',
+      puestos: 'id, activo',
       inventario: 'id, puestoId, tipo',
       mapTiles: 'key, cachedAt',
     })
