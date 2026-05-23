@@ -13,8 +13,11 @@ import { donacionesRouter } from './modules/donaciones/donaciones.router.js'
 import { errorHandler } from './middleware/error.middleware.js'
 import { registerIdempotency } from './middleware/idempotency.middleware.js'
 import { getJwtSecret } from './lib/security.js'
+import { assertEmailConfigured } from './lib/email.js'
 
 export async function buildApp() {
+  assertEmailConfigured()
+
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   })

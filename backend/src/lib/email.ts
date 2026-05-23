@@ -1,0 +1,130 @@
+import nodemailer from 'nodemailer'
+import type { Transporter } from 'nodemailer'
+
+type MailInput = {
+  to: string
+  subject: string
+  text: string
+  html: string
+}
+
+let transporter: Transporter | null = null
+
+function isProduction() {
+  return process.env.NODE_ENV === 'production'
+}
+
+function getAppBaseUrl() {
+  return (process.env.APP_PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/$/, '')
+}
+
+function getMailFrom() {
+  return process.env.MAIL_FROM ?? 'Catastrofe Logistica <no-reply@catlogistica.local>'
+}
+
+export function assertEmailConfigured() {
+  if (isProduction() && !process.env.SMTP_HOST) {
+    throw new Error('SMTP_HOST obligatorio en produccion para enviar emails')
+  }
+}
+
+function getTransporter() {
+  const host = process.env.SMTP_HOST
+  if (!host) {
+    if (isProduction()) {
+      throw new Error('SMTP_HOST obligatorio en produccion para enviar emails')
+    }
+    return null
+  }
+
+  if (transporter) return transporter
+
+  const port = Number(process.env.SMTP_PORT ?? 587)
+  const user = process.env.SMTP_USER
+  const pass = process.env.SMTP_PASS
+
+  transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: process.env.SMTP_SECURE === 'true' || port === 465,
+    auth: user && pass ? { user, pass } : undefined,
+  })
+
+  return transporter
+}
+
+async function sendMail(input: MailInput) {
+  const mailer = getTransporter()
+  if (!mailer) {
+    console.info(`[mail:dev] ${input.subject}`)
+    console.info(`[mail:dev] Para: ${input.to}`)
+    console.info(input.text)
+    return { sent: false, preview: input.text }
+  }
+
+  await mailer.sendMail({
+    from: getMailFrom(),
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+  })
+
+  return { sent: true }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function actionTemplate(title: string, body: string, actionText: string, actionUrl: string) {
+  const safeTitle = escapeHtml(title)
+  const safeBody = escapeHtml(body)
+  const safeActionText = escapeHtml(actionText)
+  const safeActionUrl = escapeHtml(actionUrl)
+
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827;max-width:560px;margin:0 auto;padding:24px">
+      <h1 style="font-size:22px;margin:0 0 12px">${safeTitle}</h1>
+      <p style="font-size:15px;margin:0 0 20px;color:#374151">${safeBody}</p>
+      <a href="${safeActionUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:8px">
+        ${safeActionText}
+      </a>
+      <p style="font-size:12px;margin:20px 0 0;color:#6b7280">
+        Si el boton no funciona, copia y pega este enlace en tu navegador:<br>
+        <span style="word-break:break-all">${safeActionUrl}</span>
+      </p>
+    </div>
+  `
+}
+
+export async function sendAccountVerificationEmail(input: { to: string; nombre: string; token: string }) {
+  const url = `${getAppBaseUrl()}/auth/verify-account?token=${encodeURIComponent(input.token)}`
+  const subject = 'Verifica tu cuenta de Catastrofe Logistica'
+  const body = `Hola ${input.nombre}, verifica tu cuenta para poder iniciar sesion en Catastrofe Logistica.`
+
+  return sendMail({
+    to: input.to,
+    subject,
+    text: `${body}\n\nVerificar cuenta: ${url}`,
+    html: actionTemplate(subject, body, 'Verificar cuenta', url),
+  })
+}
+
+export async function sendPasswordResetEmail(input: { to: string; nombre: string; token: string }) {
+  const url = `${getAppBaseUrl()}/auth/reset-password?token=${encodeURIComponent(input.token)}`
+  const subject = 'Recupera tu contrasena de Catastrofe Logistica'
+  const body = `Hola ${input.nombre}, hemos recibido una solicitud para restablecer tu contrasena. Si no has sido tu, puedes ignorar este mensaje.`
+
+  return sendMail({
+    to: input.to,
+    subject,
+    text: `${body}\n\nRestablecer contrasena: ${url}`,
+    html: actionTemplate(subject, body, 'Restablecer contrasena', url),
+  })
+}

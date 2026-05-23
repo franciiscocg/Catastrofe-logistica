@@ -21,6 +21,23 @@ const puestoDonacionSelect = {
   activo: true,
 } as const
 
+const DONACION_TRANSITIONS: Record<EstadoDonacion, EstadoDonacion[]> = {
+  PENDIENTE: ['EN_CAMINO', 'CANCELADA'],
+  EN_CAMINO: ['CANCELADA'],
+  ENTREGADA: [],
+  CANCELADA: [],
+}
+
+function assertEstadoTransition(actual: EstadoDonacion, siguiente: EstadoDonacion) {
+  if (actual === siguiente) return
+  if (!DONACION_TRANSITIONS[actual].includes(siguiente)) {
+    if (siguiente === 'ENTREGADA') {
+      throw badRequest('La entrega debe confirmarse escaneando el QR en el puesto.')
+    }
+    throw badRequest(`No se puede cambiar una donacion de ${actual} a ${siguiente}.`)
+  }
+}
+
 async function getVoluntarioByUsuario(usuarioId: string) {
   const voluntario = await prisma.voluntario.findUnique({
     where: { usuarioId },
@@ -170,18 +187,37 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
 
   const donacion = await prisma.donacion.findFirst({
     where: { id: donacionId, voluntarioId: voluntario.id },
-    select: { id: true },
+    select: { id: true, estado: true, puestoId: true },
   })
 
   if (!donacion) throw notFound('Donacion no encontrada')
+  assertEstadoTransition(donacion.estado, estado)
 
-  return prisma.donacion.update({
-    where: { id: donacionId },
-    data: { estado },
-    include: {
-      producto: true,
-      puesto: { select: puestoDonacionSelect },
-    },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.donacion.update({
+      where: { id: donacionId },
+      data: { estado },
+      include: {
+        producto: true,
+        puesto: { select: puestoDonacionSelect },
+      },
+    })
+
+    await tx.auditLog.create({
+      data: {
+        usuarioId,
+        accion: 'DONACION_ESTADO_ACTUALIZADO',
+        entidad: 'DONACION',
+        entidadId: donacionId,
+        datos: {
+          estadoAnterior: donacion.estado,
+          estadoNuevo: estado,
+          puestoId: donacion.puestoId,
+        },
+      },
+    })
+
+    return updated
   })
 }
 

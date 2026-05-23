@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
 import Button from '@/components/ui/Button'
+import { getApiErrorMessage } from '@/utils/errors'
 
 export default function RequestPasswordReset() {
   const [identifier, setIdentifier] = useState('')
   const [message, setMessage] = useState('')
   const [devToken, setDevToken] = useState('')
+  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const submit = async (event: React.FormEvent) => {
@@ -14,10 +16,13 @@ export default function RequestPasswordReset() {
     setLoading(true)
     setMessage('')
     setDevToken('')
+    setError('')
     try {
       const { data } = await apiClient.post<{ sent: boolean; resetToken?: string }>('/api/auth/password-reset/request', { identifier })
-      setMessage('Si existe una cuenta con esos datos, enviaremos instrucciones de recuperacion.')
+      setMessage('Si existe una cuenta con esos datos, enviaremos instrucciones de recuperación.')
       if (data.resetToken) setDevToken(data.resetToken)
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'No se pudieron enviar las instrucciones.'))
     } finally {
       setLoading(false)
     }
@@ -27,10 +32,11 @@ export default function RequestPasswordReset() {
     <div className="flex min-h-screen flex-col justify-center bg-gray-50 px-4">
       <form onSubmit={submit} className="mx-auto w-full max-w-sm space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Recuperar contrasena</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Recuperar contraseña</h1>
           <p className="mt-1 text-sm text-gray-500">Introduce tu email o DNI.</p>
         </div>
         {message && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">{message}</p>}
+        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {devToken && <p className="break-all rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">Token desarrollo: {devToken}</p>}
         <input
           required

@@ -160,7 +160,7 @@ export default function RoleSelection() {
                 onClick={logout}
                 className="text-sm text-gray-400 hover:text-red-600 transition-colors py-2 px-4 rounded-lg"
               >
-                Cerrar sesion
+                Cerrar sesión
               </button>
             </div>
           )}

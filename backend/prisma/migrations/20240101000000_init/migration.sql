@@ -1,0 +1,2 @@
+-- Legacy baseline migration already present in older local databases.
+-- The current project history starts from the checked-in feature migrations.

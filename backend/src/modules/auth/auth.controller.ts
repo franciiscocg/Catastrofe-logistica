@@ -4,6 +4,7 @@ import {
   logoutSchema,
   refreshSchema,
   registerSchema,
+  resendVerificationSchema,
   requestPasswordResetSchema,
   resetPasswordSchema,
   verifyAccountSchema,
@@ -11,6 +12,7 @@ import {
 import {
   issueRefreshToken,
   loginUser,
+  requestAccountVerification,
   registerUser,
   requestPasswordReset,
   resetPassword,
@@ -19,6 +21,7 @@ import {
   verifyAccount,
 } from './auth.service.js'
 import { ACCESS_TOKEN_EXPIRES_IN, ACCESS_TOKEN_TTL_SECONDS } from '../../lib/security.js'
+import { sendAccountVerificationEmail, sendPasswordResetEmail } from '../../lib/email.js'
 
 async function signAccessToken(reply: FastifyReply, user: { id: string; email: string; roles: string[] }) {
   const accessToken = await reply.jwtSign(
@@ -42,6 +45,24 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
   const { user, puesto, solicitud, verificationToken } = await registerUser(input)
+
+  await sendAccountVerificationEmail({
+    to: user.email,
+    nombre: user.nombre,
+    token: verificationToken,
+  })
+
+  if (!user.emailVerified) {
+    const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
+    return reply.status(201).send({
+      user,
+      puesto,
+      solicitud,
+      requiresEmailVerification: true,
+      ...devVerification,
+    })
+  }
+
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
 
@@ -68,9 +89,36 @@ export async function verify(request: FastifyRequest, reply: FastifyReply) {
   return reply.send({ user })
 }
 
+export async function resendVerification(request: FastifyRequest, reply: FastifyReply) {
+  const input = resendVerificationSchema.parse(request.body)
+  const result = await requestAccountVerification(input)
+
+  if (result.verificationToken && result.user) {
+    await sendAccountVerificationEmail({
+      to: result.user.email,
+      nombre: result.user.nombre,
+      token: result.verificationToken,
+    })
+  }
+
+  const devVerification = process.env.NODE_ENV === 'production' || !result.verificationToken ? {} : { verificationToken: result.verificationToken }
+  return reply.send({ sent: true, ...devVerification })
+}
+
 export async function requestReset(request: FastifyRequest, reply: FastifyReply) {
   const input = requestPasswordResetSchema.parse(request.body)
-  return reply.send(await requestPasswordReset(input))
+  const result = await requestPasswordReset(input)
+
+  if (result.resetToken && result.user) {
+    await sendPasswordResetEmail({
+      to: result.user.email,
+      nombre: result.user.nombre,
+      token: result.resetToken,
+    })
+  }
+
+  const devReset = process.env.NODE_ENV === 'production' || !result.resetToken ? {} : { resetToken: result.resetToken }
+  return reply.send({ sent: true, ...devReset })
 }
 
 export async function reset(request: FastifyRequest, reply: FastifyReply) {

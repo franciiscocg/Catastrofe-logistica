@@ -11,12 +11,13 @@ type SuccessMessage = {
 export default function RegisterSuccess() {
   const [params] = useSearchParams()
   const role = params.get('role')
+  const verification = params.get('verification')
 
   const messages: Record<string, SuccessMessage> = {
     puesto: {
       icon: '...',
       title: 'Solicitud enviada',
-      body: 'Tu cuenta y solicitud de puesto de emergencia han sido recibidas correctamente. Un coordinador revisara la solicitud y activara el acceso cuando sea aprobada.',
+      body: 'Tu cuenta y solicitud de puesto de emergencia han sido recibidas correctamente. Un coordinador revisará la solicitud y activará el acceso cuando sea aprobada.',
       linkText: 'Volver al inicio',
       linkTo: '/',
     },
@@ -25,11 +26,20 @@ export default function RegisterSuccess() {
   const fallbackMessage: SuccessMessage = {
     icon: 'OK',
     title: 'Cuenta creada',
-    body: 'Tu cuenta ha sido creada correctamente. Ya puedes acceder a la aplicacion.',
-    linkText: 'Iniciar sesion',
+    body: 'Tu cuenta ha sido creada correctamente. Ya puedes acceder a la aplicación.',
+    linkText: 'Iniciar sesión',
     linkTo: '/auth/login',
   }
-  const msg = (role ? messages[role] : undefined) ?? fallbackMessage
+  const verificationMessage: SuccessMessage = {
+    icon: 'OK',
+    title: 'Revisa tu email',
+    body: 'Hemos creado tu cuenta y te hemos enviado un enlace de verificación. Verifica tu email antes de iniciar sesión.',
+    linkText: 'Ir al login',
+    linkTo: '/auth/login',
+  }
+  const msg = verification === 'pending'
+    ? verificationMessage
+    : (role ? messages[role] : undefined) ?? fallbackMessage
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center px-4">

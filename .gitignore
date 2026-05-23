@@ -38,6 +38,8 @@ Thumbs.db
 
 # Prisma
 backend/prisma/migrations/*
+!backend/prisma/migrations/20240101000000_init/
+!backend/prisma/migrations/20240101000000_init/migration.sql
 !backend/prisma/migrations/20260502120000_add_puesto_asignaciones/
 !backend/prisma/migrations/20260502120000_add_puesto_asignaciones/migration.sql
 !backend/prisma/migrations/20260502211500_add_volunteer_delivery_codes_and_incident_assignments/
@@ -52,6 +54,8 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260510180000_add_estado_puesto/migration.sql
 !backend/prisma/migrations/20260510103000_add_incidencia_title_category/
 !backend/prisma/migrations/20260510103000_add_incidencia_title_category/migration.sql
+!backend/prisma/migrations/20260522133000_make_catastrofe_optional/
+!backend/prisma/migrations/20260522133000_make_catastrofe_optional/migration.sql
 !backend/prisma/migrations/20260522143000_remove_catastrofes_flow/
 !backend/prisma/migrations/20260522143000_remove_catastrofes_flow/migration.sql
 !backend/prisma/migrations/20260522150000_add_idempotency_records/

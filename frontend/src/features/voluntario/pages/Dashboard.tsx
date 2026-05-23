@@ -13,6 +13,7 @@ import { useConnectivity } from '@/hooks/useConnectivity'
 import { useSyncStore } from '@/store/sync.store'
 import { sortByDistance } from '@/utils/haversine'
 import { fetchRutaEvitandoIncidencias } from '@/utils/routing'
+import { getApiErrorMessage } from '@/utils/errors'
 
 type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
 type VistaDonacion = 'objetos' | 'necesidades' | 'mis-donaciones'
@@ -1965,10 +1966,7 @@ export default function VoluntarioDashboard() {
         ? 'Donaciones registradas correctamente. La ruta queda organizada por puestos.'
         : 'Sin conexion: donaciones guardadas y pendientes de sincronizar.')
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-        : undefined
-      setErrorDonacion(message?.error ?? message?.message ?? (err instanceof Error ? err.message : 'No se pudieron registrar las donaciones.'))
+      setErrorDonacion(getApiErrorMessage(err, 'No se pudieron registrar las donaciones.'))
     } finally {
       setDonacionLoading(false)
     }
@@ -2074,10 +2072,7 @@ export default function VoluntarioDashboard() {
       setComentarioDonacion('')
       setSeleccion('')
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-        : undefined
-      setErrorDonacion(message?.error ?? message?.message ?? 'No se ha podido registrar la donacion.')
+      setErrorDonacion(getApiErrorMessage(err, 'No se ha podido registrar la donación.'))
     } finally {
       setDonacionLoading(false)
     }
@@ -2135,10 +2130,7 @@ export default function VoluntarioDashboard() {
         }))
       }
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-        : undefined
-      setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo actualizar la donacion.')
+      setErrorDonacion(getApiErrorMessage(err, 'No se pudo actualizar la donación.'))
     } finally {
       setEstadoLoadingId('')
     }
@@ -2198,10 +2190,7 @@ export default function VoluntarioDashboard() {
       }
       setMensajeDonacion('Codigo de entrega generado. Enseñalo en el puesto para confirmar la llegada.')
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-        : undefined
-      setErrorDonacion(message?.error ?? message?.message ?? 'No se pudo generar el codigo de entrega.')
+      setErrorDonacion(getApiErrorMessage(err, 'No se pudo generar el código de entrega.'))
     } finally {
       setEstadoLoadingId('')
     }

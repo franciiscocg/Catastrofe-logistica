@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
+import { getApiErrorMessage } from '@/utils/errors'
 
 interface StandardForm {
   nombre: string
@@ -57,7 +58,7 @@ export default function Register() {
     })
   }
 
-  const validateForm = (): boolean => {
+  const validateForm = () => {
     const errors: FormErrors = {}
     if (form.nombre.trim().length < 2) errors.nombre = 'Introduce al menos 2 caracteres.'
     if (form.apellidos.trim().length < 2) errors.apellidos = 'Introduce al menos 2 caracteres.'
@@ -68,8 +69,8 @@ export default function Register() {
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setError('')
     if (!validateForm()) return
     setLoading(true)
@@ -83,13 +84,15 @@ export default function Register() {
         dni: form.dni.trim().toUpperCase(),
       })
 
+      if (data.requiresEmailVerification || !data.accessToken) {
+        navigate(`/auth/registro-exitoso?verification=pending${roleParam ? `&role=${roleParam}` : ''}`)
+        return
+      }
+
       login(data.user, data.accessToken, undefined, data.refreshToken, data.accessTokenExpiresAt)
       navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
-    } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { message?: string; error?: string } } }).response?.data
-        : undefined
-      setError(message?.message ?? message?.error ?? 'No se ha podido crear la cuenta.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'No se ha podido crear la cuenta.'))
     } finally {
       setLoading(false)
     }
@@ -98,7 +101,6 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8 flex flex-col justify-center">
       <div className="max-w-sm mx-auto w-full">
-
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Crear cuenta</h1>
           <p className="text-sm text-gray-500">Completa tus datos para registrarte</p>
@@ -116,7 +118,7 @@ export default function Register() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
               <input
                 value={form.nombre}
-                onChange={(e) => updateField('nombre', e.target.value)}
+                onChange={(event) => updateField('nombre', event.target.value)}
                 className={inputClass(Boolean(fieldErrors.nombre))}
                 placeholder="María"
                 autoComplete="given-name"
@@ -127,7 +129,7 @@ export default function Register() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Apellidos</label>
               <input
                 value={form.apellidos}
-                onChange={(e) => updateField('apellidos', e.target.value)}
+                onChange={(event) => updateField('apellidos', event.target.value)}
                 className={inputClass(Boolean(fieldErrors.apellidos))}
                 placeholder="García López"
                 autoComplete="family-name"
@@ -141,7 +143,7 @@ export default function Register() {
             <input
               type="email"
               value={form.email}
-              onChange={(e) => updateField('email', e.target.value)}
+              onChange={(event) => updateField('email', event.target.value)}
               className={inputClass(Boolean(fieldErrors.email))}
               placeholder="tu@email.com"
               autoComplete="email"
@@ -153,7 +155,7 @@ export default function Register() {
             <label className="block text-sm font-medium text-gray-700 mb-1">DNI / NIE</label>
             <input
               value={form.dni}
-              onChange={(e) => updateField('dni', e.target.value.toUpperCase())}
+              onChange={(event) => updateField('dni', event.target.value.toUpperCase())}
               className={`${inputClass(Boolean(fieldErrors.dni))} uppercase`}
               placeholder="12345678A"
               autoComplete="off"
@@ -167,7 +169,7 @@ export default function Register() {
             <input
               type="password"
               value={form.password}
-              onChange={(e) => updateField('password', e.target.value)}
+              onChange={(event) => updateField('password', event.target.value)}
               className={inputClass(Boolean(fieldErrors.password))}
               placeholder="Mínimo 8 caracteres"
               autoComplete="new-password"

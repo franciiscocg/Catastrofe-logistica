@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
 import { emitRealtime } from '../../lib/realtime.js'
 import { REFRESH_TOKEN_TTL_DAYS, RESET_TOKEN_TTL_MINUTES, VERIFY_TOKEN_TTL_HOURS } from '../../lib/security.js'
-import type { LoginInput, RegisterInput, RequestPasswordResetInput, ResetPasswordInput } from './auth.schema.js'
+import type { LoginInput, RegisterInput, ResendVerificationInput, RequestPasswordResetInput, ResetPasswordInput } from './auth.schema.js'
 
 function appError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode })
@@ -61,7 +61,7 @@ export async function loginUser({ identifier, password }: LoginInput) {
 
   if (!user.activo) throw appError('Cuenta desactivada', 403)
   if (process.env.NODE_ENV === 'production' && !user.emailVerified) {
-    throw appError('Verifica tu cuenta antes de iniciar sesion', 403)
+    throw appError('Verifica tu cuenta antes de iniciar sesión', 403)
   }
 
   if (user.roles.includes(RolUsuario.VOLUNTARIO)) {
@@ -192,7 +192,7 @@ export async function verifyAccount(token: string) {
   const record = await prisma.accountVerificationToken.findUnique({
     where: { tokenHash: hashToken(token) },
   })
-  if (!record || record.usedAt || record.expiresAt <= new Date()) throw badRequest('Token de verificacion invalido o caducado')
+  if (!record || record.usedAt || record.expiresAt <= new Date()) throw badRequest('Token de verificación inválido o caducado')
 
   const user = await prisma.usuario.update({
     where: { id: record.usuarioId },
@@ -200,6 +200,33 @@ export async function verifyAccount(token: string) {
   })
   await prisma.accountVerificationToken.update({ where: { id: record.id }, data: { usedAt: new Date() } })
   return sanitizeUser(user)
+}
+
+export async function requestAccountVerification({ identifier }: ResendVerificationInput) {
+  const isEmail = emailRegex.test(identifier)
+  const user = isEmail
+    ? await prisma.usuario.findUnique({ where: { email: identifier } })
+    : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
+
+  if (!user || user.emailVerified) return { sent: true }
+
+  const token = createPlainToken()
+  await prisma.accountVerificationToken.create({
+    data: {
+      usuarioId: user.id,
+      tokenHash: hashToken(token),
+      expiresAt: addMs(VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000),
+    },
+  })
+
+  return {
+    sent: true,
+    verificationToken: token,
+    user: {
+      email: user.email,
+      nombre: user.nombre,
+    },
+  }
 }
 
 export async function requestPasswordReset({ identifier }: RequestPasswordResetInput) {
@@ -219,14 +246,21 @@ export async function requestPasswordReset({ identifier }: RequestPasswordResetI
     },
   })
 
-  return process.env.NODE_ENV === 'production' ? { sent: true } : { sent: true, resetToken: token }
+  return {
+    sent: true,
+    resetToken: token,
+    user: {
+      email: user.email,
+      nombre: user.nombre,
+    },
+  }
 }
 
 export async function resetPassword({ token, password }: ResetPasswordInput) {
   const record = await prisma.passwordResetToken.findUnique({
     where: { tokenHash: hashToken(token) },
   })
-  if (!record || record.usedAt || record.expiresAt <= new Date()) throw badRequest('Token de recuperacion invalido o caducado')
+  if (!record || record.usedAt || record.expiresAt <= new Date()) throw badRequest('Token de recuperación inválido o caducado')
 
   const hashed = await bcrypt.hash(password, 12)
   await prisma.$transaction([

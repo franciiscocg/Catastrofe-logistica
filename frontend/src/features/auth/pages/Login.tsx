@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth.store'
 import { ROLE_LABELS, ROLE_ROUTES, Role } from '@/types/auth.types'
 import { apiClient } from '@/lib/api/client'
 import Button from '@/components/ui/Button'
+import { getApiErrorMessage } from '@/utils/errors'
 
 export default function Login() {
   const [identifier, setIdentifier] = useState('')
@@ -18,8 +19,8 @@ export default function Login() {
   const roleParam = params.get('role') as Role | null
   const roleLabel = roleParam ? ROLE_LABELS[roleParam] : null
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setError('')
     setLoading(true)
 
@@ -53,8 +54,8 @@ export default function Login() {
       } else {
         navigate('/')
       }
-    } catch {
-      setError('Credenciales incorrectas. Comprueba tu email, DNI y contrasena.')
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Credenciales incorrectas. Comprueba tu email, DNI y contraseña.'))
     } finally {
       setLoading(false)
     }
@@ -63,9 +64,8 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center px-4">
       <div className="max-w-sm mx-auto w-full">
-
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Iniciar sesion</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Iniciar sesión</h1>
           {roleLabel ? (
             <p className="mt-1 text-sm text-gray-500">
               Para acceder como <strong>{roleLabel}</strong>
@@ -88,7 +88,7 @@ export default function Login() {
               type="text"
               required
               value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
+              onChange={(event) => setIdentifier(event.target.value)}
               className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="tu@email.com o 12345678A"
               autoComplete="username"
@@ -101,7 +101,7 @@ export default function Login() {
               type="password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm"
               placeholder="********"
               autoComplete="current-password"
@@ -115,15 +115,15 @@ export default function Login() {
 
         <div className="mt-4 text-center">
           <Link to="/auth/request-reset" className="text-sm font-medium text-blue-600 hover:underline">
-            He olvidado mi contrasena
+            He olvidado mi contraseña
           </Link>
           <p className="text-sm text-gray-500">
-            No tienes cuenta?{' '}
+            ¿No tienes cuenta?{' '}
             <Link
               to={`/auth/register${roleParam ? `?role=${roleParam}` : ''}`}
               className="text-blue-600 font-medium hover:underline"
             >
-              Registrate
+              Regístrate
             </Link>
           </p>
         </div>

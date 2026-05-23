@@ -270,7 +270,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
           Ubicacion del puesto <span className="text-red-500">*</span>
         </p>
         <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation} className="mb-3">
-          {geoLoading ? 'Obteniendo ubicacion...' : 'Usar mi ubicacion actual'}
+          {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
         </Button>
 
         {form.latitud && form.longitud && (
