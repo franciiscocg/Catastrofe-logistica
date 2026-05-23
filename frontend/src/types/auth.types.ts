@@ -12,6 +12,7 @@ export interface User {
   apellidos: string
   telefono?: string
   roles: string[]
+  emailVerified?: boolean
   createdAt?: string
 }
 

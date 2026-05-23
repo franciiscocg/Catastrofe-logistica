@@ -27,6 +27,8 @@ export default function Login() {
       const { data } = await apiClient.post<{
         user: { id: string; email: string; nombre: string; apellidos: string; roles: string[] }
         accessToken: string
+        refreshToken: string
+        accessTokenExpiresAt: string
       }>('/api/auth/login', { identifier, password })
 
       let puestoId: string | undefined
@@ -41,7 +43,7 @@ export default function Login() {
         }
       }
 
-      login(data.user as any, data.accessToken, puestoId)
+      login(data.user as any, data.accessToken, puestoId, data.refreshToken, data.accessTokenExpiresAt)
 
       if (roleParam) {
         selectRole(roleParam)
@@ -112,6 +114,9 @@ export default function Login() {
         </form>
 
         <div className="mt-4 text-center">
+          <Link to="/auth/request-reset" className="text-sm font-medium text-blue-600 hover:underline">
+            He olvidado mi contrasena
+          </Link>
           <p className="text-sm text-gray-500">
             No tienes cuenta?{' '}
             <Link

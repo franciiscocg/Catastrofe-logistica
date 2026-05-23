@@ -5,10 +5,13 @@ import { Role, User } from '@/types/auth.types'
 interface AuthStore {
   user: User | null
   accessToken: string | null
+  refreshToken: string | null
+  accessTokenExpiresAt: string | null
   selectedRole: Role | null
   isAuthenticated: boolean
   puestoId: string | null           // puesto del usuario si tiene rol PUESTO
-  login: (user: User, accessToken: string, puestoId?: string) => void
+  login: (user: User, accessToken: string, puestoId?: string, refreshToken?: string, accessTokenExpiresAt?: string) => void
+  setSession: (user: User, accessToken: string, refreshToken: string, accessTokenExpiresAt: string) => void
   logout: () => void
   selectRole: (role: Role) => void
   clearRole: () => void
@@ -20,15 +23,27 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       user: null,
       accessToken: null,
+      refreshToken: null,
+      accessTokenExpiresAt: null,
       selectedRole: null,
       isAuthenticated: false,
       puestoId: null,
 
-      login: (user, accessToken, puestoId) =>
-        set({ user, accessToken, isAuthenticated: true, puestoId: puestoId ?? null }),
+      login: (user, accessToken, puestoId, refreshToken, accessTokenExpiresAt) =>
+        set({
+          user,
+          accessToken,
+          refreshToken: refreshToken ?? null,
+          accessTokenExpiresAt: accessTokenExpiresAt ?? null,
+          isAuthenticated: true,
+          puestoId: puestoId ?? null,
+        }),
 
       logout: () =>
-        set({ user: null, accessToken: null, selectedRole: null, isAuthenticated: false, puestoId: null }),
+        set({ user: null, accessToken: null, refreshToken: null, accessTokenExpiresAt: null, selectedRole: null, isAuthenticated: false, puestoId: null }),
+
+      setSession: (user, accessToken, refreshToken, accessTokenExpiresAt) =>
+        set({ user, accessToken, refreshToken, accessTokenExpiresAt, isAuthenticated: true }),
 
       selectRole: (role) => set({ selectedRole: role }),
 
@@ -44,6 +59,8 @@ export const useAuthStore = create<AuthStore>()(
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,
+        refreshToken: state.refreshToken,
+        accessTokenExpiresAt: state.accessTokenExpiresAt,
         selectedRole: state.selectedRole,
         isAuthenticated: state.isAuthenticated,
         puestoId: state.puestoId,

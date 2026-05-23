@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { RolUsuario } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
+import { emitRealtime } from '../../lib/realtime.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
 import { listTrabajadores, addTrabajador, removeTrabajador } from './trabajadores.service.js'
@@ -428,6 +429,7 @@ export async function puestosRouter(app: FastifyInstance) {
       })
     })
 
+    emitRealtime('solicitud-puesto:updated', { solicitud })
     return reply.status(201).send({ solicitud })
   })
 
@@ -509,7 +511,9 @@ export async function puestosRouter(app: FastifyInstance) {
       })
     })
 
-    return reply.send({ puesto: await findPuestoCoordinador(id) })
+    const puesto = await findPuestoCoordinador(id)
+    emitRealtime('puesto:updated', { puesto })
+    return reply.send({ puesto })
   })
 
   app.delete('/coordinador/:id', {
@@ -551,7 +555,10 @@ export async function puestosRouter(app: FastifyInstance) {
       })
     })
 
-    return reply.send({ puesto: await findPuestoCoordinador(id) })
+    const puesto = await findPuestoCoordinador(id)
+    emitRealtime('puesto:updated', { puesto })
+    emitRealtime('solicitud-participacion:updated', { puestoId: id })
+    return reply.send({ puesto })
   })
 
   app.get('/coordinador/:id/detalle', {
@@ -710,6 +717,8 @@ export async function puestosRouter(app: FastifyInstance) {
       return { solicitud: revisada, asignacion }
     })
 
+    emitRealtime('solicitud-participacion:updated', { solicitud: result.solicitud, asignacion: result.asignacion, puestoId: result.solicitud.puestoId })
+    emitRealtime('puesto:updated', { puestoId: result.solicitud.puestoId })
     reply.send(result)
   })
 
@@ -755,6 +764,7 @@ export async function puestosRouter(app: FastifyInstance) {
       return revisada
     })
 
+    emitRealtime('solicitud-participacion:updated', { solicitud, puestoId: solicitud.puestoId })
     reply.send({ solicitud })
   })
 
@@ -811,6 +821,8 @@ export async function puestosRouter(app: FastifyInstance) {
       return { solicitud: revisada, puesto }
     })
 
+    emitRealtime('solicitud-puesto:updated', { solicitud: result.solicitud, puesto: result.puesto })
+    emitRealtime('puesto:updated', { puesto: result.puesto })
     return reply.send(result)
   })
 
@@ -839,6 +851,7 @@ export async function puestosRouter(app: FastifyInstance) {
       },
     })
 
+    emitRealtime('solicitud-puesto:updated', { solicitud })
     return reply.send({ solicitud })
   })
 
@@ -899,6 +912,7 @@ export async function puestosRouter(app: FastifyInstance) {
       })
     })
 
+    emitRealtime('solicitud-participacion:updated', { solicitud, puestoId })
     reply.status(201).send({ solicitud })
   })
 
@@ -992,6 +1006,8 @@ export async function puestosRouter(app: FastifyInstance) {
       return { solicitud: revisada, asignacion }
     })
 
+    emitRealtime('solicitud-participacion:updated', { solicitud: result.solicitud, asignacion: result.asignacion, puestoId: result.solicitud.puestoId })
+    emitRealtime('puesto:updated', { puestoId: result.solicitud.puestoId })
     reply.send(result)
   })
 
@@ -1025,6 +1041,7 @@ export async function puestosRouter(app: FastifyInstance) {
       },
     })
 
+    emitRealtime('solicitud-participacion:updated', { solicitud, puestoId: solicitud.puestoId })
     reply.send({ solicitud })
   })
 
@@ -1091,6 +1108,7 @@ export async function puestosRouter(app: FastifyInstance) {
       data: { estado: 'CANCELADA', endedAt: new Date() },
     })
 
+    emitRealtime('puesto:updated', { puestoId })
     reply.status(204).send()
   })
 
@@ -1128,6 +1146,7 @@ export async function puestosRouter(app: FastifyInstance) {
       include: { puesto: { select: puestoPublicSelect } },
     })
 
+    emitRealtime('puesto:updated', { puestoId, asignacion: finalizada })
     reply.send({ asignacion: finalizada })
   })
 

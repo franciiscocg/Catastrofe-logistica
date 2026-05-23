@@ -37,7 +37,7 @@ const DEFAULT_ACCENT = {
 }
 
 export default function AppShell() {
-  const { clearRole, selectedRole, user } = useAuthStore()
+  const { accessTokenExpiresAt, clearRole, selectedRole, user } = useAuthStore()
   const navigate = useNavigate()
 
   const handleChangeRole = () => {
@@ -47,6 +47,9 @@ export default function AppShell() {
 
   const roleLabel = selectedRole ? ROLE_LABELS[selectedRole as Role] : ''
   const accent = selectedRole ? (ROLE_ACCENTS[selectedRole] ?? DEFAULT_ACCENT) : DEFAULT_ACCENT
+  const sessionExpiry = accessTokenExpiresAt
+    ? new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date(accessTokenExpiresAt))
+    : null
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -57,9 +60,12 @@ export default function AppShell() {
               {roleLabel || 'Sesión'}
             </p>
             {user ? (
-              <p className="truncate text-sm font-semibold text-slate-950">
-                {user.nombre} {user.apellidos}
-              </p>
+              <>
+                <p className="truncate text-sm font-semibold text-slate-950">
+                  {user.nombre} {user.apellidos}
+                </p>
+                {sessionExpiry && <p className="text-[11px] text-slate-500">Sesion activa hasta {sessionExpiry}</p>}
+              </>
             ) : (
               <p className="truncate text-sm font-semibold text-slate-950">Sesión activa</p>
             )}

@@ -926,10 +926,17 @@ export default function VoluntarioDashboard() {
   const { position, request: requestGeo } = useGeolocation()
   const { isOnline } = useConnectivity()
   const enqueueSync = useSyncStore((store) => store.enqueue)
+  const [realtimeRefresh, setRealtimeRefresh] = useState(0)
 
   useEffect(() => {
     if (position) setUserPosition([position.lat, position.lng])
   }, [position])
+
+  useEffect(() => {
+    const handleRealtimeUpdate = () => setRealtimeRefresh((current) => current + 1)
+    window.addEventListener('realtime:update', handleRealtimeUpdate)
+    return () => window.removeEventListener('realtime:update', handleRealtimeUpdate)
+  }, [])
 
   useEffect(() => {
     if (!userPosition || !rutaPendiente) return
@@ -1046,7 +1053,7 @@ export default function VoluntarioDashboard() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [realtimeRefresh])
 
   useEffect(() => {
     const donacionesConCodigo = Object.keys(codigosEntrega)

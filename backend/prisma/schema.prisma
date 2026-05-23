@@ -71,6 +71,8 @@ model Usuario {
   dni       String?      @unique
   roles     RolUsuario[]
   activo    Boolean      @default(true)
+  emailVerified Boolean  @default(false)
+  emailVerifiedAt DateTime?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -84,6 +86,9 @@ model Usuario {
   solicitudesPuestoRevisadas SolicitudPuesto[] @relation("CoordinadorSolicitudPuesto")
   solicitudesParticipacionPuesto SolicitudParticipacionPuesto[] @relation("SolicitanteParticipacionPuesto")
   solicitudesParticipacionPuestoRevisadas SolicitudParticipacionPuesto[] @relation("ResponsableParticipacionPuesto")
+  refreshTokens      RefreshToken[]
+  verificationTokens AccountVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@map("usuarios")
 }
@@ -107,6 +112,51 @@ model IncidenciaVia {
   @@index([createdAt])
   @@index([estado])
   @@map("incidencias_via")
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  usuarioId  String
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AccountVerificationToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  usuarioId String
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, usedAt])
+  @@index([expiresAt])
+  @@map("account_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  usuarioId String
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, usedAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 model ComentarioIncidenciaVia {

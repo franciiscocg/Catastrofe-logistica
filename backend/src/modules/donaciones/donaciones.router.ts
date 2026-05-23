@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
+import { emitRealtime } from '../../lib/realtime.js'
 import { createDonacionSchema, updateDonacionEstadoSchema } from './donaciones.schema.js'
 import {
   createDonacion,
@@ -41,6 +42,7 @@ export async function donacionesRouter(app: FastifyInstance) {
 
     const input = createDonacionSchema.parse(request.body)
     const donacion = await createDonacion(usuarioId, input)
+    emitRealtime('donacion:created', { donacion, puestoId: donacion.puestoId })
     return reply.status(201).send({ donacion })
   })
 
@@ -53,6 +55,7 @@ export async function donacionesRouter(app: FastifyInstance) {
     const { id } = request.params as { id: string }
     const input = updateDonacionEstadoSchema.parse(request.body)
     const donacion = await updateDonacionEstado(usuarioId, id, input.estado)
+    emitRealtime('donacion:updated', { donacion, puestoId: donacion.puestoId })
     return reply.send({ donacion })
   })
 
@@ -64,6 +67,7 @@ export async function donacionesRouter(app: FastifyInstance) {
 
     const { id } = request.params as { id: string }
     const donacion = await generarCodigoEntrega(usuarioId, id)
+    emitRealtime('donacion:updated', { donacion, puestoId: donacion.puestoId })
     return reply.send({ donacion })
   })
 }

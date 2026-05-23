@@ -83,7 +83,7 @@ export default function Register() {
         dni: form.dni.trim().toUpperCase(),
       })
 
-      login(data.user, data.accessToken)
+      login(data.user, data.accessToken, undefined, data.refreshToken, data.accessTokenExpiresAt)
       navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err

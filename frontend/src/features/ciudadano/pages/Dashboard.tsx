@@ -1351,6 +1351,7 @@ export default function CiudadanoDashboard() {
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const [pendingDuplicate, setPendingDuplicate] = useState<DuplicateIncidencia | null>(null)
   const [incidencias, setIncidencias] = useState<IncidenciaMarker[]>([])
+  const [realtimeRefresh, setRealtimeRefresh] = useState(0)
   const [comentarioIncidencia, setComentarioIncidencia] = useState<IncidenciaMarker | null>(null)
   const [comentarioEstado, setComentarioEstado] = useState<EstadoVia>('CORTADA')
   const [comentarioTexto, setComentarioTexto] = useState('')
@@ -1492,6 +1493,15 @@ export default function CiudadanoDashboard() {
     void loadPendingSyncCount()
   }, [loadPendingSyncCount])
 
+  useEffect(() => {
+    const handleRealtimeUpdate = (event: Event) => {
+      const realtimeEvent = (event as CustomEvent<{ event?: string }>).detail?.event
+      if (realtimeEvent?.startsWith('incidencia:')) setRealtimeRefresh((current) => current + 1)
+    }
+    window.addEventListener('realtime:update', handleRealtimeUpdate)
+    return () => window.removeEventListener('realtime:update', handleRealtimeUpdate)
+  }, [])
+
   useEffect(() => () => {
     routeAbortControllerRef.current?.abort()
     if (routeTimeoutRef.current !== null) window.clearTimeout(routeTimeoutRef.current)
@@ -1508,7 +1518,7 @@ export default function CiudadanoDashboard() {
     }
 
     void loadIncidencias()
-  }, [])
+  }, [realtimeRefresh])
 
   // Limpiar ruta/inventario al cambiar de puesto
   const handleSelectPuesto = (id: string) => {

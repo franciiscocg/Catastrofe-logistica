@@ -10,6 +10,9 @@ const Login = lazy(() => import('@/features/auth/pages/Login'))
 const Register = lazy(() => import('@/features/auth/pages/Register'))
 const RegisterPuesto = lazy(() => import('@/features/auth/pages/RegisterPuesto'))
 const RegisterSuccess = lazy(() => import('@/features/auth/pages/RegisterSuccess'))
+const RequestPasswordReset = lazy(() => import('@/features/auth/pages/RequestPasswordReset'))
+const ResetPassword = lazy(() => import('@/features/auth/pages/ResetPassword'))
+const VerifyAccount = lazy(() => import('@/features/auth/pages/VerifyAccount'))
 
 const CiudadanoDashboard = lazy(() => import('@/features/ciudadano/pages/Dashboard'))
 const VoluntarioDashboard = lazy(() => import('@/features/voluntario/pages/Dashboard'))
@@ -69,6 +72,30 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <RegisterSuccess />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'request-reset',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <RequestPasswordReset />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'reset-password',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <ResetPassword />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'verify-account',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <VerifyAccount />
           </Suspense>
         ),
       },

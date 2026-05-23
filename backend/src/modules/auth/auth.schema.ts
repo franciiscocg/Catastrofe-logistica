@@ -24,5 +24,28 @@ export const registerSchema = z.object({
   puesto: puestoSchema.optional(),
 })
 
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(20),
+})
+
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(20).optional(),
+})
+
+export const verifyAccountSchema = z.object({
+  token: z.string().min(20),
+})
+
+export const requestPasswordResetSchema = z.object({
+  identifier: z.string().min(1, 'Introduce tu email o DNI'),
+})
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20),
+  password: z.string().min(8, 'Minimo 8 caracteres'),
+})
+
 export type LoginInput = z.infer<typeof loginSchema>
 export type RegisterInput = z.infer<typeof registerSchema>
+export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>

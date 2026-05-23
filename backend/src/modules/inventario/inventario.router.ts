@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../../middleware/auth.middleware.js'
+import { emitInventoryEvents, emitRealtime } from '../../lib/realtime.js'
 import { addItemSchema, confirmarQrSchema, updateCantidadSchema } from './inventario.schema.js'
 import { listInventario, listInventarioHistorial, addItem, updateCantidad, deleteItem, confirmarQrInventario, getEstadoSolicitudQr } from './inventario.service.js'
 
@@ -26,6 +27,7 @@ export async function inventarioRouter(app: FastifyInstance) {
     const input = addItemSchema.parse(req.body)
     const userId = (req.user as { id: string }).id
     const item = await addItem(puestoId, input, userId)
+    emitInventoryEvents(puestoId, item)
     return reply.status(201).send({ item })
   })
 
@@ -36,6 +38,12 @@ export async function inventarioRouter(app: FastifyInstance) {
     const input = confirmarQrSchema.parse(req.body)
     const userId = (req.user as { id: string }).id
     const result = await confirmarQrInventario(puestoId, input, userId)
+    if ('productos' in result && Array.isArray(result.productos)) {
+      result.productos.forEach((item) => emitInventoryEvents(puestoId, item))
+    }
+    if ('donacion' in result && result.donacion) {
+      emitRealtime('donacion:updated', { donacion: result.donacion, puestoId })
+    }
     return reply.send(result)
   })
 
@@ -54,6 +62,7 @@ export async function inventarioRouter(app: FastifyInstance) {
     const input = updateCantidadSchema.parse(req.body)
     const userId = (req.user as { id: string }).id
     const item = await updateCantidad(itemId, input, userId)
+    emitInventoryEvents(item.puestoId, item)
     return reply.send({ item })
   })
 
@@ -62,7 +71,8 @@ export async function inventarioRouter(app: FastifyInstance) {
   }, async (req, reply) => {
     const { itemId } = req.params as { itemId: string }
     const userId = (req.user as { id: string }).id
-    await deleteItem(itemId, userId)
+    const item = await deleteItem(itemId, userId)
+    emitRealtime('inventario:updated', { puestoId: item.puestoId, itemId, deleted: true })
     return reply.status(204).send()
   })
 }

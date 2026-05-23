@@ -56,6 +56,8 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260522143000_remove_catastrofes_flow/migration.sql
 !backend/prisma/migrations/20260522150000_add_idempotency_records/
 !backend/prisma/migrations/20260522150000_add_idempotency_records/migration.sql
+!backend/prisma/migrations/20260523102000_harden_auth_sessions/
+!backend/prisma/migrations/20260523102000_harden_auth_sessions/migration.sql
 
 # Coverage
 coverage/

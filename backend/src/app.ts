@@ -12,6 +12,7 @@ import { incidenciasRouter } from './modules/incidencias/incidencias.router.js'
 import { donacionesRouter } from './modules/donaciones/donaciones.router.js'
 import { errorHandler } from './middleware/error.middleware.js'
 import { registerIdempotency } from './middleware/idempotency.middleware.js'
+import { getJwtSecret } from './lib/security.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -31,7 +32,7 @@ export async function buildApp() {
 
   // Auth
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET ?? 'dev-secret-change-in-prod',
+    secret: getJwtSecret(),
   })
 
   await registerIdempotency(app)

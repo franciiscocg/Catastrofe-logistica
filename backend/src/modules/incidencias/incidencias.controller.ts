@@ -15,6 +15,7 @@ import {
   listIncidencias,
   updateIncidenciaEstado,
 } from './incidencias.service.js'
+import { emitRealtime } from '../../lib/realtime.js'
 
 function getUsuarioId(user: unknown) {
   const authUser = user as { sub?: string; id?: string } | undefined
@@ -34,6 +35,7 @@ export async function postIncidencia(request: FastifyRequest, reply: FastifyRepl
 
   try {
     const incidencia = await createIncidencia(input, reportanteId)
+    emitRealtime('incidencia:created', { incidencia })
     return reply.status(201).send({ incidencia })
   } catch (error) {
     const duplicateError = error as Error & {
@@ -65,6 +67,7 @@ export async function patchIncidenciaEstado(request: FastifyRequest, reply: Fast
   const input = updateEstadoSchema.parse(request.body)
 
   const incidencia = await updateIncidenciaEstado(id, input)
+  emitRealtime('incidencia:updated', { incidencia })
   return reply.send({ incidencia })
 }
 
@@ -75,6 +78,7 @@ export async function postComentarioIncidencia(request: FastifyRequest, reply: F
   const autorId = user?.sub ?? user?.id
 
   const result = await createComentarioIncidencia(id, input, autorId)
+  emitRealtime('incidencia:updated', { incidencia: result.incidencia, comentario: result.comentario })
   return reply.status(201).send(result)
 }
 
@@ -100,6 +104,7 @@ export async function postAsignacionIncidencia(request: FastifyRequest, reply: F
 
   const { id } = request.params as { id: string }
   const asignacion = await createAsignacionIncidencia(usuarioId, id)
+  emitRealtime('incidencia:updated', { incidenciaId: id, asignacion })
   return reply.status(201).send({ asignacion })
 }
 
@@ -109,5 +114,6 @@ export async function postFinalizarAsignacionIncidencia(request: FastifyRequest,
 
   const { id } = request.params as { id: string }
   const asignacion = await finalizarAsignacionIncidencia(usuarioId, id)
+  emitRealtime('incidencia:updated', { incidenciaId: id, asignacion })
   return reply.send({ asignacion })
 }
