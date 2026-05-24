@@ -311,7 +311,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
 
 export default function RegisterPuesto() {
   const navigate = useNavigate()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, setPuestoId, updateUser, user } = useAuthStore()
   const [mostrarFormulario, setMostrarFormulario] = useState(false)
 
   useEffect(() => {
@@ -327,6 +327,30 @@ export default function RegisterPuesto() {
     enabled: isAuthenticated,
   })
 
+  useEffect(() => {
+    if (data?.estado !== 'ACEPTADA') return
+
+    let cancelled = false
+
+    apiClient.get<{ puestos: { id: string }[] }>('/api/puestos/mio')
+      .then((response) => {
+        if (cancelled) return
+        const puestoId = response.data.puestos?.[0]?.id ?? null
+        setPuestoId(puestoId)
+        if (user && !user.roles.includes('PUESTO_EMERGENCIA')) {
+          updateUser({ roles: [...user.roles, 'PUESTO_EMERGENCIA'] })
+        }
+        navigate(puestoId ? '/puesto' : '/seleccionar-rol', { replace: true })
+      })
+      .catch(() => {
+        if (!cancelled) navigate('/seleccionar-rol', { replace: true })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [data?.estado, navigate, setPuestoId, updateUser, user])
+
   if (!isAuthenticated) return null
 
   if (isLoading) {
@@ -341,8 +365,11 @@ export default function RegisterPuesto() {
   const onVolver = () => navigate('/seleccionar-rol')
 
   if (solicitud?.estado === 'ACEPTADA') {
-    navigate('/puesto', { replace: true })
-    return null
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+      </div>
+    )
   }
 
   if (solicitud?.estado === 'PENDIENTE') {

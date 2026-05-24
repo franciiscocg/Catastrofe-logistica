@@ -12,6 +12,7 @@ interface AuthStore {
   puestoId: string | null           // puesto del usuario si tiene rol PUESTO
   login: (user: User, accessToken: string, puestoId?: string, refreshToken?: string, accessTokenExpiresAt?: string) => void
   setSession: (user: User, accessToken: string, refreshToken: string, accessTokenExpiresAt: string) => void
+  setPuestoId: (puestoId: string | null) => void
   logout: () => void
   selectRole: (role: Role) => void
   clearRole: () => void
@@ -44,6 +45,8 @@ export const useAuthStore = create<AuthStore>()(
 
       setSession: (user, accessToken, refreshToken, accessTokenExpiresAt) =>
         set({ user, accessToken, refreshToken, accessTokenExpiresAt, isAuthenticated: true }),
+
+      setPuestoId: (puestoId) => set({ puestoId }),
 
       selectRole: (role) => set({ selectedRole: role }),
 

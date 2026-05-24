@@ -408,19 +408,6 @@ export async function puestosRouter(app: FastifyInstance) {
       })
       if (pendiente) throw badRequest('Ya tienes una solicitud pendiente')
 
-      const usuario = await tx.usuario.findUnique({
-        where: { id: userId },
-        select: { roles: true },
-      })
-      if (!usuario) throw notFound('Usuario no encontrado')
-
-      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
-        await tx.usuario.update({
-          where: { id: userId },
-          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
-        })
-      }
-
       return tx.solicitudPuesto.create({
         data: { ...input, usuarioId: userId },
         include: {
@@ -789,6 +776,19 @@ export async function puestosRouter(app: FastifyInstance) {
         select: { id: true },
       })
       if (puestoExistente) throw badRequest('El solicitante ya tiene un puesto asociado')
+
+      const usuario = await tx.usuario.findUnique({
+        where: { id: solicitud.usuarioId },
+        select: { roles: true },
+      })
+      if (!usuario) throw notFound('Usuario no encontrado')
+
+      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
+        await tx.usuario.update({
+          where: { id: solicitud.usuarioId },
+          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
+        })
+      }
 
       const puesto = await tx.puestoEmergencia.create({
         data: {
