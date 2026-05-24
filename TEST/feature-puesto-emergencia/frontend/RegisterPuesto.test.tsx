@@ -1,15 +1,21 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom/vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   mockNavigate,
-  mockLogin,
+  mockApiGet,
   mockApiPost,
+  mockSetPuestoId,
+  mockUpdateUser,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
-  mockLogin: vi.fn(),
+  mockApiGet: vi.fn(),
   mockApiPost: vi.fn(),
+  mockSetPuestoId: vi.fn(),
+  mockUpdateUser: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -18,7 +24,18 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 vi.mock('../../../frontend/src/store/auth.store', () => ({
-  useAuthStore: vi.fn(() => ({ login: mockLogin })),
+  useAuthStore: vi.fn(() => ({
+    isAuthenticated: true,
+    setPuestoId: mockSetPuestoId,
+    updateUser: mockUpdateUser,
+    user: {
+      id: 'user-1',
+      email: 'maria@example.com',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      roles: ['CIUDADANO', 'VOLUNTARIO'],
+    },
+  })),
 }))
 
 vi.mock('../../../frontend/src/hooks/useGeolocation', () => ({
@@ -30,73 +47,42 @@ vi.mock('../../../frontend/src/hooks/useGeolocation', () => ({
 }))
 
 vi.mock('../../../frontend/src/lib/api/client', () => ({
-  apiClient: { post: mockApiPost },
+  apiClient: {
+    get: mockApiGet,
+    post: mockApiPost,
+  },
 }))
 
 import RegisterPuesto from '../../../frontend/src/features/auth/pages/RegisterPuesto'
 
 function renderRegister() {
-  return render(
-    <MemoryRouter>
-      <RegisterPuesto />
-    </MemoryRouter>,
-  )
-}
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
 
-function fillStep1() {
-  fireEvent.change(screen.getByPlaceholderText(/Mar/), { target: { value: 'Maria' } })
-  fireEvent.change(screen.getByPlaceholderText(/Garc/), { target: { value: 'Garcia Lopez' } })
-  fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), { target: { value: 'maria@example.com' } })
-  fireEvent.change(screen.getByPlaceholderText('+34 600 000 000'), { target: { value: '+34600000000' } })
-  fireEvent.change(screen.getByPlaceholderText('12345678A'), { target: { value: '12345678A' } })
-  fireEvent.change(screen.getByPlaceholderText(/8 caracteres/), { target: { value: 'password123' } })
-  fireEvent.change(screen.getByPlaceholderText(/Repite/), { target: { value: 'password123' } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <RegisterPuesto />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
 }
 
 describe('RegisterPuesto', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    window.scrollTo = vi.fn()
-    mockApiPost.mockResolvedValue({
-      data: {
-        user: {
-          id: 'user-1',
-          email: 'maria@example.com',
-          nombre: 'Maria',
-          apellidos: 'Garcia Lopez',
-          roles: ['PUESTO_EMERGENCIA'],
-        },
-        puesto: { id: 'puesto-1', nombre: 'CEIP La Paz' },
-        accessToken: 'token-123',
-      },
-    })
+    mockApiGet.mockResolvedValue({ data: { solicitud: null } })
+    mockApiPost.mockResolvedValue({ data: { solicitud: { id: 'solicitud-1', estado: 'PENDIENTE' } } })
   })
 
-  it('valida los datos del responsable antes de avanzar al paso 2', async () => {
+  it('envia una solicitud de puesto desde el usuario autenticado', async () => {
     renderRegister()
 
-    fireEvent.click(screen.getByText(/Continuar/))
-
-    expect(await screen.findByText('El nombre es obligatorio')).toBeInTheDocument()
-    expect(screen.getByText(/El tel.fono es obligatorio/)).toBeInTheDocument()
-    expect(screen.queryByText('Datos del puesto')).not.toBeInTheDocument()
-  })
-
-  it('avanza al paso de datos del puesto cuando la cuenta es valida', () => {
-    renderRegister()
-
-    fillStep1()
-    fireEvent.click(screen.getByText(/Continuar/))
-
-    expect(screen.getByText('Datos del puesto')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText(/CEIP La Paz/)).toBeInTheDocument()
-  })
-
-  it('envia cuenta y puesto al endpoint de registro y guarda puestoId en sesion', async () => {
-    renderRegister()
-
-    fillStep1()
-    fireEvent.click(screen.getByText(/Continuar/))
+    expect(await screen.findByText('Registrar puesto de emergencia')).toBeInTheDocument()
 
     fireEvent.change(screen.getByPlaceholderText(/CEIP La Paz/), {
       target: { value: 'CEIP La Paz' },
@@ -107,6 +93,9 @@ describe('RegisterPuesto', () => {
     fireEvent.change(screen.getByPlaceholderText(/Calle Mayor 12/), {
       target: { value: 'Calle Mayor 12, Paiporta, Valencia' },
     })
+    fireEvent.change(screen.getByPlaceholderText(/Horario de apertura/), {
+      target: { value: 'Aula de apoyo escolar' },
+    })
     fireEvent.change(screen.getByPlaceholderText('39.4254'), {
       target: { value: '39.4254' },
     })
@@ -114,32 +103,43 @@ describe('RegisterPuesto', () => {
       target: { value: '-0.4178' },
     })
 
-    fireEvent.click(screen.getByText('Enviar solicitud de registro'))
+    fireEvent.click(screen.getByText('Enviar solicitud'))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/api/auth/register', {
-        email: 'maria@example.com',
-        password: 'password123',
-        nombre: 'Maria',
-        apellidos: 'Garcia Lopez',
-        telefono: '+34600000000',
-        dni: '12345678A',
-        roles: ['PUESTO_EMERGENCIA'],
-        puesto: {
-          nombre: 'CEIP La Paz',
-          tipo: 'colegio',
-          direccion: 'Calle Mayor 12, Paiporta, Valencia',
-          descripcion: undefined,
-          latitud: 39.4254,
-          longitud: -0.4178,
-        },
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes', {
+        nombre: 'CEIP La Paz',
+        tipo: 'colegio',
+        direccion: 'Calle Mayor 12, Paiporta, Valencia',
+        descripcion: 'Aula de apoyo escolar',
+        latitud: 39.4254,
+        longitud: -0.4178,
       })
     })
-    expect(mockLogin).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'maria@example.com' }),
-      'token-123',
-      'puesto-1',
-    )
-    expect(mockNavigate).toHaveBeenCalledWith('/auth/registro-exitoso?role=puesto')
+    await waitFor(() => {
+      expect(mockApiGet).toHaveBeenCalledWith('/api/puestos/solicitudes/mia')
+    })
+  })
+
+  it('muestra el estado pendiente si ya existe una solicitud en revision', async () => {
+    mockApiGet.mockResolvedValue({
+      data: {
+        solicitud: {
+          id: 'solicitud-1',
+          nombre: 'CEIP La Paz',
+          tipo: 'colegio',
+          direccion: 'Calle Mayor 12, Paiporta',
+          latitud: 39.4254,
+          longitud: -0.4178,
+          estado: 'PENDIENTE',
+          createdAt: '2026-05-10T10:00:00.000Z',
+        },
+      },
+    })
+
+    renderRegister()
+
+    expect(await screen.findByText('En espera de aprobacion')).toBeInTheDocument()
+    expect(screen.getAllByText(/CEIP La Paz/).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Enviar solicitud')).not.toBeInTheDocument()
   })
 })

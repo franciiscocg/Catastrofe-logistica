@@ -40,6 +40,8 @@ vi.mock('../../../frontend/src/store/auth.store', () => ({
     login:      mockLogin,
     logout:     mockLogout,
     selectRole: mockSelectRole,
+    setPuestoId: vi.fn(),
+    updateUser: vi.fn(),
   })),
 }))
 
@@ -242,14 +244,19 @@ describe('RegisterPuesto — solicitud ACEPTADA', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setUser(['CIUDADANO', 'PUESTO_EMERGENCIA'])
-    mockApiGet.mockResolvedValue({
-      data: {
-        solicitud: {
-          id: 'solicitud-1', nombre: 'CEIP La Paz', estado: 'ACEPTADA',
-          tipo: 'colegio', direccion: 'Calle Mayor 12',
-          latitud: 39.4254, longitud: -0.4178, createdAt: '2026-05-09T10:00:00.000Z',
+    mockApiGet.mockImplementation((url: string) => {
+      if (url === '/api/puestos/mio') {
+        return Promise.resolve({ data: { puestos: [{ id: 'puesto-1' }] } })
+      }
+      return Promise.resolve({
+        data: {
+          solicitud: {
+            id: 'solicitud-1', nombre: 'CEIP La Paz', estado: 'ACEPTADA',
+            tipo: 'colegio', direccion: 'Calle Mayor 12',
+            latitud: 39.4254, longitud: -0.4178, createdAt: '2026-05-09T10:00:00.000Z',
+          },
         },
-      },
+      })
     })
   })
 
@@ -332,14 +339,24 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     vi.clearAllMocks()
     setUser(['COORDINADOR'])
     mockApiGet.mockImplementation((url: string) => {
-      if (url === '/api/puestos') return Promise.resolve({ data: { puestos: [] } })
-      return Promise.resolve({ data: { solicitudes: [solicitudPendiente] } })
+      if (url === '/api/puestos/solicitudes') {
+        return Promise.resolve({ data: { solicitudes: [solicitudPendiente] } })
+      }
+      if (url === '/api/puestos/coordinador') {
+        return Promise.resolve({ data: { puestos: [] } })
+      }
+      return Promise.resolve({ data: {} })
     })
     mockApiPost.mockResolvedValue({ data: {} })
   })
 
-  it('muestra las solicitudes pendientes con los datos del solicitante', async () => {
+  async function abrirSolicitudes() {
     renderWithQuery(<CoordinadorDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: /^Solicitudes$/i }))
+  }
+
+  it('muestra las solicitudes pendientes con los datos del solicitante', async () => {
+    await abrirSolicitudes()
 
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
     // El email aparece como parte de "Solicitante: Maria Garcia - maria@example.com"
@@ -349,7 +366,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
   })
 
   it('puede aceptar una solicitud pendiente', async () => {
-    renderWithQuery(<CoordinadorDashboard />)
+    await abrirSolicitudes()
 
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /Aceptar/i }))
@@ -360,7 +377,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
   })
 
   it('puede rechazar una solicitud indicando motivo', async () => {
-    renderWithQuery(<CoordinadorDashboard />)
+    await abrirSolicitudes()
 
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
@@ -378,19 +395,24 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
   })
 
   it('muestra el badge de estado PENDIENTE para las solicitudes sin revisar', async () => {
-    renderWithQuery(<CoordinadorDashboard />)
+    await abrirSolicitudes()
 
     expect(await screen.findByText('Pendiente')).toBeInTheDocument()
   })
 
   it('muestra solicitudes ya aceptadas con su badge correspondiente', async () => {
     mockApiGet.mockImplementation((url: string) => {
-      if (url === '/api/puestos') return Promise.resolve({ data: { puestos: [] } })
-      return Promise.resolve({
-        data: { solicitudes: [{ ...solicitudPendiente, estado: 'ACEPTADA' }] },
-      })
+      if (url === '/api/puestos/solicitudes') {
+        return Promise.resolve({
+          data: { solicitudes: [{ ...solicitudPendiente, estado: 'ACEPTADA' }] },
+        })
+      }
+      if (url === '/api/puestos/coordinador') {
+        return Promise.resolve({ data: { puestos: [] } })
+      }
+      return Promise.resolve({ data: {} })
     })
-    renderWithQuery(<CoordinadorDashboard />)
+    await abrirSolicitudes()
 
     expect(await screen.findByText('Aceptada')).toBeInTheDocument()
     // Las solicitudes aceptadas no muestran botones de accion

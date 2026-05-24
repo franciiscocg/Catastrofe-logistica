@@ -143,12 +143,10 @@ describe('POST /api/puestos/solicitudes', () => {
     mockAuthUser.roles = ['CIUDADANO']
   })
 
-  it('crea la solicitud y asigna rol PUESTO_EMERGENCIA al usuario', async () => {
+  it('crea la solicitud sin asignar rol PUESTO_EMERGENCIA al usuario', async () => {
     const app = await buildApp()
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
     mp.solicitudPuesto.findFirst.mockResolvedValue(null)
-    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO'] })
-    mp.usuario.update.mockResolvedValue({})
     mp.solicitudPuesto.create.mockResolvedValue({
       id: 'solicitud-1',
       nombre: 'CEIP La Paz',
@@ -160,23 +158,21 @@ describe('POST /api/puestos/solicitudes', () => {
 
     expect(res.statusCode).toBe(201)
     expect(res.json().solicitud).toMatchObject({ id: 'solicitud-1', estado: 'PENDIENTE' })
-    expect(mp.usuario.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: { roles: ['CIUDADANO', 'PUESTO_EMERGENCIA'] },
-    })
+    expect(mp.usuario.findUnique).not.toHaveBeenCalled()
+    expect(mp.usuario.update).not.toHaveBeenCalled()
     await app.close()
   })
 
-  it('no actualiza roles si el usuario ya tiene PUESTO_EMERGENCIA', async () => {
+  it('mantiene los roles intactos aunque el usuario ya tenga PUESTO_EMERGENCIA', async () => {
     const app = await buildApp()
     mockAuthUser.roles = ['CIUDADANO', 'PUESTO_EMERGENCIA']
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
     mp.solicitudPuesto.findFirst.mockResolvedValue(null)
-    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'PUESTO_EMERGENCIA'] })
     mp.solicitudPuesto.create.mockResolvedValue({ id: 'solicitud-2', estado: 'PENDIENTE' })
 
     await app.inject({ method: 'POST', url: '/api/puestos/solicitudes', payload: validPayload })
 
+    expect(mp.usuario.findUnique).not.toHaveBeenCalled()
     expect(mp.usuario.update).not.toHaveBeenCalled()
     await app.close()
   })
@@ -257,12 +253,18 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
     mp.puestoEmergencia.create.mockResolvedValue({
       id: 'puesto-1', nombre: 'CEIP La Paz', activo: true,
     })
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'VOLUNTARIO'] })
+    mp.usuario.update.mockResolvedValue({})
     mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'ACEPTADA' })
 
     const res = await app.inject({ method: 'POST', url: '/api/puestos/solicitudes/solicitud-1/aceptar' })
 
     expect(res.statusCode).toBe(200)
     expect(res.json().puesto).toMatchObject({ id: 'puesto-1', activo: true })
+    expect(mp.usuario.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { roles: ['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'] },
+    })
     expect(mp.puestoEmergencia.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         activo: true,
@@ -288,6 +290,7 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
     mp.puestoEmergencia.create.mockResolvedValue({
       id: 'puesto-1', nombre: 'CEIP La Paz', activo: true,
     })
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'PUESTO_EMERGENCIA'] })
     mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'ACEPTADA' })
 
     const res = await app.inject({ method: 'POST', url: '/api/puestos/solicitudes/solicitud-1/aceptar' })
@@ -295,6 +298,7 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
     expect(res.statusCode).toBe(200)
     expect(mp.catastrofe.findFirst).not.toHaveBeenCalled()
     expect(mp.puestoEmergencia.create).toHaveBeenCalledOnce()
+    expect(mp.usuario.update).not.toHaveBeenCalled()
     await app.close()
   })
 

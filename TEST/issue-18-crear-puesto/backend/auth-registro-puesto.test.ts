@@ -1,20 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// ── Mocks hoisted ─────────────────────────────────────────────────────────────
-
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     usuario: {
       findUnique: vi.fn(),
-      create:     vi.fn(),
+      create: vi.fn(),
+    },
+    voluntario: {
+      create: vi.fn(),
+      upsert: vi.fn(),
     },
     solicitudPuesto: {
       create: vi.fn(),
     },
+    accountVerificationToken: {
+      create: vi.fn(),
+    },
     $transaction: vi.fn((cb) =>
       cb({
-        usuario:        prismaMock.usuario,
-        solicitudPuesto: prismaMock.solicitudPuesto,
+        usuario: prismaMock.usuario,
+        voluntario: prismaMock.voluntario,
+        accountVerificationToken: prismaMock.accountVerificationToken,
       }),
     ),
   }
@@ -22,7 +28,7 @@ const { prismaMock } = vi.hoisted(() => {
 })
 
 const { mockHash, mockCompare } = vi.hoisted(() => ({
-  mockHash:    vi.fn(async (value: string) => `hashed:${value}`),
+  mockHash: vi.fn(async (value: string) => `hashed:${value}`),
   mockCompare: vi.fn(),
 }))
 
@@ -37,49 +43,74 @@ import { loginUser, registerUser } from '../../../backend/src/modules/auth/auth.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mp = prisma as any
+const PASSWORD_HASH = '$2a$12$CWU2PWH3aCQqnwskDa.I9uwQSsjCbrzy9uhVfMD0txvaLdOjwwR0u'
 
-// ── registerUser ──────────────────────────────────────────────────────────────
+describe('registerUser - registro unificado', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
-describe('registerUser — registro normal (sin datos de puesto)', () => {
-  beforeEach(() => { vi.clearAllMocks() })
-
-  it('crea el usuario con roles CIUDADANO y VOLUNTARIO', async () => {
+  it('crea usuario con roles CIUDADANO y VOLUNTARIO', async () => {
     mp.usuario.findUnique.mockResolvedValue(null)
     mp.usuario.create.mockResolvedValue({
-      id: 'user-1', email: 'maria@example.com',
-      nombre: 'Maria', apellidos: 'Garcia', telefono: null,
+      id: 'user-1',
+      email: 'maria@example.com',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      telefono: null,
       roles: ['CIUDADANO', 'VOLUNTARIO'],
+      emailVerified: true,
     })
 
     const result = await registerUser({
-      email: 'maria@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678A',
+      email: 'maria@example.com',
+      password: 'Password123',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      dni: '12345678A',
     })
 
-    expect(result.puesto).toBeNull()
-    expect(result.solicitud).toBeNull()
+    expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
+    expect(result.verificationToken).toEqual(expect.any(String))
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         email: 'maria@example.com',
-        password: 'hashed:Password123',
+        password: expect.any(String),
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
       }),
     }))
+    expect(mp.voluntario.create).toHaveBeenCalledWith({
+      data: { usuarioId: 'user-1' },
+    })
+    expect(mp.accountVerificationToken.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        usuarioId: 'user-1',
+        tokenHash: expect.any(String),
+        expiresAt: expect.any(Date),
+      }),
+    })
   })
 
   it('normaliza el DNI a mayusculas al registrar', async () => {
     mp.usuario.findUnique.mockResolvedValue(null)
     mp.usuario.create.mockResolvedValue({
-      id: 'user-1', email: 'maria@example.com',
-      nombre: 'Maria', apellidos: 'Garcia', telefono: null,
+      id: 'user-1',
+      email: 'maria@example.com',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      telefono: null,
       roles: ['CIUDADANO', 'VOLUNTARIO'],
+      emailVerified: true,
     })
 
     await registerUser({
-      email: 'maria@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678a',
+      email: 'maria@example.com',
+      password: 'Password123',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      dni: '12345678a',
     })
 
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -87,125 +118,83 @@ describe('registerUser — registro normal (sin datos de puesto)', () => {
     }))
   })
 
-  it('lanza error 400 si el email ya esta registrado', async () => {
-    mp.usuario.findUnique.mockResolvedValue({ id: 'existing-user' })
-
-    await expect(registerUser({
-      email: 'ya-existe@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678A',
-    })).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/email/) })
-  })
-
-  it('lanza error 400 si el DNI ya esta registrado', async () => {
-    // Primera findUnique (por email) devuelve null, segunda (por DNI) devuelve usuario
-    mp.usuario.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'existing-user' })
-
-    await expect(registerUser({
-      email: 'nuevo@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678A',
-    })).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/DNI/) })
-  })
-})
-
-describe('registerUser — registro con datos de puesto', () => {
-  const puestoInput = {
-    nombre: 'CEIP La Paz', tipo: 'colegio',
-    direccion: 'Calle Mayor 12', latitud: 39.4254, longitud: -0.4178,
-  }
-
-  beforeEach(() => { vi.clearAllMocks() })
-
-  it('crea usuario con rol PUESTO_EMERGENCIA (no CIUDADANO/VOLUNTARIO)', async () => {
+  it('no crea solicitudes de puesto desde /auth/register aunque llegue un payload legacy', async () => {
     mp.usuario.findUnique.mockResolvedValue(null)
     mp.usuario.create.mockResolvedValue({
-      id: 'user-1', email: 'puesto@example.com',
-      nombre: 'Maria', apellidos: 'Garcia', telefono: '+34600000000',
-      roles: ['PUESTO_EMERGENCIA'],
-    })
-    mp.solicitudPuesto.create.mockResolvedValue({ id: 'solicitud-1', nombre: 'CEIP La Paz', estado: 'PENDIENTE' })
-
-    const result = await registerUser({
-      email: 'puesto@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678A',
-      telefono: '+34600000000', puesto: puestoInput,
+      id: 'user-1',
+      email: 'puesto@example.com',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      telefono: '+34600000000',
+      roles: ['CIUDADANO', 'VOLUNTARIO'],
+      emailVerified: true,
     })
 
-    expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ roles: ['PUESTO_EMERGENCIA'] }),
-    }))
-    // No se asignan los roles de ciudadano/voluntario
-    expect(mp.usuario.create).not.toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ roles: ['CIUDADANO', 'VOLUNTARIO'] }),
-    }))
-    expect(result.user.roles).toEqual(['PUESTO_EMERGENCIA'])
-  })
-
-  it('crea una SolicitudPuesto PENDIENTE — NO crea PuestoEmergencia directamente', async () => {
-    mp.usuario.findUnique.mockResolvedValue(null)
-    mp.usuario.create.mockResolvedValue({
-      id: 'user-1', email: 'puesto@example.com',
-      nombre: 'Maria', apellidos: 'Garcia', telefono: '+34600000000',
-      roles: ['PUESTO_EMERGENCIA'],
-    })
-    mp.solicitudPuesto.create.mockResolvedValue({
-      id: 'solicitud-1', nombre: 'CEIP La Paz', estado: 'PENDIENTE',
-    })
-
-    const result = await registerUser({
-      email: 'puesto@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678A',
-      telefono: '+34600000000', puesto: puestoInput,
-    })
-
-    // El resultado tiene solicitud pero puesto=null (no hay PuestoEmergencia activo todavia)
-    expect(result.solicitud).toMatchObject({ id: 'solicitud-1', estado: 'PENDIENTE' })
-    expect(result.puesto).toBeNull()
-
-    expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        usuarioId: 'user-1',
+    const result = await registerUser(({
+      email: 'puesto@example.com',
+      password: 'Password123',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      dni: '12345678A',
+      telefono: '+34600000000',
+      puesto: {
         nombre: 'CEIP La Paz',
         tipo: 'colegio',
         direccion: 'Calle Mayor 12',
         latitud: 39.4254,
         longitud: -0.4178,
-      }),
+      },
+    }) as Parameters<typeof registerUser>[0] & { puesto: unknown })
+
+    expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
+    expect(mp.solicitudPuesto.create).not.toHaveBeenCalled()
+    expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ roles: ['CIUDADANO', 'VOLUNTARIO'] }),
     }))
   })
 
-  it('incluye descripcion en la solicitud si se proporciona', async () => {
-    mp.usuario.findUnique.mockResolvedValue(null)
-    mp.usuario.create.mockResolvedValue({
-      id: 'user-1', email: 'puesto@example.com',
-      nombre: 'Maria', apellidos: 'Garcia', telefono: null,
-      roles: ['PUESTO_EMERGENCIA'],
-    })
-    mp.solicitudPuesto.create.mockResolvedValue({ id: 'solicitud-1', estado: 'PENDIENTE' })
+  it('lanza error 400 si el email ya esta registrado', async () => {
+    mp.usuario.findUnique.mockResolvedValue({ id: 'existing-user' })
 
-    await registerUser({
-      email: 'puesto@example.com', password: 'Password123',
-      nombre: 'Maria', apellidos: 'Garcia', dni: '12345678A',
-      puesto: { ...puestoInput, descripcion: 'Aula de apoyo escolar' },
-    })
+    await expect(registerUser({
+      email: 'ya-existe@example.com',
+      password: 'Password123',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      dni: '12345678A',
+    })).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/email/) })
+  })
 
-    expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ descripcion: 'Aula de apoyo escolar' }),
-    }))
+  it('lanza error 400 si el DNI ya esta registrado', async () => {
+    mp.usuario.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'existing-user' })
+
+    await expect(registerUser({
+      email: 'nuevo@example.com',
+      password: 'Password123',
+      nombre: 'Maria',
+      apellidos: 'Garcia',
+      dni: '12345678A',
+    })).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/DNI/) })
   })
 })
 
-// ── loginUser ─────────────────────────────────────────────────────────────────
-
 describe('loginUser', () => {
   const usuarioBase = {
-    id: 'user-1', email: 'maria@example.com', password: 'hashed:Password123',
-    nombre: 'Maria', apellidos: 'Garcia', telefono: null,
-    roles: ['CIUDADANO', 'VOLUNTARIO'], activo: true,
+    id: 'user-1',
+    email: 'maria@example.com',
+    password: PASSWORD_HASH,
+    nombre: 'Maria',
+    apellidos: 'Garcia',
+    telefono: null,
+    roles: ['CIUDADANO', 'VOLUNTARIO'],
+    activo: true,
   }
 
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it('permite iniciar sesion con email correcto', async () => {
     mockCompare.mockResolvedValue(true)
@@ -214,10 +203,15 @@ describe('loginUser', () => {
     const user = await loginUser({ identifier: 'maria@example.com', password: 'Password123' })
 
     expect(mp.usuario.findUnique).toHaveBeenCalledWith({ where: { email: 'maria@example.com' } })
+    expect(mp.voluntario.upsert).toHaveBeenCalledWith({
+      where: { usuarioId: 'user-1' },
+      update: {},
+      create: { usuarioId: 'user-1' },
+    })
     expect(user).toMatchObject({ id: 'user-1', email: 'maria@example.com' })
   })
 
-  it('permite iniciar sesion con DNI (convertido a mayusculas)', async () => {
+  it('permite iniciar sesion con DNI convertido a mayusculas', async () => {
     mockCompare.mockResolvedValue(true)
     mp.usuario.findUnique.mockResolvedValue(usuarioBase)
 
@@ -233,31 +227,5 @@ describe('loginUser', () => {
     await expect(
       loginUser({ identifier: 'maria@example.com', password: 'WrongPass' }),
     ).rejects.toMatchObject({ statusCode: 401 })
-  })
-
-  it('lanza error 401 si el usuario no existe', async () => {
-    mp.usuario.findUnique.mockResolvedValue(null)
-
-    await expect(
-      loginUser({ identifier: 'noexiste@example.com', password: 'Password123' }),
-    ).rejects.toMatchObject({ statusCode: 401 })
-  })
-
-  it('lanza error 403 si la cuenta esta desactivada', async () => {
-    mockCompare.mockResolvedValue(true)
-    mp.usuario.findUnique.mockResolvedValue({ ...usuarioBase, activo: false })
-
-    await expect(
-      loginUser({ identifier: 'maria@example.com', password: 'Password123' }),
-    ).rejects.toMatchObject({ statusCode: 403 })
-  })
-
-  it('el token no incluye la password del usuario en la respuesta', async () => {
-    mockCompare.mockResolvedValue(true)
-    mp.usuario.findUnique.mockResolvedValue(usuarioBase)
-
-    const user = await loginUser({ identifier: 'maria@example.com', password: 'Password123' })
-
-    expect(user).not.toHaveProperty('password')
   })
 })

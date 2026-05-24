@@ -2,7 +2,6 @@ import bcrypt from 'bcryptjs'
 import { RolUsuario } from '@prisma/client'
 import { createHash, randomBytes } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
-import { emitRealtime } from '../../lib/realtime.js'
 import { REFRESH_TOKEN_TTL_DAYS, RESET_TOKEN_TTL_MINUTES, VERIFY_TOKEN_TTL_HOURS } from '../../lib/security.js'
 import type { LoginInput, RegisterInput, ResendVerificationInput, RequestPasswordResetInput, ResetPasswordInput } from './auth.schema.js'
 
@@ -123,10 +122,7 @@ export async function registerUser(input: RegisterInput) {
   if (dniExists) throw badRequest('Este DNI/NIE ya esta registrado')
 
   const hashed = await bcrypt.hash(input.password, 12)
-  const esPuesto = Boolean(input.puesto)
-  const roles = esPuesto
-    ? [RolUsuario.PUESTO_EMERGENCIA]
-    : [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
+  const roles = [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
 
   const result = await prisma.$transaction(async (tx) => {
     const created = await tx.usuario.create({
@@ -145,29 +141,9 @@ export async function registerUser(input: RegisterInput) {
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true, emailVerified: true },
     })
 
-    let puesto = null
-    let solicitud = null
-
-    if (esPuesto && input.puesto) {
-      solicitud = await tx.solicitudPuesto.create({
-        data: {
-          usuarioId: created.id,
-          nombre: input.puesto.nombre,
-          tipo: input.puesto.tipo,
-          direccion: input.puesto.direccion,
-          descripcion: input.puesto.descripcion,
-          latitud: input.puesto.latitud,
-          longitud: input.puesto.longitud,
-        },
-        select: { id: true, nombre: true, estado: true },
-      })
-    }
-
-    if (!esPuesto) {
-      await tx.voluntario.create({
-        data: { usuarioId: created.id },
-      })
-    }
+    await tx.voluntario.create({
+      data: { usuarioId: created.id },
+    })
 
     const verificationToken = createPlainToken()
     await tx.accountVerificationToken.create({
@@ -178,12 +154,8 @@ export async function registerUser(input: RegisterInput) {
       },
     })
 
-    return { user: created, puesto, solicitud, verificationToken }
+    return { user: created, verificationToken }
   })
-
-  if (result.solicitud) {
-    emitRealtime('solicitud-puesto:updated', { solicitud: result.solicitud })
-  }
 
   return result
 }

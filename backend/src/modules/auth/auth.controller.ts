@@ -44,7 +44,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
-  const { user, puesto, solicitud, verificationToken } = await registerUser(input)
+  const { user, verificationToken } = await registerUser(input)
 
   await sendAccountVerificationEmail({
     to: user.email,
@@ -56,8 +56,6 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
     const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
     return reply.status(201).send({
       user,
-      puesto,
-      solicitud,
       requiresEmailVerification: true,
       ...devVerification,
     })
@@ -67,7 +65,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
   const tokenPayload = await signAccessToken(reply, user)
 
   const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
-  return reply.status(201).send({ user, puesto, solicitud, refreshToken, ...tokenPayload, ...devVerification })
+  return reply.status(201).send({ user, refreshToken, ...tokenPayload, ...devVerification })
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {

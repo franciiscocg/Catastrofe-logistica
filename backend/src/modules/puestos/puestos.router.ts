@@ -1188,12 +1188,6 @@ export async function puestosRouter(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
-  app.post('/', {
-    preHandler: [requireAuth, requireRole('COORDINADOR', 'PUESTO_EMERGENCIA')],
-  }, async (_req, reply) => {
-    reply.status(201).send({ message: 'Pendiente de implementar' })
-  })
-
 }
 
 const puestoSelect = {

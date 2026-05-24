@@ -10,10 +10,7 @@ const { prismaMock } = vi.hoisted(() => {
       create: vi.fn(),
       upsert: vi.fn(),
     },
-    catastrofe: {
-      findFirst: vi.fn(),
-    },
-    solicitudPuesto: {
+    accountVerificationToken: {
       create: vi.fn(),
     },
     $transaction: vi.fn((cb) =>
@@ -24,11 +21,8 @@ const { prismaMock } = vi.hoisted(() => {
         voluntario: {
           create: prismaMock.voluntario.create,
         },
-        catastrofe: {
-          findFirst: prismaMock.catastrofe.findFirst,
-        },
-        solicitudPuesto: {
-          create: prismaMock.solicitudPuesto.create,
+        accountVerificationToken: {
+          create: prismaMock.accountVerificationToken.create,
         },
       }),
     ),
@@ -57,6 +51,7 @@ import { loginUser, registerUser } from '../../../backend/src/modules/auth/auth.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mp = prisma as any
+const PASSWORD_HASH = '$2a$12$CWU2PWH3aCQqnwskDa.I9uwQSsjCbrzy9uhVfMD0txvaLdOjwwR0u'
 
 describe('auth.service', () => {
   beforeEach(() => {
@@ -71,7 +66,7 @@ describe('auth.service', () => {
     mp.usuario.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'maria@example.com',
-      password: 'hashed:Password123',
+      password: PASSWORD_HASH,
       nombre: 'Maria',
       apellidos: 'Garcia',
       telefono: null,
@@ -82,7 +77,6 @@ describe('auth.service', () => {
     const user = await loginUser({ identifier, password: 'Password123' })
 
     expect(mp.usuario.findUnique).toHaveBeenCalledWith({ where })
-    expect(mockCompare).toHaveBeenCalledWith('Password123', 'hashed:Password123')
     expect(mp.voluntario.upsert).toHaveBeenCalledWith({
       where: { usuarioId: 'user-1' },
       update: {},
@@ -114,10 +108,11 @@ describe('auth.service', () => {
       dni: '12345678a',
     })
 
-    expect(result.puesto).toBeNull()
+    expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
+    expect(result.verificationToken).toEqual(expect.any(String))
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        password: 'hashed:Password123',
+        password: expect.any(String),
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
@@ -126,9 +121,16 @@ describe('auth.service', () => {
     expect(mp.voluntario.create).toHaveBeenCalledWith({
       data: { usuarioId: 'user-1' },
     })
+    expect(mp.accountVerificationToken.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        usuarioId: 'user-1',
+        tokenHash: expect.any(String),
+        expiresAt: expect.any(Date),
+      }),
+    })
   })
 
-  it('crea una solicitud de puesto inactiva y pendiente de aprobacion', async () => {
+  it('ignora datos legacy de puesto durante el registro unificado', async () => {
     mp.usuario.findUnique.mockResolvedValue(null)
     mp.usuario.create.mockResolvedValue({
       id: 'user-1',
@@ -136,16 +138,10 @@ describe('auth.service', () => {
       nombre: 'Maria',
       apellidos: 'Garcia',
       telefono: '+34600000000',
-      roles: ['PUESTO_EMERGENCIA'],
-    })
-    mp.catastrofe.findFirst.mockResolvedValue({ id: 'cat-1' })
-    mp.solicitudPuesto.create.mockResolvedValue({
-      id: 'solicitud-1',
-      nombre: 'CEIP La Paz',
-      estado: 'PENDIENTE',
+      roles: ['CIUDADANO', 'VOLUNTARIO'],
     })
 
-    const result = await registerUser({
+    const result = await registerUser(({
       email: 'puesto@example.com',
       password: 'Password123',
       nombre: 'Maria',
@@ -159,17 +155,12 @@ describe('auth.service', () => {
         latitud: 39.4254,
         longitud: -0.4178,
       },
-    })
+    }) as Parameters<typeof registerUser>[0] & { puesto: unknown })
 
-    expect(result.puesto).toBeNull()
-    expect(result.solicitud).toMatchObject({ id: 'solicitud-1', estado: 'PENDIENTE' })
-    expect(mp.voluntario.create).not.toHaveBeenCalled()
-    expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        usuarioId: 'user-1',
-        nombre: 'CEIP La Paz',
-        direccion: 'Calle Mayor 12',
-      }),
+    expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
+    expect(mp.voluntario.create).toHaveBeenCalledWith({ data: { usuarioId: 'user-1' } })
+    expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ roles: ['CIUDADANO', 'VOLUNTARIO'] }),
     }))
   })
 })

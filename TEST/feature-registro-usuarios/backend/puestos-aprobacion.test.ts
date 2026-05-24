@@ -136,6 +136,8 @@ describe('aprobacion de solicitudes de puesto', () => {
       nombre: 'CEIP La Paz',
       activo: true,
     })
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'VOLUNTARIO'] })
+    mp.usuario.update.mockResolvedValue({})
     mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'ACEPTADA' })
 
     const response = await app.inject({ method: 'POST', url: '/api/puestos/solicitudes/solicitud-1/aceptar' })
@@ -148,6 +150,10 @@ describe('aprobacion de solicitudes de puesto', () => {
         activo: true,
       }),
     }))
+    expect(mp.usuario.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { roles: ['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'] },
+    })
     expect(mp.solicitudPuesto.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'solicitud-1' },
       data: expect.objectContaining({ estado: 'ACEPTADA', coordinadorId: 'coord-1' }),
@@ -183,15 +189,13 @@ describe('aprobacion de solicitudes de puesto', () => {
     await app.close()
   })
 
-  it('crea una solicitud para un usuario autenticado y le anade el rol de puesto', async () => {
+  it('crea una solicitud para un usuario autenticado sin anadir el rol de puesto', async () => {
     const app = await buildTestApp()
     mockAuthUser.id = 'user-1'
     mockAuthUser.sub = 'user-1'
     mockAuthUser.roles = ['CIUDADANO', 'VOLUNTARIO']
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
     mp.solicitudPuesto.findFirst.mockResolvedValue(null)
-    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'VOLUNTARIO'] })
-    mp.usuario.update.mockResolvedValue({})
     mp.solicitudPuesto.create.mockResolvedValue({
       id: 'solicitud-1',
       nombre: 'CEIP La Paz',
@@ -212,10 +216,8 @@ describe('aprobacion de solicitudes de puesto', () => {
 
     expect(response.statusCode).toBe(201)
     expect(response.json().solicitud).toMatchObject({ id: 'solicitud-1' })
-    expect(mp.usuario.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: { roles: ['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'] },
-    })
+    expect(mp.usuario.findUnique).not.toHaveBeenCalled()
+    expect(mp.usuario.update).not.toHaveBeenCalled()
     expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ usuarioId: 'user-1', nombre: 'CEIP La Paz' }),
     }))
