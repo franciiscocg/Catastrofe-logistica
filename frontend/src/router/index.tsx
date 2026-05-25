@@ -18,6 +18,7 @@ const CiudadanoDashboard = lazy(() => import('@/features/ciudadano/pages/Dashboa
 const VoluntarioDashboard = lazy(() => import('@/features/voluntario/pages/Dashboard'))
 const PuestoDashboard = lazy(() => import('@/features/puesto/pages/Dashboard'))
 const CoordinadorDashboard = lazy(() => import('@/features/coordinador/pages/Dashboard'))
+const Profile = lazy(() => import('@/features/profile/pages/Profile'))
 
 const Loading = () => (
   <div className="flex items-center justify-center min-h-screen">
@@ -96,6 +97,24 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<Loading />}>
             <VerifyAccount />
+          </Suspense>
+        ),
+      },
+    ],
+  },
+  {
+    path: '/perfil',
+    element: (
+      <AuthGuard>
+        <AppShell />
+      </AuthGuard>
+    ),
+    children: [
+      {
+        index: true,
+        element: (
+          <Suspense fallback={<Loading />}>
+            <Profile />
           </Suspense>
         ),
       },

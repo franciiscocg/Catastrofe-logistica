@@ -22,6 +22,8 @@ export async function buildApp() {
     logger: process.env.NODE_ENV !== 'test',
   })
 
+  app.setErrorHandler(errorHandler)
+
   // Seguridad
   await app.register(helmet, { contentSecurityPolicy: false })
   await app.register(cors, {
@@ -51,8 +53,6 @@ export async function buildApp() {
 
   // Healthcheck
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
-
-  app.setErrorHandler(errorHandler)
 
   return app
 }

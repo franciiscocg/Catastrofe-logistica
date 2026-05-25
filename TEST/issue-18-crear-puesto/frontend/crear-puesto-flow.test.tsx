@@ -275,10 +275,11 @@ describe('RoleSelection — seleccion de rol', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setUser()
+    mockApiGet.mockResolvedValue({ data: { solicitud: null } })
   })
 
   it('muestra las tarjetas de los tres roles disponibles', () => {
-    render(<MemoryRouter><RoleSelection /></MemoryRouter>)
+    renderWithQuery(<RoleSelection />)
 
     expect(screen.getByText('Ciudadano')).toBeInTheDocument()
     expect(screen.getByText('Voluntario')).toBeInTheDocument()
@@ -286,7 +287,7 @@ describe('RoleSelection — seleccion de rol', () => {
   })
 
   it('al seleccionar Puesto de Emergencia navega a /auth/registro-puesto', () => {
-    render(<MemoryRouter><RoleSelection /></MemoryRouter>)
+    renderWithQuery(<RoleSelection />)
 
     fireEvent.click(screen.getByText('Puesto de Emergencia'))
 
@@ -296,7 +297,7 @@ describe('RoleSelection — seleccion de rol', () => {
 
   it('NO navega directamente a /puesto aunque el usuario ya tenga el rol PUESTO_EMERGENCIA', () => {
     setUser(['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'])
-    render(<MemoryRouter><RoleSelection /></MemoryRouter>)
+    renderWithQuery(<RoleSelection />)
 
     fireEvent.click(screen.getByText('Puesto de Emergencia'))
 
@@ -305,7 +306,7 @@ describe('RoleSelection — seleccion de rol', () => {
   })
 
   it('al seleccionar Ciudadano navega a /ciudadano', () => {
-    render(<MemoryRouter><RoleSelection /></MemoryRouter>)
+    renderWithQuery(<RoleSelection />)
 
     fireEvent.click(screen.getByText('Ciudadano'))
 
@@ -314,7 +315,7 @@ describe('RoleSelection — seleccion de rol', () => {
   })
 
   it('muestra el nombre del usuario autenticado', () => {
-    render(<MemoryRouter><RoleSelection /></MemoryRouter>)
+    renderWithQuery(<RoleSelection />)
 
     expect(screen.getByText(/Maria/)).toBeInTheDocument()
   })
@@ -363,6 +364,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     expect(screen.getByText(/maria@example\.com/)).toBeInTheDocument()
     // La direccion de la solicitud tambien se muestra
     expect(screen.getByText('Calle Mayor 12')).toBeInTheDocument()
+    expect(screen.getByText(/Solicitada:/)).toBeInTheDocument()
   })
 
   it('puede aceptar una solicitud pendiente', async () => {
@@ -404,7 +406,14 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     mockApiGet.mockImplementation((url: string) => {
       if (url === '/api/puestos/solicitudes') {
         return Promise.resolve({
-          data: { solicitudes: [{ ...solicitudPendiente, estado: 'ACEPTADA' }] },
+          data: {
+            solicitudes: [{
+              ...solicitudPendiente,
+              estado: 'ACEPTADA',
+              decidedAt: '2026-05-10T11:30:00.000Z',
+              coordinador: { nombre: 'Laura', apellidos: 'Ruiz' },
+            }],
+          },
         })
       }
       if (url === '/api/puestos/coordinador') {
@@ -415,6 +424,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     await abrirSolicitudes()
 
     expect(await screen.findByText('Aceptada')).toBeInTheDocument()
+    expect(screen.getByText(/Resuelta:/)).toHaveTextContent('Laura Ruiz')
     // Las solicitudes aceptadas no muestran botones de accion
     expect(screen.queryByRole('button', { name: /Aceptar/i })).not.toBeInTheDocument()
   })

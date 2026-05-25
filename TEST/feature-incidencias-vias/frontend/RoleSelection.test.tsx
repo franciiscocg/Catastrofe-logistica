@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 
-const mockNavigate = vi.fn()
-const mockSelectRole = vi.fn()
-const mockLogout = vi.fn()
+const {
+  mockNavigate,
+  mockSelectRole,
+  mockLogout,
+  mockApiGet,
+} = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  mockSelectRole: vi.fn(),
+  mockLogout: vi.fn(),
+  mockApiGet: vi.fn(),
+}))
 
 const authState = vi.hoisted(() => ({
   value: {
@@ -25,6 +34,12 @@ vi.mock('../../../frontend/src/store/auth.store', () => ({
   useAuthStore: vi.fn(() => authState.value),
 }))
 
+vi.mock('../../../frontend/src/lib/api/client', () => ({
+  apiClient: {
+    get: mockApiGet,
+  },
+}))
+
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return { ...actual, useNavigate: () => mockNavigate }
@@ -33,9 +48,15 @@ vi.mock('react-router-dom', async (importOriginal) => {
 import RoleSelection from '../../../frontend/src/features/auth/pages/RoleSelection'
 
 function renderRoleSelection() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+
   return render(
     <MemoryRouter>
-      <RoleSelection />
+      <QueryClientProvider client={queryClient}>
+        <RoleSelection />
+      </QueryClientProvider>
     </MemoryRouter>,
   )
 }
@@ -46,6 +67,7 @@ describe('RoleSelection', () => {
     mockNavigate.mockReset()
     mockSelectRole.mockReset()
     mockLogout.mockReset()
+    mockApiGet.mockResolvedValue({ data: { solicitud: null } })
     authState.value = {
       isAuthenticated: false,
       user: null,

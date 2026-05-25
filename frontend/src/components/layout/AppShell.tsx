@@ -54,7 +54,7 @@ export default function AppShell() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <header className="safe-top border-b border-slate-200 bg-white">
-        <div className={`flex items-center justify-between gap-3 border-l-4 px-4 py-2.5 ${accent.border}`}>
+        <div className={`flex flex-col gap-2 border-l-4 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between ${accent.border}`}>
           <div className="min-w-0">
             <p className={`text-[11px] font-semibold uppercase tracking-wide ${accent.eyebrow}`}>
               {roleLabel || 'Sesión'}
@@ -71,29 +71,37 @@ export default function AppShell() {
             )}
           </div>
 
-          {selectedRole !== 'coordinador' && (
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
             <button
-              onClick={handleChangeRole}
-              className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${accent.button}`}
+              onClick={() => navigate('/perfil')}
+              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-3.5 w-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M17 2l4 4-4 4" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <path d="M7 22l-4-4 4-4" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-              Cambiar rol
+              Perfil
             </button>
-          )}
+            {selectedRole !== 'coordinador' && (
+              <button
+                onClick={handleChangeRole}
+                className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${accent.button}`}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M17 2l4 4-4 4" />
+                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                  <path d="M7 22l-4-4 4-4" />
+                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                </svg>
+                Cambiar rol
+              </button>
+            )}
+          </div>
         </div>
       </header>
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
@@ -57,7 +57,6 @@ const puesto = {
   direccion: 'Calle Mayor 12',
   tipo: 'colegio',
   activo: true,
-  catastrofe: { id: 'dana', nombre: 'DANA Valencia', fase: 'RESPUESTA' },
 }
 
 const inventario = [
@@ -106,10 +105,13 @@ function mockApi() {
   mockApiGet.mockImplementation((url: string) => {
     if (url === '/api/puestos/puesto-1') return Promise.resolve({ data: { puesto } })
     if (url === '/api/inventario/puesto/puesto-1') return Promise.resolve({ data: { inventario } })
-    if (url === '/api/puestos/puesto-1/trabajadores') {
+    if (url === '/api/puestos/puesto-1/donaciones') return Promise.resolve({ data: { donaciones: [] } })
+    if (url === '/api/inventario/puesto/puesto-1/historial') return Promise.resolve({ data: { historial: [] } })
+    if (url === '/api/puestos/puesto-1/solicitudes-participacion') return Promise.resolve({ data: { solicitudes: [] } })
+    if (url === '/api/puestos/puesto-1/participantes') {
       return Promise.resolve({
         data: {
-          trabajadores: [
+          participantes: [
             {
               id: 'rel-1',
               usuario: {
@@ -117,6 +119,8 @@ function mockApi() {
                 nombre: 'Ana',
                 apellidos: 'Lopez',
                 email: 'ana@example.com',
+                dni: '12345678A',
+                telefono: '600111222',
               },
             },
           ],
@@ -141,19 +145,19 @@ describe('PuestoDashboard', () => {
 
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
     await screen.findByText('Agua embotellada')
-    expect(screen.getByText('DANA Valencia')).toBeInTheDocument()
     expect(screen.getByText('Activo')).toBeInTheDocument()
 
-    expect(within(screen.getByText('Productos').closest('div') as HTMLElement).getByText('2')).toBeInTheDocument()
-    expect(within(screen.getByText(/Cr.ticos/).closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
-    expect(within(screen.getByText('Necesitan').closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
+    expect(within(screen.getByText('Disponible neto').closest('div') as HTMLElement).getByText('2')).toBeInTheDocument()
+    expect(within(screen.getByText('Criticos').closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
+    const faltanStat = screen.getAllByText('Faltan').find((node) => node.tagName.toLowerCase() === 'p') as HTMLElement
+    expect(within(faltanStat.closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
   })
 
   it('filtra la lista para mostrar solo productos necesarios', async () => {
     renderDashboard()
 
     expect(await screen.findByText('Agua embotellada')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Necesitamos', { selector: 'button' }))
+    fireEvent.click(screen.getByText('Faltan', { selector: 'button' }))
 
     expect(screen.getByText('Botas de agua')).toBeInTheDocument()
     expect(screen.queryByText('Agua embotellada')).not.toBeInTheDocument()
@@ -163,8 +167,8 @@ describe('PuestoDashboard', () => {
     renderDashboard()
 
     await screen.findByText('Mantas')
-    const controls = screen.getByText('4 unidades').parentElement as HTMLElement
-    fireEvent.click(within(controls).getByText('+'))
+    const card = screen.getByText('Mantas').closest('article') as HTMLElement
+    fireEvent.click(within(card).getByText('Entrada'))
 
     await waitFor(() => {
       expect(mockApiPatch).toHaveBeenCalledWith('/api/inventario/items/item-mantas/cantidad', { delta: 1 })
@@ -175,8 +179,8 @@ describe('PuestoDashboard', () => {
     renderDashboard()
 
     await screen.findByText('Radios')
-    const controls = screen.getByText('0 unidades').parentElement as HTMLElement
-    fireEvent.click(within(controls).getByText('−'))
+    const card = screen.getByText('Radios').closest('article') as HTMLElement
+    fireEvent.click(within(card).getByText('Salida'))
 
     await waitFor(() => {
       expect(mockApiPost).toHaveBeenCalledWith('/api/inventario/puesto/puesto-1/items', expect.objectContaining({
@@ -193,7 +197,7 @@ describe('PuestoDashboard', () => {
     renderDashboard()
 
     await screen.findByText('CEIP La Paz')
-    fireEvent.click(screen.getByText(/\+ A.adir/))
+    fireEvent.click(screen.getByRole('button', { name: /Anadir producto|A.adir producto/ }))
     fireEvent.click(screen.getByText(/Medicamentos b.sicos/))
     fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: /A.adir al inventario/ }))
@@ -212,29 +216,21 @@ describe('PuestoDashboard', () => {
     })
   })
 
-  it('muestra y gestiona trabajadores del puesto', async () => {
+  it('muestra y gestiona voluntarios del puesto', async () => {
     renderDashboard()
 
     await screen.findByText('CEIP La Paz')
-    fireEvent.click(screen.getByText('👷'))
+    fireEvent.click(screen.getByText('Mas acciones'))
+    fireEvent.click(screen.getAllByText('Voluntarios').find((node) => node.tagName.toLowerCase() === 'button') as HTMLElement)
 
     expect(await screen.findByText('Ana Lopez')).toBeInTheDocument()
-    expect(screen.getByText('ana@example.com')).toBeInTheDocument()
+    expect(screen.getByText('DNI: 12345678A')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByPlaceholderText('correo@ejemplo.com'), {
-      target: { value: 'nuevo@example.com' },
-    })
-    const form = screen.getByPlaceholderText('correo@ejemplo.com').closest('form') as HTMLElement
-    fireEvent.click(within(form).getByRole('button', { name: /A.adir/ }))
-
+    fireEvent.click(screen.getByText('Quitar'))
+    fireEvent.click(screen.getByText('Confirmar'))
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/puesto-1/trabajadores', {
-        email: 'nuevo@example.com',
-      })
+      expect(mockApiDelete).toHaveBeenCalledWith('/api/puestos/puesto-1/participantes/rel-1')
     })
-
-    fireEvent.click(screen.getByText('Eliminar'))
-    expect(mockApiDelete).toHaveBeenCalledWith('/api/puestos/puesto-1/trabajadores/user-2')
   })
 
   it('abre el lector QR y muestra el resultado escaneado', async () => {

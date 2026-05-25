@@ -178,6 +178,12 @@ function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
   if (!body.nombre?.trim()) throw badRequest('El nombre del puesto es obligatorio')
   if (!body.direccion?.trim()) throw badRequest('La direccion del puesto es obligatoria')
   if (!body.tipo?.trim()) throw badRequest('El tipo de instalacion es obligatorio')
+  if (body.nombre.trim().length > 100) throw badRequest('El nombre del puesto no puede superar 100 caracteres')
+  if (body.direccion.trim().length > 180) throw badRequest('La direccion del puesto no puede superar 180 caracteres')
+  if (body.tipo.trim().length > 60) throw badRequest('El tipo de instalacion no puede superar 60 caracteres')
+  if (body.descripcion && body.descripcion.trim().length > 500) {
+    throw badRequest('La descripcion no puede superar 500 caracteres')
+  }
   if (typeof body.latitud !== 'number' || body.latitud < -90 || body.latitud > 90) {
     throw badRequest('La latitud no es valida')
   }
@@ -193,6 +199,16 @@ function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
     latitud: body.latitud,
     longitud: body.longitud,
   }
+}
+
+function validateMotivoRechazo(motivo: unknown) {
+  if (typeof motivo !== 'string' || motivo.trim().length < 10) {
+    throw badRequest('El motivo del rechazo debe tener al menos 10 caracteres')
+  }
+  if (motivo.trim().length > 500) {
+    throw badRequest('El motivo del rechazo no puede superar 500 caracteres')
+  }
+  return motivo.trim()
 }
 
 function validatePuestoUpdate(body: PuestoUpdateInput) {
@@ -408,12 +424,24 @@ export async function puestosRouter(app: FastifyInstance) {
       })
       if (pendiente) throw badRequest('Ya tienes una solicitud pendiente')
 
-      return tx.solicitudPuesto.create({
+      const creada = await tx.solicitudPuesto.create({
         data: { ...input, usuarioId: userId },
         include: {
           usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
         },
       })
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId: userId,
+          accion: 'SOLICITAR_CREACION_PUESTO',
+          entidad: 'SOLICITUD_PUESTO',
+          entidadId: creada.id,
+          datos: { estadoNuevo: 'PENDIENTE', nombre: input.nombre },
+        },
+      })
+
+      return creada
     })
 
     emitRealtime('solicitud-puesto:updated', { solicitud })
@@ -713,7 +741,7 @@ export async function puestosRouter(app: FastifyInstance) {
     preHandler: [requireAuth, requireRole('COORDINADOR')],
   }, async (request, reply) => {
     const { solicitudId } = request.params as { solicitudId: string }
-    const { motivo } = (request.body ?? {}) as { motivo?: string }
+    const { motivo } = (request.body ?? {}) as { motivo?: unknown }
     const responsableId = (request.user as { id: string }).id
 
     const actual = await prisma.solicitudParticipacionPuesto.findUnique({
@@ -722,13 +750,14 @@ export async function puestosRouter(app: FastifyInstance) {
     })
     if (!actual) throw notFound('Solicitud de participacion no encontrada')
     if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+    const motivoRechazo = validateMotivoRechazo(motivo)
 
     const solicitud = await prisma.$transaction(async (tx) => {
       const revisada = await tx.solicitudParticipacionPuesto.update({
         where: { id: solicitudId },
         data: {
           estado: 'RECHAZADA',
-          motivoRechazo: motivo?.trim() || undefined,
+          motivoRechazo,
           responsableId,
           decidedAt: new Date(),
         },
@@ -744,7 +773,7 @@ export async function puestosRouter(app: FastifyInstance) {
           accion: 'RECHAZAR_PARTICIPACION_PUESTO',
           entidad: 'PUESTO',
           entidadId: revisada.puestoId,
-          datos: { solicitudId, motivo: motivo?.trim() || null },
+          datos: { solicitudId, motivo: motivoRechazo },
         },
       })
 
@@ -818,6 +847,21 @@ export async function puestosRouter(app: FastifyInstance) {
         },
       })
 
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'ACEPTAR_SOLICITUD_PUESTO',
+          entidad: 'SOLICITUD_PUESTO',
+          entidadId: id,
+          datos: {
+            estadoAnterior: 'PENDIENTE',
+            estadoNuevo: 'ACEPTADA',
+            puestoId: puesto.id,
+            solicitanteId: solicitud.usuarioId,
+          },
+        },
+      })
+
       return { solicitud: revisada, puesto }
     })
 
@@ -830,25 +874,40 @@ export async function puestosRouter(app: FastifyInstance) {
     preHandler: [requireAuth, requireRole('COORDINADOR')],
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const { motivo } = req.body as { motivo?: string }
+    const { motivo } = (req.body ?? {}) as { motivo?: unknown }
     const coordinadorId = (req.user as { id: string }).id
 
     const actual = await prisma.solicitudPuesto.findUnique({ where: { id }, select: { estado: true } })
     if (!actual) throw notFound('Solicitud no encontrada')
     if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+    const motivoRechazo = validateMotivoRechazo(motivo)
 
-    const solicitud = await prisma.solicitudPuesto.update({
-      where: { id },
-      data: {
-        estado: 'RECHAZADA',
-        motivoRechazo: motivo?.trim() || undefined,
-        coordinadorId,
-        decidedAt: new Date(),
-      },
-      include: {
-        usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
-        coordinador: { select: { id: true, nombre: true, apellidos: true } },
-      },
+    const solicitud = await prisma.$transaction(async (tx) => {
+      const revisada = await tx.solicitudPuesto.update({
+        where: { id },
+        data: {
+          estado: 'RECHAZADA',
+          motivoRechazo,
+          coordinadorId,
+          decidedAt: new Date(),
+        },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+          coordinador: { select: { id: true, nombre: true, apellidos: true } },
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'RECHAZAR_SOLICITUD_PUESTO',
+          entidad: 'SOLICITUD_PUESTO',
+          entidadId: id,
+          datos: { estadoAnterior: 'PENDIENTE', estadoNuevo: 'RECHAZADA', motivo: motivoRechazo },
+        },
+      })
+
+      return revisada
     })
 
     emitRealtime('solicitud-puesto:updated', { solicitud })
@@ -903,13 +962,25 @@ export async function puestosRouter(app: FastifyInstance) {
       })
       if (pendiente) return pendiente
 
-      return tx.solicitudParticipacionPuesto.create({
+      const creada = await tx.solicitudParticipacionPuesto.create({
         data: { puestoId, usuarioId },
         include: {
           usuario: { select: { id: true, nombre: true, apellidos: true, dni: true, email: true, telefono: true } },
           puesto: { select: { id: true, nombre: true, direccion: true } },
         },
       })
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId,
+          accion: 'SOLICITAR_PARTICIPACION_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: puestoId,
+          datos: { solicitudId: creada.id, estadoNuevo: 'PENDIENTE' },
+        },
+      })
+
+      return creada
     })
 
     emitRealtime('solicitud-participacion:updated', { solicitud, puestoId })

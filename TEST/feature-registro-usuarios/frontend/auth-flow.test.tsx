@@ -159,7 +159,13 @@ describe('registro e inicio de sesion', () => {
         dni: '12345678A',
       })
     })
-    expect(mockLogin).toHaveBeenCalledWith(expect.objectContaining({ email: 'maria@example.com' }), 'token-123')
+    expect(mockLogin).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'maria@example.com' }),
+      'token-123',
+      undefined,
+      undefined,
+      undefined,
+    )
     expect(mockNavigate).toHaveBeenCalledWith('/seleccionar-rol')
   })
 
@@ -187,10 +193,11 @@ describe('seleccion de rol y solicitud de puesto', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authenticatedUser()
+    mockApiGet.mockResolvedValue({ data: { solicitud: null } })
   })
 
   it('deja entrar como ciudadano y voluntario, pero ofrece formulario para puesto', () => {
-    renderWithRouter(<RoleSelection />)
+    renderWithQuery(<RoleSelection />)
 
     expect(screen.getByText('Ciudadano')).toBeInTheDocument()
     expect(screen.getByText('Voluntario')).toBeInTheDocument()
@@ -207,7 +214,7 @@ describe('seleccion de rol y solicitud de puesto', () => {
   it('no manda directamente a /puesto si la cuenta aun debe pasar aprobacion', () => {
     authenticatedUser(['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA'])
 
-    renderWithRouter(<RoleSelection />)
+    renderWithQuery(<RoleSelection />)
 
     fireEvent.click(screen.getByText('Puesto de Emergencia'))
 
@@ -267,8 +274,22 @@ describe('coordinador', () => {
     vi.clearAllMocks()
     authenticatedUser(['COORDINADOR'])
     mockApiGet.mockImplementation((url: string) => {
-      if (url === '/api/puestos') return Promise.resolve({ data: { puestos: [{ id: 'puesto-activo-1' }] } })
-      return Promise.resolve({
+      if (url === '/api/puestos/coordinador') return Promise.resolve({ data: { puestos: [{
+        id: 'puesto-activo-1',
+        nombre: 'CEIP activo',
+        direccion: 'Calle 1',
+        tipo: 'colegio',
+        activo: true,
+        capacidad: 0,
+        ocupacion: 0,
+        solicitudesPendientes: 0,
+        admin: { nombre: 'Admin', apellidos: 'Uno', email: 'admin@example.com' },
+        trabajadores: 0,
+        necesidades: 0,
+        latitud: 39.4254,
+        longitud: -0.4178,
+      }] } })
+      if (url === '/api/puestos/solicitudes') return Promise.resolve({
         data: {
           solicitudes: [
             {
@@ -293,6 +314,7 @@ describe('coordinador', () => {
           ],
         },
       })
+      return Promise.reject(new Error(`GET no mockeado: ${url}`))
     })
     mockApiPost.mockResolvedValue({ data: {} })
   })
@@ -300,6 +322,7 @@ describe('coordinador', () => {
   it('puede aprobar una solicitud de puesto pendiente', async () => {
     renderWithQuery(<CoordinadorDashboard />)
 
+    fireEvent.click(screen.getByRole('button', { name: /^Solicitudes$/i }))
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Aceptar/i }))
 
@@ -311,6 +334,7 @@ describe('coordinador', () => {
   it('puede rechazar una solicitud indicando motivo', async () => {
     renderWithQuery(<CoordinadorDashboard />)
 
+    fireEvent.click(screen.getByRole('button', { name: /^Solicitudes$/i }))
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
     fireEvent.change(screen.getByPlaceholderText(/Faltan datos de ubicacion/i), {

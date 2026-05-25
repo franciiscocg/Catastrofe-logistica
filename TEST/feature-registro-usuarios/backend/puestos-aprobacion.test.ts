@@ -23,12 +23,16 @@ const { mockAuthUser, prismaMock } = vi.hoisted(() => {
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    auditLog: {
+      create: vi.fn(),
+    },
     $transaction: vi.fn((cb) =>
       cb({
         puestoEmergencia: prismaMock.puestoEmergencia,
         solicitudPuesto: prismaMock.solicitudPuesto,
         catastrofe: prismaMock.catastrofe,
         usuario: prismaMock.usuario,
+        auditLog: prismaMock.auditLog,
       }),
     ),
   }
@@ -158,6 +162,9 @@ describe('aprobacion de solicitudes de puesto', () => {
       where: { id: 'solicitud-1' },
       data: expect.objectContaining({ estado: 'ACEPTADA', coordinadorId: 'coord-1' }),
     }))
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ accion: 'ACEPTAR_SOLICITUD_PUESTO' }),
+    }))
     await app.close()
   })
 
@@ -185,6 +192,9 @@ describe('aprobacion de solicitudes de puesto', () => {
         motivoRechazo: 'Falta documentacion',
         coordinadorId: 'coord-1',
       }),
+    }))
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ accion: 'RECHAZAR_SOLICITUD_PUESTO' }),
     }))
     await app.close()
   })
@@ -220,6 +230,9 @@ describe('aprobacion de solicitudes de puesto', () => {
     expect(mp.usuario.update).not.toHaveBeenCalled()
     expect(mp.solicitudPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ usuarioId: 'user-1', nombre: 'CEIP La Paz' }),
+    }))
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ accion: 'SOLICITAR_CREACION_PUESTO' }),
     }))
     await app.close()
   })

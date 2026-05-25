@@ -22,6 +22,7 @@ interface SolicitudPuesto {
   estado: SolicitudEstado
   motivoRechazo?: string | null
   createdAt: string
+  decidedAt?: string | null
   usuario: {
     nombre: string
     apellidos: string
@@ -29,6 +30,10 @@ interface SolicitudPuesto {
     telefono?: string | null
     dni?: string | null
   }
+  coordinador?: {
+    nombre: string
+    apellidos: string
+  } | null
 }
 
 interface PuestoCoordinador {
@@ -76,6 +81,8 @@ interface PuestoDetalle {
     motivoRechazo?: string | null
     usuario: { nombre: string; apellidos: string; email: string; telefono?: string | null }
     createdAt: string
+    decidedAt?: string | null
+    responsable?: { nombre: string; apellidos: string } | null
   }>
   donaciones: Array<{
     id: string
@@ -108,6 +115,17 @@ function estadoSolicitudBadge(estado: SolicitudEstado) {
   if (estado === 'PENDIENTE') return <Badge variant="warning">Pendiente</Badge>
   if (estado === 'ACEPTADA') return <Badge variant="success">Aceptada</Badge>
   return <Badge variant="danger">Rechazada</Badge>
+}
+
+function fechaSolicitud(value?: string | null) {
+  if (!value) return null
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function estadoPuestoBadge(puesto: PuestoCoordinador) {
@@ -151,6 +169,8 @@ export default function CoordinadorDashboard() {
   const [busqueda, setBusqueda] = useState('')
   const [rechazoId, setRechazoId] = useState<string | null>(null)
   const [motivoRechazo, setMotivoRechazo] = useState('')
+  const [rechazoParticipacionId, setRechazoParticipacionId] = useState<string | null>(null)
+  const [motivoRechazoParticipacion, setMotivoRechazoParticipacion] = useState('')
   const [editando, setEditando] = useState<PuestoCoordinador | null>(null)
   const [eliminando, setEliminando] = useState<PuestoCoordinador | null>(null)
   const [detalleId, setDetalleId] = useState<string | null>(null)
@@ -250,10 +270,13 @@ export default function CoordinadorDashboard() {
   })
 
   const rechazarParticipacion = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/api/puestos/coordinador/participaciones/${id}/rechazar`, {}),
+    mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
+      apiClient.post(`/api/puestos/coordinador/participaciones/${id}/rechazar`, { motivo }),
     onSuccess: () => {
       setActionError('')
       setDetailError('')
+      setRechazoParticipacionId(null)
+      setMotivoRechazoParticipacion('')
       invalidateGestion()
       queryClient.invalidateQueries({ queryKey: ['puesto-detalle-coordinador', detalleId] })
     },
@@ -485,6 +508,13 @@ export default function CoordinadorDashboard() {
                     <p>Solicitante: {solicitud.usuario.nombre} {solicitud.usuario.apellidos} - {solicitud.usuario.email}</p>
                     {solicitud.usuario.telefono && <p>Telefono: {solicitud.usuario.telefono}</p>}
                     {solicitud.descripcion && <p>Notas: {solicitud.descripcion}</p>}
+                    <p>Solicitada: {fechaSolicitud(solicitud.createdAt)}</p>
+                    {solicitud.decidedAt && (
+                      <p>
+                        Resuelta: {fechaSolicitud(solicitud.decidedAt)}
+                        {solicitud.coordinador && ` por ${solicitud.coordinador.nombre} ${solicitud.coordinador.apellidos}`}
+                      </p>
+                    )}
                     {solicitud.motivoRechazo && <p className="text-red-700">Motivo rechazo: {solicitud.motivoRechazo}</p>}
                   </div>
 
@@ -545,11 +575,44 @@ export default function CoordinadorDashboard() {
               value={motivoRechazo}
               onChange={(e) => setMotivoRechazo(e.target.value)}
               rows={3}
+              required
+              minLength={10}
+              maxLength={500}
               placeholder="Faltan datos de ubicacion, no procede en esta zona..."
               className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
             <ModalActions onCancel={() => setRechazoId(null)}>
               <Button type="submit" variant="danger" loading={rechazar.isPending}>Rechazar</Button>
+            </ModalActions>
+          </form>
+        </Modal>
+      )}
+
+      {rechazoParticipacionId && (
+        <Modal>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              rechazarParticipacion.mutate({
+                id: rechazoParticipacionId,
+                motivo: motivoRechazoParticipacion.trim(),
+              })
+            }}
+            className="space-y-3"
+          >
+            <ModalTitle title="Rechazar participacion" text="Indica por que esta persona no puede incorporarse al puesto." />
+            <textarea
+              value={motivoRechazoParticipacion}
+              onChange={(e) => setMotivoRechazoParticipacion(e.target.value)}
+              rows={3}
+              required
+              minLength={10}
+              maxLength={500}
+              placeholder="Aforo completo, perfil no adecuado para esta tarea..."
+              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <ModalActions onCancel={() => setRechazoParticipacionId(null)}>
+              <Button type="submit" variant="danger" loading={rechazarParticipacion.isPending}>Rechazar</Button>
             </ModalActions>
           </form>
         </Modal>
@@ -674,6 +737,16 @@ export default function CoordinadorDashboard() {
                             </div>
                             {estadoSolicitudBadge(solicitud.estado)}
                           </div>
+                          <p className="mt-2 text-xs text-gray-500">Solicitada: {fechaSolicitud(solicitud.createdAt)}</p>
+                          {solicitud.decidedAt && (
+                            <p className="mt-1 text-xs text-gray-500">
+                              Resuelta: {fechaSolicitud(solicitud.decidedAt)}
+                              {solicitud.responsable && ` por ${solicitud.responsable.nombre} ${solicitud.responsable.apellidos}`}
+                            </p>
+                          )}
+                          {solicitud.motivoRechazo && (
+                            <p className="mt-2 text-xs text-red-700">Motivo rechazo: {solicitud.motivoRechazo}</p>
+                          )}
                           {solicitud.estado === 'PENDIENTE' && (
                             <div className="mt-3 flex gap-2">
                               <Button
@@ -687,8 +760,11 @@ export default function CoordinadorDashboard() {
                               <Button
                                 size="sm"
                                 variant="danger"
-                                loading={rechazarParticipacion.isPending && rechazarParticipacion.variables === solicitud.id}
-                                onClick={() => rechazarParticipacion.mutate(solicitud.id)}
+                                loading={rechazarParticipacion.isPending && rechazarParticipacion.variables?.id === solicitud.id}
+                                onClick={() => {
+                                  setRechazoParticipacionId(solicitud.id)
+                                  setMotivoRechazoParticipacion('')
+                                }}
                               >
                                 Rechazar
                               </Button>

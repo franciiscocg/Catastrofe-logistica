@@ -7,6 +7,8 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import QrScanner from '@/components/shared/QrScanner'
+import { puestoApi } from '../api/puestoApi'
+import PuestoSummaryHeader from '../components/PuestoSummaryHeader'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -384,7 +386,7 @@ function AddItemSheet({
     setLoading(true)
     setError('')
     try {
-      await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
+      await puestoApi.crearItem(puestoId, {
         nombre: nombre.trim(),
         categoria: categoria.trim(),
         unidad: unidad.trim(),
@@ -565,7 +567,7 @@ function InventarioRow({
           <button
             type="button"
             onClick={() => onUpdateBalance(item, -1)}
-            disabled={item.cantidadDisponible <= 0 && item.cantidadNecesaria <= 0}
+            disabled={item.estado === 'SIN_MOVIMIENTO' && !item.disponible && !item.necesario}
             className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-30"
           >
             Salida
@@ -728,16 +730,14 @@ function WorkersSheet({
   const { data: participantes, isLoading: loadingParticipantes } = useQuery({
     queryKey: ['participantes-puesto', puestoId],
     queryFn: () =>
-      apiClient
-        .get<{ participantes: ParticipantePuesto[] }>(`/api/puestos/${puestoId}/participantes`)
-        .then((r) => r.data.participantes),
+      puestoApi.getParticipantes<ParticipantePuesto>(puestoId).then((r) => r.data.participantes),
   })
 
   const pendientes = solicitudes?.filter((s) => s.estado === 'PENDIENTE') ?? []
 
   const decisionSolicitud = useMutation({
     mutationFn: ({ solicitudId, decision }: { solicitudId: string; decision: 'aceptar' | 'rechazar' }) =>
-      apiClient.post(`/api/puestos/participaciones/${solicitudId}/${decision}`, {}),
+      puestoApi.decidirParticipacion(solicitudId, decision),
     onSuccess: () => {
       setActionError('')
       qc.invalidateQueries({ queryKey: ['solicitudes-participacion', puestoId] })
@@ -751,7 +751,7 @@ function WorkersSheet({
   })
 
   const removeParticipante = useMutation({
-    mutationFn: (asignacionId: string) => apiClient.delete(`/api/puestos/${puestoId}/participantes/${asignacionId}`),
+    mutationFn: (asignacionId: string) => puestoApi.quitarParticipante(puestoId, asignacionId),
     onSuccess: () => {
       setActionError('')
       setConfirmRemoveId(null)
@@ -1127,10 +1127,10 @@ export default function PuestoDashboard() {
     queryKey: ['puesto-detalle', storedPuestoId],
     queryFn: async () => {
       if (storedPuestoId) {
-        const r = await apiClient.get<{ puesto: Puesto }>(`/api/puestos/${storedPuestoId}`)
+        const r = await puestoApi.getPuesto<Puesto>(storedPuestoId)
         return r.data.puesto
       }
-      const r = await apiClient.get<{ puestos: Puesto[] }>('/api/puestos/mio')
+      const r = await puestoApi.getMiPuesto<Puesto>()
       return r.data.puestos?.[0] ?? null
     },
   })
@@ -1142,9 +1142,7 @@ export default function PuestoDashboard() {
   const { data: invData, isLoading: loadingInv } = useQuery({
     queryKey: ['inventario', puesto?.id],
     queryFn: () =>
-      apiClient
-        .get<{ inventario: ItemInventario[] }>(`/api/inventario/puesto/${puesto!.id}`)
-        .then((r) => r.data),
+      puestoApi.getInventario<ItemInventario>(puesto!.id).then((r) => r.data),
     enabled: !!puesto?.id,
   })
 
@@ -1153,36 +1151,28 @@ export default function PuestoDashboard() {
   const { data: solicitudesParticipacionData } = useQuery({
     queryKey: ['solicitudes-participacion', puesto?.id],
     queryFn: () =>
-      apiClient
-        .get<{ solicitudes: SolicitudParticipacion[] }>(`/api/puestos/${puesto!.id}/solicitudes-participacion`)
-        .then((r) => r.data.solicitudes),
+      puestoApi.getSolicitudesParticipacion<SolicitudParticipacion>(puesto!.id).then((r) => r.data.solicitudes),
     enabled: !!puesto?.id,
   })
 
   const { data: participantesData } = useQuery({
     queryKey: ['participantes-puesto', puesto?.id],
     queryFn: () =>
-      apiClient
-        .get<{ participantes: ParticipantePuesto[] }>(`/api/puestos/${puesto!.id}/participantes`)
-        .then((r) => r.data.participantes),
+      puestoApi.getParticipantes<ParticipantePuesto>(puesto!.id).then((r) => r.data.participantes),
     enabled: !!puesto?.id,
   })
 
   const { data: donacionesData, isLoading: loadingDonaciones } = useQuery({
     queryKey: ['donaciones-puesto', puesto?.id],
     queryFn: () =>
-      apiClient
-        .get<{ donaciones: DonacionPuesto[] }>(`/api/puestos/${puesto!.id}/donaciones`)
-        .then((r) => r.data.donaciones),
+      puestoApi.getDonaciones<DonacionPuesto>(puesto!.id).then((r) => r.data.donaciones),
     enabled: !!puesto?.id,
   })
 
   const { data: historialData, isLoading: loadingHistorial } = useQuery({
     queryKey: ['inventario-historial', puesto?.id],
     queryFn: () =>
-      apiClient
-        .get<{ historial: HistorialInventario[] }>(`/api/inventario/puesto/${puesto!.id}/historial`)
-        .then((r) => r.data.historial),
+      puestoApi.getHistorial<HistorialInventario>(puesto!.id).then((r) => r.data.historial),
     enabled: !!puesto?.id && showHistory,
   })
 
@@ -1195,7 +1185,7 @@ export default function PuestoDashboard() {
   // Mutation: actualizar cantidad
   const mutCantidad = useMutation({
     mutationFn: ({ id, delta }: { id: string; delta: number }) =>
-      apiClient.patch(`/api/inventario/items/${id}/cantidad`, { delta }),
+      puestoApi.ajustarCantidad(id, delta),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] })
       qc.invalidateQueries({ queryKey: ['inventario-historial', puesto?.id] })
@@ -1204,7 +1194,7 @@ export default function PuestoDashboard() {
 
   const mutCreateInventario = useMutation({
     mutationFn: ({ producto, tipo, cantidad }: { producto: Producto; tipo: 'DISPONIBLE' | 'NECESARIO'; cantidad: number }) =>
-      apiClient.post(`/api/inventario/puesto/${puesto!.id}/items`, {
+      puestoApi.crearItem(puesto!.id, {
         nombre: producto.nombre,
         categoria: producto.categoria,
         unidad: producto.unidad,
@@ -1219,7 +1209,7 @@ export default function PuestoDashboard() {
 
   // Mutation: eliminar
   const mutDelete = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/inventario/items/${id}`),
+    mutationFn: (id: string) => puestoApi.eliminarItem(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] })
       qc.invalidateQueries({ queryKey: ['inventario-historial', puesto?.id] })
@@ -1267,7 +1257,7 @@ export default function PuestoDashboard() {
     setQrConfirmando(true)
     setQrError('')
     try {
-      await apiClient.post(`/api/inventario/puesto/${puesto.id}/confirmar-qr`, { codigo: qrResult.text })
+      await puestoApi.confirmarQr(puesto.id, qrResult.text)
       await qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })
       await qc.invalidateQueries({ queryKey: ['inventario-historial', puesto.id] })
       await qc.invalidateQueries({ queryKey: ['mis-donaciones'] })
@@ -1346,36 +1336,19 @@ export default function PuestoDashboard() {
 
   return (
     <div className="flex min-h-full flex-col bg-slate-100">
-
-      <section className="flex-shrink-0 border-b border-slate-200 bg-white">
-        <div className="px-4 py-3 sm:px-6">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs font-semibold uppercase text-amber-700">Panel operativo</p>
-              <Badge variant={puesto.activo ? 'success' : 'danger'}>{puesto.activo ? 'Activo' : 'Inactivo'}</Badge>
-            </div>
-            <h1 className="mt-1 truncate text-lg font-semibold text-gray-950 sm:text-xl">{puesto.nombre}</h1>
-            <p className="truncate text-sm text-gray-500">{puesto.direccion}</p>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2 lg:grid-cols-6">
-            {[
-              { label: 'Disponible neto', value: disponibles.length, helper: 'productos con sobrante', tone: 'text-gray-950' },
-              { label: 'Críticos', value: criticos, helper: 'requieren revisión', tone: criticos > 0 ? 'text-red-600' : 'text-gray-950' },
-              { label: 'Faltan', value: necesitamos, helper: 'productos sin cubrir', tone: necesitamos > 0 ? 'text-amber-700' : 'text-gray-950' },
-              { label: 'Unid. netas', value: formatCantidad(unidadesDisponibles), helper: 'sobrante total', tone: 'text-gray-950' },
-              { label: 'Solicitudes', value: solicitudesPendientes, helper: 'voluntarios esperando', tone: solicitudesPendientes > 0 ? 'text-amber-700' : 'text-gray-950' },
-              { label: 'Voluntarios', value: voluntariosActivos, helper: 'activos ahora', tone: 'text-emerald-700' },
-            ].map((stat) => (
-              <div key={stat.label} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
-                <p className={`text-lg font-semibold leading-none ${stat.tone}`}>{stat.value}</p>
-                <p className="text-xs font-medium text-slate-600">{stat.label}</p>
-                <p className="hidden text-xs text-slate-400 xl:block">{stat.helper}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <PuestoSummaryHeader
+        nombre={puesto.nombre}
+        direccion={puesto.direccion}
+        activo={puesto.activo}
+        stats={[
+          { label: 'Disponible neto', value: disponibles.length, helper: 'productos con sobrante', tone: 'text-gray-950' },
+          { label: 'Criticos', value: criticos, helper: 'requieren revision', tone: criticos > 0 ? 'text-red-600' : 'text-gray-950' },
+          { label: 'Faltan', value: necesitamos, helper: 'productos sin cubrir', tone: necesitamos > 0 ? 'text-amber-700' : 'text-gray-950' },
+          { label: 'Unid. netas', value: formatCantidad(unidadesDisponibles), helper: 'sobrante total', tone: 'text-gray-950' },
+          { label: 'Solicitudes', value: solicitudesPendientes, helper: 'voluntarios esperando', tone: solicitudesPendientes > 0 ? 'text-amber-700' : 'text-gray-950' },
+          { label: 'Voluntarios', value: voluntariosActivos, helper: 'activos ahora', tone: 'text-emerald-700' },
+        ]}
+      />
 
       <section className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

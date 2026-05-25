@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import { Role, ROLE_ROUTES } from '@/types/auth.types'
 import RoleCard, { type RoleCardConfig } from '../components/RoleCard'
@@ -14,12 +16,12 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
     role: Role.CIUDADANO,
     title: 'Ciudadano',
     subtitle: 'Busco ayuda o informacion',
-    icon: '👤',
+    icon: 'C',
     color: 'blue',
     requiresAuth: true,
     info: {
       title: 'Ciudadano',
-      icon: '👤',
+      icon: 'C',
       color: 'blue',
       what: 'Eres una persona afectada por la emergencia que necesita ayuda, informacion o quiere reportar el estado de las calles de su zona.',
       canDo: [
@@ -35,12 +37,12 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
     role: Role.VOLUNTARIO,
     title: 'Voluntario',
     subtitle: 'Quiero ayudar y contribuir',
-    icon: '🤝',
+    icon: 'V',
     color: 'green',
     requiresAuth: true,
     info: {
       title: 'Voluntario',
-      icon: '🤝',
+      icon: 'V',
       color: 'green',
       what: 'Eres una persona que quiere colaborar en la respuesta a la emergencia, transportando donaciones o apoyando con trabajo fisico en la zona.',
       canDo: [
@@ -56,12 +58,12 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
     role: Role.PUESTO,
     title: 'Puesto de Emergencia',
     subtitle: 'Gestiono un punto de distribucion',
-    icon: '🏪',
+    icon: 'P',
     color: 'amber',
     requiresAuth: true,
     info: {
       title: 'Puesto de Emergencia',
-      icon: '🏪',
+      icon: 'P',
       color: 'amber',
       what: 'Eres el responsable de un punto de distribucion de ayuda: una tienda, un local o cualquier lugar donde se repartan productos a los vecinos afectados.',
       canDo: [
@@ -79,23 +81,33 @@ export default function RoleSelection() {
   const navigate = useNavigate()
   const { isAuthenticated, user, puestoId, selectRole, logout } = useAuthStore()
   const [infoRole, setInfoRole] = useState<Role | null>(null)
-
-  // puestoId solo existe cuando el coordinador ha aprobado la solicitud y se ha creado el puesto
-  const hasPuesto = Boolean(puestoId)
-
-  const roles: RoleConfig[] = ROLES_BASE.map((r) => {
-    if (r.role === Role.PUESTO) {
-      return {
-        ...r,
-        badge: hasPuesto
-          ? { text: 'Acceso aprobado', className: 'bg-green-100 text-green-700' }
-          : { text: 'Requiere aprobacion del coordinador', className: 'bg-amber-100 text-amber-700' },
-      }
-    }
-    return r
+  const { data: solicitudPuesto } = useQuery({
+    queryKey: ['mi-solicitud-puesto-role-selection'],
+    enabled: isAuthenticated,
+    queryFn: () =>
+      apiClient
+        .get<{ solicitud: { estado: 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'; nombre?: string } | null }>('/api/puestos/solicitudes/mia')
+        .then((r) => r.data.solicitud),
   })
 
-  const activeInfo = infoRole ? (roles.find((r) => r.role === infoRole)?.info ?? null) : null
+  const hasPuesto = Boolean(puestoId)
+  const isCoordinator = Boolean(user?.roles.includes('COORDINADOR'))
+
+  const roles: RoleConfig[] = ROLES_BASE.map((roleConfig) => {
+    if (roleConfig.role !== Role.PUESTO) return roleConfig
+    return {
+      ...roleConfig,
+      badge: hasPuesto
+        ? { text: 'Acceso aprobado', className: 'bg-green-100 text-green-700' }
+        : solicitudPuesto?.estado === 'PENDIENTE'
+          ? { text: 'Solicitud pendiente', className: 'bg-amber-100 text-amber-700' }
+          : solicitudPuesto?.estado === 'RECHAZADA'
+            ? { text: 'Solicitud rechazada', className: 'bg-red-100 text-red-700' }
+            : { text: 'Puedes solicitarlo', className: 'bg-slate-100 text-slate-700' },
+    }
+  })
+
+  const activeInfo = infoRole ? (roles.find((role) => role.role === infoRole)?.info ?? null) : null
 
   const handleSelect = (role: Role) => {
     if (!isAuthenticated) {
@@ -104,16 +116,11 @@ export default function RoleSelection() {
       return
     }
 
-    if (role === Role.PUESTO) {
-      selectRole(role)
-      if (hasPuesto) {
-        navigate(ROLE_ROUTES[role])
-      } else {
-        navigate('/auth/registro-puesto')
-      }
+    selectRole(role)
+    if (role === Role.PUESTO && !hasPuesto) {
+      navigate('/auth/registro-puesto')
       return
     }
-    selectRole(role)
     navigate(ROLE_ROUTES[role])
   }
 
@@ -121,7 +128,6 @@ export default function RoleSelection() {
     <>
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="w-full max-w-lg mx-auto px-4 py-8 safe-top">
-
           {isAuthenticated && user && (
             <div
               className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3"
@@ -130,13 +136,13 @@ export default function RoleSelection() {
             >
               <span className="text-2xl flex-shrink-0" aria-hidden="true">👋</span>
               <p className="text-blue-800 font-medium text-base">
-                Bienvenido/a, <strong>{user.nombre}</strong>! Selecciona como quieres continuar.
+                Bienvenido/a, <strong>{user.nombre}</strong>. Selecciona cómo quieres continuar.
               </p>
             </div>
           )}
 
           <div className="mb-5">
-            <h2 className="text-xl font-bold text-gray-900">Como quieres participar?</h2>
+            <h2 className="text-xl font-bold text-gray-900">¿Cómo quieres participar?</h2>
             <p className="text-gray-500 mt-1 text-base">
               Elige tu rol para acceder a las funciones correspondientes
             </p>
@@ -145,33 +151,37 @@ export default function RoleSelection() {
           <div className="space-y-4" role="list" aria-label="Roles disponibles">
             {roles.map((config) => (
               <div key={config.role} role="listitem">
-                <RoleCard
-                  config={config}
-                  onSelect={handleSelect}
-                  onInfo={(role) => setInfoRole(role)}
-                />
+                <RoleCard config={config} onSelect={handleSelect} onInfo={(role) => setInfoRole(role)} />
               </div>
             ))}
           </div>
+
+          {isCoordinator && (
+            <button
+              onClick={() => {
+                selectRole(Role.COORDINADOR)
+                navigate('/coordinador')
+              }}
+              className="mt-4 w-full rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-left text-sm font-semibold text-purple-800 hover:bg-purple-100"
+            >
+              Entrar como coordinador
+            </button>
+          )}
 
           {isAuthenticated && (
             <div className="mt-4 text-center">
               <button
                 onClick={logout}
-                className="text-sm text-gray-400 hover:text-red-600 transition-colors py-2 px-4 rounded-lg"
+                className="rounded-lg px-4 py-2 text-sm text-gray-400 transition-colors hover:text-red-600"
               >
-                Cerrar sesión
+                Cerrar sesion
               </button>
             </div>
           )}
         </div>
       </div>
 
-      <RoleInfoModal
-        isOpen={infoRole !== null}
-        onClose={() => setInfoRole(null)}
-        info={activeInfo}
-      />
+      <RoleInfoModal isOpen={infoRole !== null} onClose={() => setInfoRole(null)} info={activeInfo} />
     </>
   )
 }

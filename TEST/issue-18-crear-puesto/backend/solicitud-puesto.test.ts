@@ -25,12 +25,16 @@ const { mockAuthUser, prismaMock } = vi.hoisted(() => {
       findUnique: vi.fn(),
       update:     vi.fn(),
     },
+    auditLog: {
+      create: vi.fn(),
+    },
     $transaction: vi.fn((cb) =>
       cb({
         puestoEmergencia: prismaMock.puestoEmergencia,
         solicitudPuesto:  prismaMock.solicitudPuesto,
         catastrofe:       prismaMock.catastrofe,
         usuario:          prismaMock.usuario,
+        auditLog:         prismaMock.auditLog,
       }),
     ),
   }
@@ -160,6 +164,9 @@ describe('POST /api/puestos/solicitudes', () => {
     expect(res.json().solicitud).toMatchObject({ id: 'solicitud-1', estado: 'PENDIENTE' })
     expect(mp.usuario.findUnique).not.toHaveBeenCalled()
     expect(mp.usuario.update).not.toHaveBeenCalled()
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ accion: 'SOLICITAR_CREACION_PUESTO', entidadId: 'solicitud-1' }),
+    }))
     await app.close()
   })
 
@@ -275,6 +282,9 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
       where: { id: 'solicitud-1' },
       data: expect.objectContaining({ estado: 'ACEPTADA', coordinadorId: 'coord-1' }),
     }))
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ accion: 'ACEPTAR_SOLICITUD_PUESTO', entidadId: 'solicitud-1' }),
+    }))
     await app.close()
   })
 
@@ -383,10 +393,13 @@ describe('POST /api/puestos/solicitudes/:id/rechazar', () => {
         coordinadorId: 'coord-1',
       }),
     }))
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ accion: 'RECHAZAR_SOLICITUD_PUESTO', entidadId: 'solicitud-1' }),
+    }))
     await app.close()
   })
 
-  it('rechaza la solicitud sin motivo (motivo opcional)', async () => {
+  it('rechaza la operacion si no se indica un motivo util', async () => {
     const app = await buildApp()
     mp.solicitudPuesto.findUnique.mockResolvedValue({ estado: 'PENDIENTE' })
     mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'RECHAZADA' })
@@ -397,7 +410,9 @@ describe('POST /api/puestos/solicitudes/:id/rechazar', () => {
       payload: {},
     })
 
-    expect(res.statusCode).toBe(200)
+    expect(res.statusCode).toBe(400)
+    expect(res.json().message).toMatch(/motivo/i)
+    expect(mp.solicitudPuesto.update).not.toHaveBeenCalled()
     await app.close()
   })
 

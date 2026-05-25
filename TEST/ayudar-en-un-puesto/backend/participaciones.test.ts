@@ -24,6 +24,7 @@ const { mockAuthUser, prismaMock } = vi.hoisted(() => {
       create: vi.fn(),
       update: vi.fn(),
     },
+    auditLog: { create: vi.fn() },
     $transaction: vi.fn((cb) =>
       cb({
         voluntario: prismaMock.voluntario,
@@ -31,6 +32,7 @@ const { mockAuthUser, prismaMock } = vi.hoisted(() => {
         puestoEmergencia: prismaMock.puestoEmergencia,
         asignacionPuesto: prismaMock.asignacionPuesto,
         solicitudParticipacionPuesto: prismaMock.solicitudParticipacionPuesto,
+        auditLog: prismaMock.auditLog,
       }),
     ),
   }
@@ -162,6 +164,12 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     expect(mp.solicitudParticipacionPuesto.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ puestoId: PUESTO_ID, usuarioId: VOL_USER_ID }),
     }))
+    expect(mp.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        accion: 'SOLICITAR_PARTICIPACION_PUESTO',
+        entidadId: PUESTO_ID,
+      }),
+    }))
     await app.close()
   })
 
@@ -179,6 +187,7 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     expect(response.statusCode).toBe(201)
     expect(response.json().solicitud.id).toBe(SOLICITUD_ID)
     expect(mp.solicitudParticipacionPuesto.create).not.toHaveBeenCalled()
+    expect(mp.auditLog.create).not.toHaveBeenCalled()
     await app.close()
   })
 

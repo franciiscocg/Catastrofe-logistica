@@ -733,10 +733,9 @@ describe('POST /coordinador/participaciones/:id/rechazar — rechazo de solicitu
     await app.close()
   })
 
-  it('rechaza sin motivo cuando no se proporciona', async () => {
+  it('exige un motivo para rechazar una incorporacion', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({ estado: 'PENDIENTE' })
-    mp.solicitudParticipacionPuesto.update.mockResolvedValue({ ...solicitudBase, estado: 'RECHAZADA', motivoRechazo: null })
 
     const response = await app.inject({
       method: 'POST',
@@ -744,8 +743,9 @@ describe('POST /coordinador/participaciones/:id/rechazar — rechazo de solicitu
       payload: {},
     })
 
-    expect(response.statusCode).toBe(200)
-    expect(response.json().solicitud.estado).toBe('RECHAZADA')
+    expect(response.statusCode).toBe(400)
+    expect(response.json().message).toMatch(/motivo/i)
+    expect(mp.solicitudParticipacionPuesto.update).not.toHaveBeenCalled()
     await app.close()
   })
 
