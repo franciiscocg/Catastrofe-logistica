@@ -14,14 +14,6 @@ export const registerSchema = z.object({
   telefono: z.string().optional(),
 })
 
-export const refreshSchema = z.object({
-  refreshToken: z.string().min(20),
-})
-
-export const logoutSchema = z.object({
-  refreshToken: z.string().min(20).optional(),
-})
-
 export const verifyAccountSchema = z.object({
   token: z.string().min(20),
 })

@@ -1,5 +1,6 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import cookie from '@fastify/cookie'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import jwt from '@fastify/jwt'
@@ -25,11 +26,27 @@ export async function buildApp() {
   app.setErrorHandler(errorHandler)
 
   // Seguridad
-  await app.register(helmet, { contentSecurityPolicy: false })
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'self'"],
+        imgSrc: ["'self'", 'data:'],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+      },
+    },
+  })
   await app.register(cors, {
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
     credentials: true,
   })
+  await app.register(cookie)
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',

@@ -8,6 +8,7 @@ const {
   mockNavigate,
   mockLogin,
   mockLogout,
+  mockEndSession,
   mockSelectRole,
   mockApiGet,
   mockApiPost,
@@ -17,6 +18,7 @@ const {
   mockNavigate: vi.fn(),
   mockLogin: vi.fn(),
   mockLogout: vi.fn(),
+  mockEndSession: vi.fn(),
   mockSelectRole: vi.fn(),
   mockApiGet: vi.fn(),
   mockApiPost: vi.fn(),
@@ -56,6 +58,7 @@ vi.mock('../../../frontend/src/components/shared/Map', () => ({
 }))
 
 vi.mock('../../../frontend/src/lib/api/client', () => ({
+  endSession: mockEndSession,
   apiClient: {
     get: mockApiGet,
     post: mockApiPost,
@@ -162,7 +165,6 @@ describe('registro e inicio de sesion', () => {
     expect(mockLogin).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'maria@example.com' }),
       'token-123',
-      undefined,
       undefined,
       undefined,
     )

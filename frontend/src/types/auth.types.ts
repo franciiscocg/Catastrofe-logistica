@@ -18,7 +18,6 @@ export interface User {
 
 export interface AuthTokens {
   accessToken: string
-  refreshToken: string
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

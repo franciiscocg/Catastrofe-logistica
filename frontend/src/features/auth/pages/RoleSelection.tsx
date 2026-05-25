@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { apiClient } from '@/lib/api/client'
+import { apiClient, endSession } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import { Role, ROLE_ROUTES } from '@/types/auth.types'
 import RoleCard, { type RoleCardConfig } from '../components/RoleCard'
@@ -79,7 +79,7 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
 
 export default function RoleSelection() {
   const navigate = useNavigate()
-  const { isAuthenticated, user, puestoId, selectRole, logout } = useAuthStore()
+  const { isAuthenticated, user, puestoId, selectRole } = useAuthStore()
   const [infoRole, setInfoRole] = useState<Role | null>(null)
   const { data: solicitudPuesto } = useQuery({
     queryKey: ['mi-solicitud-puesto-role-selection'],
@@ -171,7 +171,7 @@ export default function RoleSelection() {
           {isAuthenticated && (
             <div className="mt-4 text-center">
               <button
-                onClick={logout}
+                onClick={() => void endSession()}
                 className="rounded-lg px-4 py-2 text-sm text-gray-400 transition-colors hover:text-red-600"
               >
                 Cerrar sesion

@@ -5,13 +5,13 @@ import { Role, User } from '@/types/auth.types'
 interface AuthStore {
   user: User | null
   accessToken: string | null
-  refreshToken: string | null
   accessTokenExpiresAt: string | null
   selectedRole: Role | null
   isAuthenticated: boolean
+  isSessionInitialized: boolean
   puestoId: string | null           // puesto del usuario si tiene rol PUESTO
-  login: (user: User, accessToken: string, puestoId?: string, refreshToken?: string, accessTokenExpiresAt?: string) => void
-  setSession: (user: User, accessToken: string, refreshToken: string, accessTokenExpiresAt: string) => void
+  login: (user: User, accessToken: string, puestoId?: string, accessTokenExpiresAt?: string) => void
+  setSession: (user: User, accessToken: string, accessTokenExpiresAt: string) => void
   setPuestoId: (puestoId: string | null) => void
   logout: () => void
   selectRole: (role: Role) => void
@@ -24,27 +24,27 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       user: null,
       accessToken: null,
-      refreshToken: null,
       accessTokenExpiresAt: null,
       selectedRole: null,
       isAuthenticated: false,
+      isSessionInitialized: false,
       puestoId: null,
 
-      login: (user, accessToken, puestoId, refreshToken, accessTokenExpiresAt) =>
+      login: (user, accessToken, puestoId, accessTokenExpiresAt) =>
         set({
           user,
           accessToken,
-          refreshToken: refreshToken ?? null,
           accessTokenExpiresAt: accessTokenExpiresAt ?? null,
           isAuthenticated: true,
+          isSessionInitialized: true,
           puestoId: puestoId ?? null,
         }),
 
       logout: () =>
-        set({ user: null, accessToken: null, refreshToken: null, accessTokenExpiresAt: null, selectedRole: null, isAuthenticated: false, puestoId: null }),
+        set({ user: null, accessToken: null, accessTokenExpiresAt: null, selectedRole: null, isAuthenticated: false, isSessionInitialized: true, puestoId: null }),
 
-      setSession: (user, accessToken, refreshToken, accessTokenExpiresAt) =>
-        set({ user, accessToken, refreshToken, accessTokenExpiresAt, isAuthenticated: true }),
+      setSession: (user, accessToken, accessTokenExpiresAt) =>
+        set({ user, accessToken, accessTokenExpiresAt, isAuthenticated: true, isSessionInitialized: true }),
 
       setPuestoId: (puestoId) => set({ puestoId }),
 
@@ -60,14 +60,17 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'catlogistica-auth',
       partialize: (state) => ({
-        user: state.user,
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
-        accessTokenExpiresAt: state.accessTokenExpiresAt,
         selectedRole: state.selectedRole,
-        isAuthenticated: state.isAuthenticated,
         puestoId: state.puestoId,
       }),
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<AuthStore>
+        return {
+          selectedRole: state.selectedRole ?? null,
+          puestoId: state.puestoId ?? null,
+        }
+      },
     },
   ),
 )

@@ -1,8 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import {
   loginSchema,
-  logoutSchema,
-  refreshSchema,
   registerSchema,
   resendVerificationSchema,
   requestPasswordResetSchema,
@@ -20,8 +18,37 @@ import {
   rotateRefreshToken,
   verifyAccount,
 } from './auth.service.js'
-import { ACCESS_TOKEN_EXPIRES_IN, ACCESS_TOKEN_TTL_SECONDS } from '../../lib/security.js'
+import { ACCESS_TOKEN_EXPIRES_IN, ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS } from '../../lib/security.js'
 import { sendAccountVerificationEmail, sendPasswordResetEmail } from '../../lib/email.js'
+
+const REFRESH_COOKIE_NAME = 'catlogistica_refresh'
+const REFRESH_COOKIE_PATH = '/api/auth'
+
+function refreshCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: REFRESH_COOKIE_PATH,
+    maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
+  }
+}
+
+function setRefreshCookie(reply: FastifyReply, refreshToken: string) {
+  reply.setCookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions())
+}
+
+function clearRefreshCookie(reply: FastifyReply) {
+  reply.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions())
+}
+
+function readRefreshCookie(request: FastifyRequest, reply: FastifyReply) {
+  const refreshToken = request.cookies[REFRESH_COOKIE_NAME]
+  if (refreshToken) return refreshToken
+
+  clearRefreshCookie(reply)
+  throw Object.assign(new Error('Sesion expirada'), { statusCode: 401 })
+}
 
 async function signAccessToken(reply: FastifyReply, user: { id: string; email: string; roles: string[] }) {
   const accessToken = await reply.jwtSign(
@@ -39,7 +66,8 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   const user = await loginUser(input)
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
-  return reply.send({ user, refreshToken, ...tokenPayload })
+  setRefreshCookie(reply, refreshToken)
+  return reply.send({ user, ...tokenPayload })
 }
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
@@ -63,21 +91,28 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
 
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
+  setRefreshCookie(reply, refreshToken)
 
   const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
-  return reply.status(201).send({ user, refreshToken, ...tokenPayload, ...devVerification })
+  return reply.status(201).send({ user, ...tokenPayload, ...devVerification })
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
-  const input = refreshSchema.parse(request.body)
-  const { user, refreshToken } = await rotateRefreshToken(input.refreshToken)
-  const tokenPayload = await signAccessToken(reply, user)
-  return reply.send({ user, refreshToken, ...tokenPayload })
+  const currentRefreshToken = readRefreshCookie(request, reply)
+  try {
+    const { user, refreshToken } = await rotateRefreshToken(currentRefreshToken)
+    const tokenPayload = await signAccessToken(reply, user)
+    setRefreshCookie(reply, refreshToken)
+    return reply.send({ user, ...tokenPayload })
+  } catch (error) {
+    clearRefreshCookie(reply)
+    throw error
+  }
 }
 
 export async function logout(request: FastifyRequest, reply: FastifyReply) {
-  const input = logoutSchema.parse(request.body ?? {})
-  await revokeRefreshToken(input.refreshToken)
+  await revokeRefreshToken(request.cookies[REFRESH_COOKIE_NAME])
+  clearRefreshCookie(reply)
   return reply.status(204).send()
 }
 

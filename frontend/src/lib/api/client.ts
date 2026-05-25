@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/auth.store'
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   timeout: 10000,
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -15,18 +16,16 @@ apiClient.interceptors.request.use((config) => {
 
 let refreshPromise: Promise<string | null> | null = null
 
-async function refreshAccessToken() {
-  const refreshToken = useAuthStore.getState().refreshToken
-  if (!refreshToken) return null
+interface SessionResponse {
+  user: any
+  accessToken: string
+  accessTokenExpiresAt: string
+}
 
-  refreshPromise ??= apiClient.post<{
-    user: any
-    accessToken: string
-    refreshToken: string
-    accessTokenExpiresAt: string
-  }>('/api/auth/refresh', { refreshToken })
+async function refreshAccessToken() {
+  refreshPromise ??= apiClient.post<SessionResponse>('/api/auth/refresh')
     .then(({ data }) => {
-      useAuthStore.getState().setSession(data.user, data.accessToken, data.refreshToken, data.accessTokenExpiresAt)
+      useAuthStore.getState().setSession(data.user, data.accessToken, data.accessTokenExpiresAt)
       return data.accessToken
     })
     .catch(() => {
@@ -40,11 +39,25 @@ async function refreshAccessToken() {
   return refreshPromise
 }
 
+export async function restoreSession() {
+  await refreshAccessToken()
+}
+
+export async function endSession() {
+  try {
+    await apiClient.post('/api/auth/logout')
+  } finally {
+    useAuthStore.getState().logout()
+  }
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !originalRequest.url?.includes('/api/auth/refresh')) {
+    const isRefreshRequest = originalRequest?.url?.includes('/api/auth/refresh')
+    const isAuthenticationRequest = originalRequest?.url?.startsWith('/api/auth/')
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthenticationRequest) {
       originalRequest._retry = true
       const token = await refreshAccessToken()
       if (token) {
@@ -54,7 +67,7 @@ apiClient.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isRefreshRequest) {
       useAuthStore.getState().logout()
       window.location.href = '/auth/login'
     }
