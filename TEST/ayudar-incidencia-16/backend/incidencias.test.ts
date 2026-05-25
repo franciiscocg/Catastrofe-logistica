@@ -471,9 +471,11 @@ describe('getAsignacionIncidenciaActiva — consulta de asignacion activa del vo
     expect(mp.asignacionIncidencia.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { voluntarioId: VOLUNTARIO_ID, estado: 'ACTIVA' },
-        include: { incidencia: true },
       }),
     )
+    const select = mp.asignacionIncidencia.findFirst.mock.calls[0][0].include.incidencia.select
+    expect(select).not.toHaveProperty('reportanteId')
+    expect(select).not.toHaveProperty('reportante')
   })
 
   it('devuelve null si el voluntario no tiene ninguna asignacion activa', async () => {
@@ -532,9 +534,11 @@ describe('listAsignacionesIncidencia — historial de incidencias atendidas por 
         where: { voluntarioId: VOLUNTARIO_ID },
         orderBy: { startedAt: 'desc' },
         take: 20,
-        include: { incidencia: true },
       }),
     )
+    const select = mp.asignacionIncidencia.findMany.mock.calls[0][0].include.incidencia.select
+    expect(select).not.toHaveProperty('reportanteId')
+    expect(select).not.toHaveProperty('reportante')
   })
 
   it('devuelve lista vacia si el voluntario nunca ha atendido incidencias', async () => {
