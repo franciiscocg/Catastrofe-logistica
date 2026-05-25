@@ -19,6 +19,7 @@ const VoluntarioDashboard = lazy(() => import('@/features/voluntario/pages/Dashb
 const PuestoDashboard = lazy(() => import('@/features/puesto/pages/Dashboard'))
 const CoordinadorDashboard = lazy(() => import('@/features/coordinador/pages/Dashboard'))
 const Profile = lazy(() => import('@/features/profile/pages/Profile'))
+const Verificar = lazy(() => import('@/features/public/pages/Verificar'))
 
 const Loading = () => (
   <div className="flex items-center justify-center min-h-screen">
@@ -199,6 +200,22 @@ export const router = createBrowserRouter([
         ),
       },
     ],
+  },
+  {
+    path: '/verificar',
+    element: (
+      <Suspense fallback={<Loading />}>
+        <Verificar />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/verificar/:id',
+    element: (
+      <Suspense fallback={<Loading />}>
+        <Verificar />
+      </Suspense>
+    ),
   },
   {
     path: '*',

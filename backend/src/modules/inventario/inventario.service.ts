@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma.js'
 import type { Prisma } from '@prisma/client'
+import { appendChainEvent } from '../../lib/chain.js'
 import type { AddItemInput, ConfirmarQrInput, UpdateCantidadInput } from './inventario.schema.js'
 
 function appError(message: string, statusCode: number) {
@@ -318,7 +319,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     throw appError('Este QR pertenece a otro puesto', 400)
   }
 
-  return prisma.$transaction(async (tx) => {
+  const txResult = await prisma.$transaction(async (tx) => {
     if (qr.type === 'SOLICITUD_CIUDADANO') {
       const alreadyUsed = await tx.auditLog.findFirst({
         where: {
@@ -503,6 +504,59 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
 
     return { tipo: qr.type, donacion: donacionActualizada, productos }
   })
+
+  // Registro en la cadena pública — fuera de la transacción, no bloqueante
+  if (txResult.tipo === 'SOLICITUD_CIUDADANO') {
+    for (const item of txResult.productos) {
+      appendChainEvent({
+        tipo: 'INVENTARIO_SALIDA',
+        actorId: userId,
+        actorRol: 'PUESTO_EMERGENCIA',
+        entidad: 'inventario',
+        entidadId: puestoId,
+        payload: {
+          producto: { id: item.productoId, nombre: item.producto.nombre },
+          cantidadSalida: item.cantidad,
+          unidad: item.producto.unidad,
+          motivo: 'SOLICITUD_CIUDADANO',
+        },
+      })
+    }
+  } else {
+    const don = txResult.donacion
+    appendChainEvent({
+      tipo: 'DONACION_ENTREGADA',
+      actorId: userId,
+      actorRol: 'PUESTO_EMERGENCIA',
+      entidad: 'donacion',
+      entidadId: don.id,
+      payload: {
+        donacionId: don.id,
+        producto: { id: don.productoId, nombre: don.producto.nombre, categoria: don.producto.categoria },
+        cantidad: don.cantidad,
+        unidad: don.unidad,
+        puestoId,
+        puestoNombre: don.puesto.nombre,
+        entregaCodigo: don.entregaCodigo,
+      },
+    })
+
+    appendChainEvent({
+      tipo: 'INVENTARIO_ENTRADA',
+      actorId: userId,
+      actorRol: 'PUESTO_EMERGENCIA',
+      entidad: 'inventario',
+      entidadId: puestoId,
+      payload: {
+        donacionId: don.id,
+        producto: { id: don.productoId, nombre: don.producto.nombre },
+        cantidadEntrada: don.cantidad,
+        unidad: don.unidad,
+      },
+    })
+  }
+
+  return txResult
 }
 
 export async function getEstadoSolicitudQr(requestId: string) {

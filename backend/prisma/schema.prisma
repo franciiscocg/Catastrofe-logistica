@@ -380,6 +380,38 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model PendingChainEvent {
+  id          String   @id @default(cuid())
+  payload     Json
+  intentos    Int      @default(0)
+  ultimoError String?
+  nextRetryAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([nextRetryAt, intentos])
+  @@map("pending_chain_events")
+}
+
+model ChainEvent {
+  id           String    @id @default(cuid())
+  sequence     Int       @default(autoincrement())
+  tipo         String
+  actorId      String?
+  actorRol     String?
+  entidad      String
+  entidadId    String
+  payload      Json
+  hashPrevio   String
+  hashPropio   String    @unique
+  tsaToken     String?
+  tsaTimestamp DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([entidad, entidadId])
+  @@index([sequence])
+  @@map("chain_events")
+}
+
 model IdempotencyRecord {
   key        String   @id
   method     String
