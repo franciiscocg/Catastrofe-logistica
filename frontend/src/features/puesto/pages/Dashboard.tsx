@@ -8,7 +8,9 @@ import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import QrScanner from '@/components/shared/QrScanner'
 import { puestoApi } from '../api/puestoApi'
+import EntregasPanel from '../components/EntregasPanel'
 import PuestoSummaryHeader from '../components/PuestoSummaryHeader'
+import PuestoToolbar from '../components/PuestoToolbar'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -195,33 +197,6 @@ function formatFechaHistorial(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
-}
-
-function formatFechaCorta(value?: string | null) {
-  if (!value) return null
-  const date = new Date(value)
-  const today = new Date()
-  const isToday = date.toDateString() === today.toDateString()
-
-  return new Intl.DateTimeFormat('es-ES', {
-    ...(isToday ? {} : { day: '2-digit', month: '2-digit' }),
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
-function formatLlegadaEstimada(value?: string | null) {
-  const formatted = formatFechaCorta(value)
-  if (!formatted) return null
-
-  return `Llegada estimada: ${formatted}`
-}
-
-function estadoDonacionBadge(estado: DonacionPuesto['estado']) {
-  if (estado === 'EN_CAMINO') return <Badge variant="info">En camino</Badge>
-  if (estado === 'PENDIENTE') return <Badge variant="warning">Pendiente</Badge>
-  if (estado === 'ENTREGADA') return <Badge variant="success">Entregada</Badge>
-  return <Badge variant="danger">Cancelada</Badge>
 }
 
 function normalizeProductoNombre(nombre: string) {
@@ -1302,10 +1277,6 @@ export default function PuestoDashboard() {
   const unidadesNecesarias = inventarioAgrupado
     .filter((i) => i.balance < 0)
     .reduce((total, item) => total + Math.abs(item.balance), 0)
-  const proximaEntrega = donacionesActivas
-    .map((donacion) => ({ donacion, llegada: donacion.eta ? new Date(donacion.eta).getTime() : Number.POSITIVE_INFINITY }))
-    .sort((a, b) => a.llegada - b.llegada)[0]?.donacion
-
   // ── Loading / Sin puesto ──────────────────────────────────────────────────
 
   if (loadingPuesto) {
@@ -1350,129 +1321,23 @@ export default function PuestoDashboard() {
         ]}
       />
 
-      <section className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <Button size="sm" onClick={() => setShowAddSheet(true)} className="bg-amber-600 hover:bg-amber-700">
-              Añadir producto
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setShowQr(true)}>
-              Escanear QR
-            </Button>
-            <details className="relative col-span-2 sm:col-span-1">
-              <summary className="flex h-full cursor-pointer list-none items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50">
-                Mas acciones
-              </summary>
-              <div className="absolute left-0 top-full z-[1500] mt-1 w-40 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => setShowHistory(true)}
-                  className="w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Historial
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowWorkers(true)}
-                  className="w-full rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Voluntarios
-                </button>
-              </div>
-            </details>
-          </div>
+      <PuestoToolbar
+        filtro={filtro}
+        inventarioSearch={inventarioSearch}
+        onAdd={() => setShowAddSheet(true)}
+        onScanQr={() => setShowQr(true)}
+        onHistory={() => setShowHistory(true)}
+        onWorkers={() => setShowWorkers(true)}
+        onSearchChange={setInventarioSearch}
+        onFiltroChange={setFiltro}
+      />
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            type="search"
-            value={inventarioSearch}
-            onChange={(e) => setInventarioSearch(e.target.value)}
-            placeholder="Buscar producto"
-            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 sm:w-56"
-          />
-          <div className="grid grid-cols-3 rounded-lg border border-slate-200 bg-slate-100 p-1">
-            {([
-              ['todos', 'Todo'],
-                ['DISPONIBLE', 'Disponible'],
-                ['NECESARIO', 'Faltan'],
-            ] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFiltro(id)}
-                className={`rounded-md px-3 py-2 text-xs font-semibold transition sm:min-w-[6.5rem] ${
-                  filtro === id ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-2.5 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-gray-950">Entregas en camino</h2>
-            <p className="text-xs text-gray-500">
-              {donacionesActivas.length === 0
-                ? 'Sin entregas activas.'
-                : `${donacionesActivas.length} activas${proximaEntrega ? ` - próxima: ${proximaEntrega.producto.nombre}` : ''}`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowDeliveries((current) => !current)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            {showDeliveries ? 'Ocultar' : 'Ver entregas'} ({donacionesActivas.length})
-          </button>
-        </div>
-
-        {showDeliveries && loadingDonaciones ? (
-          <div className="flex justify-center rounded-lg border border-slate-200 bg-slate-50 py-6">
-            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-amber-600" />
-          </div>
-        ) : showDeliveries && donacionesActivas.length === 0 ? (
-          <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm text-slate-500">
-            No hay entregas pendientes o en camino ahora mismo.
-          </p>
-        ) : showDeliveries ? (
-          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-            {donacionesActivas.slice(0, 6).map((donacion) => {
-              const voluntario = donacion.voluntario.usuario
-              const llegada = formatLlegadaEstimada(donacion.eta)
-
-              return (
-                <article key={donacion.id} className="w-72 flex-shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-gray-950">
-                        {formatCantidad(donacion.cantidad)} {donacion.unidad} de {donacion.producto.nombre}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-slate-600">
-                        {voluntario.nombre} {voluntario.apellidos}
-                      </p>
-                      {voluntario.telefono && (
-                        <p className="text-xs text-slate-500">Telefono: {voluntario.telefono}</p>
-                      )}
-                    </div>
-                    {estadoDonacionBadge(donacion.estado)}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                    {llegada && <span className="rounded-full bg-white px-2 py-1">{llegada}</span>}
-                    {donacion.comentario && (
-                      <span className="rounded-full bg-white px-2 py-1">{donacion.comentario}</span>
-                    )}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        ) : null}
-      </section>
+      <EntregasPanel
+        donaciones={donacionesActivas}
+        loading={loadingDonaciones}
+        visible={showDeliveries}
+        onToggle={() => setShowDeliveries((current) => !current)}
+      />
 
       <section className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:px-6">
         {(necesitamos > 0 || criticos > 0) && (
