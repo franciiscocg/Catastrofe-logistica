@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('../../../backend/src/lib/chain.js', () => ({ appendChainEvent: vi.fn() }))
+
 vi.mock('../../../backend/src/lib/prisma.js', () => {
   const prisma = {
     usuario: { findUnique: vi.fn() },

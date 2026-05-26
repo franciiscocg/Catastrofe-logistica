@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { appendChainEvent } = vi.hoisted(() => ({ appendChainEvent: vi.fn() }))
+
+vi.mock('../../../backend/src/lib/chain.js', () => ({ appendChainEvent }))
+
 vi.mock('../../../backend/src/lib/prisma.js', () => {
   const prisma = {
     puestoEmergencia: { findUnique: vi.fn() },
@@ -66,6 +70,7 @@ function donacionEnCamino(overrides: Record<string, unknown> = {}) {
     unidad: 'litros',
     estado: 'EN_CAMINO',
     producto: PRODUCTO,
+    puesto: PUESTO_DATA,
     ...overrides,
   }
 }
@@ -134,6 +139,12 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     expect(mp.inventario.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ cantidad: 2, tipo: 'DISPONIBLE' }),
+      }),
+    )
+    expect(appendChainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: 'DONACION_ENTREGADA',
+        payload: expect.not.objectContaining({ entregaCodigo: expect.anything() }),
       }),
     )
   })

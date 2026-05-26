@@ -2,8 +2,9 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 
 export default function LocationPermissionBanner() {
   const { position, error, loading, permissionState, request } = useGeolocation()
+  const isPublicVerificationPage = window.location.pathname.startsWith('/verificar')
 
-  if (position || loading || !error) return null
+  if (isPublicVerificationPage || position || loading || !error) return null
 
   const isDenied = permissionState === 'denied'
 

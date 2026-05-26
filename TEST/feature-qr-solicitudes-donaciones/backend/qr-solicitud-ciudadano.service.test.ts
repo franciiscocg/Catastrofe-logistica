@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { appendChainEvent } = vi.hoisted(() => ({ appendChainEvent: vi.fn() }))
+
+vi.mock('../../../backend/src/lib/chain.js', () => ({ appendChainEvent }))
+
 vi.mock('../../../backend/src/lib/prisma.js', () => {
   const prisma = {
     puestoEmergencia: { findUnique: vi.fn() },
@@ -90,6 +94,12 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
       where: { id: ITEM_DISPONIBLE.id, cantidad: { gte: 5 } },
       data: { cantidad: { decrement: 5 } },
     })
+    expect(appendChainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: 'INVENTARIO_SALIDA',
+        payload: expect.objectContaining({ cantidadSalida: 5 }),
+      }),
+    )
   })
 
   it('registra auditoria de uso unico con el requestId del QR', async () => {

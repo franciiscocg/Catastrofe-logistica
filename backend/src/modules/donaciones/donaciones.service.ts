@@ -1,6 +1,7 @@
 import type { EstadoDonacion } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
+import { appendChainEvent } from '../../lib/chain.js'
 import { runSerializableTransaction } from '../../lib/serializable-transaction.js'
 import type { CreateDonacionInput } from './donaciones.schema.js'
 
@@ -122,7 +123,7 @@ export async function listNecesidadesDonacion() {
 export async function createDonacion(usuarioId: string, input: CreateDonacionInput) {
   const voluntario = await getVoluntarioByUsuario(usuarioId)
 
-  return runSerializableTransaction(async (tx) => {
+  const donacion = await runSerializableTransaction(async (tx) => {
     const necesidad = await tx.inventario.findFirst({
       where: {
         puestoId: input.puestoId,
@@ -170,6 +171,24 @@ export async function createDonacion(usuarioId: string, input: CreateDonacionInp
       },
     })
   })
+
+  void appendChainEvent({
+    tipo: 'DONACION_CREADA',
+    actorId: usuarioId,
+    actorRol: 'VOLUNTARIO',
+    entidad: 'donacion',
+    entidadId: donacion.id,
+    payload: {
+      donacionId: donacion.id,
+      producto: { id: donacion.producto.id, nombre: donacion.producto.nombre, categoria: donacion.producto.categoria },
+      cantidad: donacion.cantidad,
+      unidad: donacion.unidad,
+      puestoId: donacion.puestoId,
+      puestoNombre: donacion.puesto.nombre,
+    },
+  })
+
+  return donacion
 }
 
 export async function listMisDonaciones(usuarioId: string) {
@@ -196,8 +215,8 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
   if (!donacion) throw notFound('Donacion no encontrada')
   assertEstadoTransition(donacion.estado, estado)
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.donacion.update({
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.donacion.update({
       where: { id: donacionId },
       data: { estado },
       include: {
@@ -220,8 +239,29 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
       },
     })
 
-    return updated
+    return result
   })
+
+  const tipoEvento = estado === 'EN_CAMINO' ? 'DONACION_EN_CAMINO' : 'DONACION_CANCELADA'
+  void appendChainEvent({
+    tipo: tipoEvento,
+    actorId: usuarioId,
+    actorRol: 'VOLUNTARIO',
+    entidad: 'donacion',
+    entidadId: donacionId,
+    payload: {
+      donacionId,
+      estadoAnterior: donacion.estado,
+      estadoNuevo: estado,
+      producto: { id: updated.producto.id, nombre: updated.producto.nombre },
+      cantidad: updated.cantidad,
+      unidad: updated.unidad,
+      puestoId: donacion.puestoId,
+      puestoNombre: updated.puesto.nombre,
+    },
+  })
+
+  return updated
 }
 
 export async function generarCodigoEntrega(usuarioId: string, donacionId: string) {
