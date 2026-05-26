@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { RolUsuario } from '@prisma/client'
 import { prisma } from '../../lib/prisma.js'
-import { emitRealtime } from '../../lib/realtime.js'
+import {
+  emitRealtime,
+  emitRestrictedRealtime,
+  realtimePuestoRoom,
+  realtimeRoleRoom,
+  realtimeUserRoom,
+} from '../../lib/realtime.js'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
 import { listTrabajadores, addTrabajador, removeTrabajador } from './trabajadores.service.js'
@@ -31,6 +37,18 @@ function notFound(message: string) {
 function getUsuarioId(user: unknown) {
   const authUser = user as { sub?: string; id?: string } | undefined
   return authUser?.sub ?? authUser?.id
+}
+
+function solicitudPuestoRooms(usuarioId: string) {
+  return [realtimeUserRoom(usuarioId), realtimeRoleRoom('COORDINADOR')]
+}
+
+function participacionRooms(usuarioId: string, puestoId: string) {
+  return [
+    realtimeUserRoom(usuarioId),
+    realtimePuestoRoom(puestoId),
+    realtimeRoleRoom('COORDINADOR'),
+  ]
 }
 
 async function getVoluntarioByUsuario(usuarioId: string) {
@@ -444,7 +462,11 @@ export async function puestosRouter(app: FastifyInstance) {
       return creada
     })
 
-    emitRealtime('solicitud-puesto:updated', { solicitud })
+    emitRestrictedRealtime(
+      'solicitud-puesto:updated',
+      { solicitudId: solicitud.id, estado: solicitud.estado },
+      solicitudPuestoRooms(solicitud.usuarioId),
+    )
     return reply.status(201).send({ solicitud })
   })
 
@@ -527,7 +549,7 @@ export async function puestosRouter(app: FastifyInstance) {
     })
 
     const puesto = await findPuestoCoordinador(id)
-    emitRealtime('puesto:updated', { puesto })
+    emitRealtime('puesto:updated', { puestoId: puesto.id })
     return reply.send({ puesto })
   })
 
@@ -571,8 +593,12 @@ export async function puestosRouter(app: FastifyInstance) {
     })
 
     const puesto = await findPuestoCoordinador(id)
-    emitRealtime('puesto:updated', { puesto })
-    emitRealtime('solicitud-participacion:updated', { puestoId: id })
+    emitRealtime('puesto:updated', { puestoId: puesto.id })
+    emitRestrictedRealtime(
+      'solicitud-participacion:updated',
+      { puestoId: id },
+      [realtimePuestoRoom(id), realtimeRoleRoom('COORDINADOR'), realtimeRoleRoom('VOLUNTARIO')],
+    )
     return reply.send({ puesto })
   })
 
@@ -732,7 +758,11 @@ export async function puestosRouter(app: FastifyInstance) {
       return { solicitud: revisada, asignacion }
     })
 
-    emitRealtime('solicitud-participacion:updated', { solicitud: result.solicitud, asignacion: result.asignacion, puestoId: result.solicitud.puestoId })
+    emitRestrictedRealtime(
+      'solicitud-participacion:updated',
+      { solicitudId: result.solicitud.id, puestoId: result.solicitud.puestoId, estado: result.solicitud.estado },
+      participacionRooms(result.solicitud.usuarioId, result.solicitud.puestoId),
+    )
     emitRealtime('puesto:updated', { puestoId: result.solicitud.puestoId })
     reply.send(result)
   })
@@ -780,7 +810,11 @@ export async function puestosRouter(app: FastifyInstance) {
       return revisada
     })
 
-    emitRealtime('solicitud-participacion:updated', { solicitud, puestoId: solicitud.puestoId })
+    emitRestrictedRealtime(
+      'solicitud-participacion:updated',
+      { solicitudId: solicitud.id, puestoId: solicitud.puestoId, estado: solicitud.estado },
+      participacionRooms(solicitud.usuarioId, solicitud.puestoId),
+    )
     reply.send({ solicitud })
   })
 
@@ -865,8 +899,12 @@ export async function puestosRouter(app: FastifyInstance) {
       return { solicitud: revisada, puesto }
     })
 
-    emitRealtime('solicitud-puesto:updated', { solicitud: result.solicitud, puesto: result.puesto })
-    emitRealtime('puesto:updated', { puesto: result.puesto })
+    emitRestrictedRealtime(
+      'solicitud-puesto:updated',
+      { solicitudId: result.solicitud.id, estado: result.solicitud.estado },
+      solicitudPuestoRooms(result.solicitud.usuarioId),
+    )
+    emitRealtime('puesto:updated', { puestoId: result.puesto.id })
     return reply.send(result)
   })
 
@@ -910,7 +948,11 @@ export async function puestosRouter(app: FastifyInstance) {
       return revisada
     })
 
-    emitRealtime('solicitud-puesto:updated', { solicitud })
+    emitRestrictedRealtime(
+      'solicitud-puesto:updated',
+      { solicitudId: solicitud.id, estado: solicitud.estado },
+      solicitudPuestoRooms(solicitud.usuarioId),
+    )
     return reply.send({ solicitud })
   })
 
@@ -983,7 +1025,11 @@ export async function puestosRouter(app: FastifyInstance) {
       return creada
     })
 
-    emitRealtime('solicitud-participacion:updated', { solicitud, puestoId })
+    emitRestrictedRealtime(
+      'solicitud-participacion:updated',
+      { solicitudId: solicitud.id, puestoId, estado: solicitud.estado },
+      participacionRooms(solicitud.usuarioId, puestoId),
+    )
     reply.status(201).send({ solicitud })
   })
 
@@ -1077,7 +1123,11 @@ export async function puestosRouter(app: FastifyInstance) {
       return { solicitud: revisada, asignacion }
     })
 
-    emitRealtime('solicitud-participacion:updated', { solicitud: result.solicitud, asignacion: result.asignacion, puestoId: result.solicitud.puestoId })
+    emitRestrictedRealtime(
+      'solicitud-participacion:updated',
+      { solicitudId: result.solicitud.id, puestoId: result.solicitud.puestoId, estado: result.solicitud.estado },
+      participacionRooms(result.solicitud.usuarioId, result.solicitud.puestoId),
+    )
     emitRealtime('puesto:updated', { puestoId: result.solicitud.puestoId })
     reply.send(result)
   })
@@ -1112,7 +1162,11 @@ export async function puestosRouter(app: FastifyInstance) {
       },
     })
 
-    emitRealtime('solicitud-participacion:updated', { solicitud, puestoId: solicitud.puestoId })
+    emitRestrictedRealtime(
+      'solicitud-participacion:updated',
+      { solicitudId: solicitud.id, puestoId: solicitud.puestoId, estado: solicitud.estado },
+      participacionRooms(solicitud.usuarioId, solicitud.puestoId),
+    )
     reply.send({ solicitud })
   })
 
@@ -1217,7 +1271,7 @@ export async function puestosRouter(app: FastifyInstance) {
       include: { puesto: { select: puestoPublicSelect } },
     })
 
-    emitRealtime('puesto:updated', { puestoId, asignacion: finalizada })
+    emitRealtime('puesto:updated', { puestoId })
     reply.send({ asignacion: finalizada })
   })
 

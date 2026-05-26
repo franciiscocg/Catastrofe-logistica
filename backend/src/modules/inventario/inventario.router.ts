@@ -42,7 +42,7 @@ export async function inventarioRouter(app: FastifyInstance) {
       result.productos.forEach((item) => emitInventoryEvents(puestoId, item))
     }
     if ('donacion' in result && result.donacion) {
-      emitRealtime('donacion:updated', { donacion: result.donacion, puestoId })
+      emitRealtime('donacion:updated', { donacionId: result.donacion.id, puestoId })
     }
     return reply.send(result)
   })

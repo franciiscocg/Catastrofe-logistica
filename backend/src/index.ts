@@ -7,7 +7,7 @@ const HOST = process.env.HOST ?? '0.0.0.0'
 
 async function main() {
   const app = await buildApp()
-  initRealtime(app.server)
+  initRealtime(app.server, (token) => app.jwt.verify(token))
   try {
     await app.listen({ port: PORT, host: HOST })
     console.log(`🚀 API escuchando en http://${HOST}:${PORT}`)

@@ -23,9 +23,11 @@ export function useRealtime() {
   const token = useAuthStore((state) => state.accessToken)
 
   useEffect(() => {
+    if (!token) return
+
     const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
-      auth: token ? { token } : undefined,
+      auth: { token },
       withCredentials: true,
     })
 
