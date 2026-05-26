@@ -14,7 +14,9 @@ vi.mock('../../../backend/src/lib/prisma.js', () => {
     donacion: {
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
+    qrConsumption: { create: vi.fn() },
     auditLog: { create: vi.fn(), findFirst: vi.fn() },
     $transaction: vi.fn((callback) => callback(prisma)),
   }
@@ -51,6 +53,7 @@ describe('confirmarQrInventario', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mp.$transaction.mockImplementation((callback: unknown) => (callback as (tx: unknown) => unknown)(mp))
+    mp.donacion.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('descuenta inventario al confirmar una solicitud ciudadana valida', async () => {

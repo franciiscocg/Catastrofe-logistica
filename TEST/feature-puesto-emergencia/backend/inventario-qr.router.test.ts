@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import Fastify from '../../../backend/node_modules/fastify/fastify.js'
-import jwt from '../../../backend/node_modules/@fastify/jwt/jwt.js'
+import jwt from '../../../backend/node_modules/@fastify/jwt/index.js'
 import { errorHandler } from '../../../backend/src/middleware/error.middleware.js'
 
 const { confirmarQrInventarioMock, getEstadoSolicitudQrMock } = vi.hoisted(() => ({
