@@ -380,6 +380,17 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model QrConsumption {
+  key       String   @id
+  tipo      String
+  puestoId  String
+  usuarioId String?
+  createdAt DateTime @default(now())
+
+  @@index([puestoId, createdAt])
+  @@map("qr_consumptions")
+}
+
 model IdempotencyRecord {
   key        String   @id
   method     String

@@ -1,9 +1,14 @@
 import { prisma } from '../../lib/prisma.js'
 import type { Prisma } from '@prisma/client'
+import { runSerializableTransaction } from '../../lib/serializable-transaction.js'
 import type { AddItemInput, ConfirmarQrInput, UpdateCantidadInput } from './inventario.schema.js'
 
 function appError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode })
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002'
 }
 
 type QrProducto = {
@@ -318,7 +323,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     throw appError('Este QR pertenece a otro puesto', 400)
   }
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     if (qr.type === 'SOLICITUD_CIUDADANO') {
       const alreadyUsed = await tx.auditLog.findFirst({
         where: {
@@ -330,6 +335,22 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
       })
       if (alreadyUsed) {
         throw appError('Este QR de solicitud ya se ha usado. Pide al ciudadano que genere uno nuevo.', 409)
+      }
+
+      try {
+        await tx.qrConsumption.create({
+          data: {
+            key: `SOLICITUD_CIUDADANO:${qr.requestId!}`,
+            tipo: qr.type,
+            puestoId,
+            usuarioId: userId,
+          },
+        })
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          throw appError('Este QR de solicitud ya se ha usado. Pide al ciudadano que genere uno nuevo.', 409)
+        }
+        throw error
       }
 
       const inventario = await tx.inventario.findMany({
@@ -419,6 +440,18 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     }
     if (donacion.cantidad !== qr.cantidad || donacion.unidad !== qr.unidad) {
       throw appError('El contenido del QR no coincide con la donacion registrada', 400)
+    }
+
+    const claimed = await tx.donacion.updateMany({
+      where: {
+        id: donacion.id,
+        entregaCodigo: qr.entregaCodigo,
+        estado: 'EN_CAMINO',
+      },
+      data: { estado: 'ENTREGADA' },
+    })
+    if (claimed.count !== 1) {
+      throw appError('Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.', 409)
     }
 
     const necesidad = await tx.inventario.findUnique({

@@ -1,6 +1,7 @@
 import type { EstadoDonacion } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
+import { runSerializableTransaction } from '../../lib/serializable-transaction.js'
 import type { CreateDonacionInput } from './donaciones.schema.js'
 
 function badRequest(message: string) {
@@ -121,51 +122,53 @@ export async function listNecesidadesDonacion() {
 export async function createDonacion(usuarioId: string, input: CreateDonacionInput) {
   const voluntario = await getVoluntarioByUsuario(usuarioId)
 
-  const necesidad = await prisma.inventario.findFirst({
-    where: {
-      puestoId: input.puestoId,
-      productoId: input.productoId,
-      tipo: 'NECESARIO',
-      puesto: { activo: true },
-    },
-    include: { producto: true, puesto: { select: puestoDonacionSelect } },
-  })
+  return runSerializableTransaction(async (tx) => {
+    const necesidad = await tx.inventario.findFirst({
+      where: {
+        puestoId: input.puestoId,
+        productoId: input.productoId,
+        tipo: 'NECESARIO',
+        puesto: { activo: true },
+      },
+      include: { producto: true, puesto: { select: puestoDonacionSelect } },
+    })
 
-  if (!necesidad) throw notFound('Necesidad no encontrada para este puesto')
+    if (!necesidad) throw notFound('Necesidad no encontrada para este puesto')
 
-  const comprometida = await prisma.donacion.aggregate({
-    where: {
-      puestoId: input.puestoId,
-      productoId: input.productoId,
-      estado: { in: ['PENDIENTE', 'EN_CAMINO'] },
-    },
-    _sum: { cantidad: true },
-  })
-  const cantidadComprometida = comprometida._sum.cantidad ?? 0
-  const cantidadPendiente = Math.max(necesidad.cantidad - cantidadComprometida, 0)
+    const comprometida = await tx.donacion.aggregate({
+      where: {
+        puestoId: input.puestoId,
+        productoId: input.productoId,
+        estado: { in: ['PENDIENTE', 'EN_CAMINO'] },
+      },
+      _sum: { cantidad: true },
+    })
+    const cantidadComprometida = comprometida._sum.cantidad ?? 0
+    const cantidadPendiente = Math.max(necesidad.cantidad - cantidadComprometida, 0)
 
-  if (cantidadPendiente <= 0) {
-    throw badRequest('Esta necesidad ya esta cubierta por otras donaciones en camino')
-  }
+    if (cantidadPendiente <= 0) {
+      throw badRequest('Esta necesidad ya esta cubierta por otras donaciones en camino')
+    }
 
-  if (input.cantidad > cantidadPendiente) {
-    throw badRequest(`La cantidad supera lo pendiente. Quedan ${cantidadPendiente} ${necesidad.producto.unidad}`)
-  }
+    if (input.cantidad > cantidadPendiente) {
+      throw badRequest(`La cantidad supera lo pendiente. Quedan ${cantidadPendiente} ${necesidad.producto.unidad}`)
+    }
 
-  return prisma.donacion.create({
-    data: {
-      voluntarioId: voluntario.id,
-      puestoId: input.puestoId,
-      productoId: input.productoId,
-      cantidad: input.cantidad,
-      unidad: input.unidad,
-      comentario: input.comentario,
-      eta: input.eta ? new Date(input.eta) : undefined,
-    },
-    include: {
-      producto: true,
-      puesto: { select: puestoDonacionSelect },
-    },
+    return tx.donacion.create({
+      data: {
+        voluntarioId: voluntario.id,
+        puestoId: input.puestoId,
+        productoId: input.productoId,
+        cantidad: input.cantidad,
+        unidad: input.unidad,
+        comentario: input.comentario,
+        eta: input.eta ? new Date(input.eta) : undefined,
+      },
+      include: {
+        producto: true,
+        puesto: { select: puestoDonacionSelect },
+      },
+    })
   })
 }
 
