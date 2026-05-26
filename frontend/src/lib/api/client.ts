@@ -15,11 +15,18 @@ apiClient.interceptors.request.use((config) => {
 })
 
 let refreshPromise: Promise<string | null> | null = null
+const LEGACY_PRIVATE_API_CACHES = ['api-cache']
 
 interface SessionResponse {
   user: any
   accessToken: string
   accessTokenExpiresAt: string
+}
+
+export async function clearSensitiveApiCaches() {
+  if (!('caches' in globalThis)) return
+
+  await Promise.all(LEGACY_PRIVATE_API_CACHES.map((cacheName) => globalThis.caches.delete(cacheName)))
 }
 
 async function refreshAccessToken() {
@@ -28,7 +35,8 @@ async function refreshAccessToken() {
       useAuthStore.getState().setSession(data.user, data.accessToken, data.accessTokenExpiresAt)
       return data.accessToken
     })
-    .catch(() => {
+    .catch(async () => {
+      await clearSensitiveApiCaches()
       useAuthStore.getState().logout()
       return null
     })
@@ -40,6 +48,7 @@ async function refreshAccessToken() {
 }
 
 export async function restoreSession() {
+  await clearSensitiveApiCaches()
   await refreshAccessToken()
 }
 
@@ -47,6 +56,7 @@ export async function endSession() {
   try {
     await apiClient.post('/api/auth/logout')
   } finally {
+    await clearSensitiveApiCaches()
     useAuthStore.getState().logout()
   }
 }
@@ -68,6 +78,7 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response?.status === 401 && !isRefreshRequest) {
+      await clearSensitiveApiCaches()
       useAuthStore.getState().logout()
       window.location.href = '/auth/login'
     }
