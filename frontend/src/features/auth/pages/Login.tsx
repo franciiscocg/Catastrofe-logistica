@@ -28,7 +28,6 @@ export default function Login() {
       const { data } = await apiClient.post<{
         user: { id: string; email: string; nombre: string; apellidos: string; roles: string[] }
         accessToken: string
-        refreshToken: string
         accessTokenExpiresAt: string
       }>('/api/auth/login', { identifier, password })
 
@@ -44,7 +43,7 @@ export default function Login() {
         }
       }
 
-      login(data.user as any, data.accessToken, puestoId, data.refreshToken, data.accessTokenExpiresAt)
+      login(data.user as any, data.accessToken, puestoId, data.accessTokenExpiresAt)
 
       if (roleParam) {
         selectRole(roleParam)

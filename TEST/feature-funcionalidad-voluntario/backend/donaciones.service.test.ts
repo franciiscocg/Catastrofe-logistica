@@ -1,8 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('../../../backend/src/lib/prisma.js', () => ({
-  prisma: {
+vi.mock('../../../backend/src/lib/chain.js', () => ({ appendChainEvent: vi.fn() }))
+
+vi.mock('../../../backend/src/lib/prisma.js', () => {
+  const prisma = {
     usuario: { findUnique: vi.fn() },
     voluntario: { findUnique: vi.fn(), create: vi.fn() },
     donacion: {
@@ -14,9 +16,12 @@ vi.mock('../../../backend/src/lib/prisma.js', () => ({
       groupBy: vi.fn(),
     },
     inventario: { findMany: vi.fn(), findFirst: vi.fn() },
+    auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
-  },
-}))
+  }
+  prisma.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(prisma))
+  return { prisma }
+})
 
 import { prisma } from '../../../backend/src/lib/prisma.js'
 import {
@@ -122,7 +127,10 @@ describe('listNecesidadesDonacion', () => {
 describe('createDonacion', () => {
   const input = { puestoId: PUESTO_ID, productoId: PRODUCTO_ID, cantidad: 5, unidad: 'litros' }
 
-  beforeEach(() => vi.resetAllMocks())
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mp.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(mp))
+  })
 
   it('crea la donacion cuando hay necesidad pendiente suficiente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -201,6 +209,34 @@ describe('createDonacion', () => {
     })
     expect(mp.donacion.create).not.toHaveBeenCalled()
   })
+
+  it('reintenta una colision concurrente y no reserva mas de la necesidad', async () => {
+    mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
+    mp.inventario.findFirst.mockResolvedValue({ cantidad: 10, producto: productoBase, puesto: puestoBase })
+    mp.donacion.aggregate
+      .mockResolvedValueOnce({ _sum: { cantidad: 0 } })
+      .mockResolvedValueOnce({ _sum: { cantidad: 10 } })
+    mp.donacion.create.mockResolvedValue({
+      id: DONACION_ID, voluntarioId: VOLUNTARIO_ID, puestoId: PUESTO_ID,
+      estado: 'PENDIENTE', producto: productoBase, puesto: puestoBase,
+    })
+    let transactionAttempt = 0
+    mp.$transaction.mockImplementation(async (callback: (tx: unknown) => unknown) => {
+      transactionAttempt += 1
+      if (transactionAttempt === 2) throw { code: 'P2034' }
+      return callback(mp)
+    })
+
+    const reservations = await Promise.allSettled([
+      createDonacion('usuario-primero', { ...input, cantidad: 10 }),
+      createDonacion('usuario-segundo', { ...input, cantidad: 10 }),
+    ])
+
+    expect(reservations.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(reservations.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    expect(mp.donacion.create).toHaveBeenCalledOnce()
+    expect(mp.$transaction).toHaveBeenCalledTimes(3)
+  })
 })
 
 // ── listMisDonaciones ─────────────────────────────────────────────────────────
@@ -233,11 +269,14 @@ describe('listMisDonaciones', () => {
 // ── updateDonacionEstado ──────────────────────────────────────────────────────
 
 describe('updateDonacionEstado', () => {
-  beforeEach(() => vi.resetAllMocks())
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mp.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(mp))
+  })
 
   it('actualiza el estado de la donacion propia exitosamente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
-    mp.donacion.findFirst.mockResolvedValue({ id: DONACION_ID })
+    mp.donacion.findFirst.mockResolvedValue({ id: DONACION_ID, estado: 'PENDIENTE', puestoId: PUESTO_ID })
     mp.donacion.update.mockResolvedValue({ id: DONACION_ID, estado: 'EN_CAMINO', producto: productoBase, puesto: puestoBase })
 
     const result = await updateDonacionEstado(USUARIO_ID, DONACION_ID, 'EN_CAMINO')

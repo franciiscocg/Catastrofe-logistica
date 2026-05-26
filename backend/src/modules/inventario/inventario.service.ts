@@ -1,10 +1,15 @@
 import { prisma } from '../../lib/prisma.js'
 import type { Prisma } from '@prisma/client'
 import { appendChainEvent } from '../../lib/chain.js'
+import { runSerializableTransaction } from '../../lib/serializable-transaction.js'
 import type { AddItemInput, ConfirmarQrInput, UpdateCantidadInput } from './inventario.schema.js'
 
 function appError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode })
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002'
 }
 
 type QrProducto = {
@@ -319,7 +324,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     throw appError('Este QR pertenece a otro puesto', 400)
   }
 
-  const txResult = await prisma.$transaction(async (tx) => {
+  const txResult = await runSerializableTransaction(async (tx) => {
     if (qr.type === 'SOLICITUD_CIUDADANO') {
       const alreadyUsed = await tx.auditLog.findFirst({
         where: {
@@ -331,6 +336,22 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
       })
       if (alreadyUsed) {
         throw appError('Este QR de solicitud ya se ha usado. Pide al ciudadano que genere uno nuevo.', 409)
+      }
+
+      try {
+        await tx.qrConsumption.create({
+          data: {
+            key: `SOLICITUD_CIUDADANO:${qr.requestId!}`,
+            tipo: qr.type,
+            puestoId,
+            usuarioId: userId,
+          },
+        })
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          throw appError('Este QR de solicitud ya se ha usado. Pide al ciudadano que genere uno nuevo.', 409)
+        }
+        throw error
       }
 
       const inventario = await tx.inventario.findMany({
@@ -422,6 +443,18 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
       throw appError('El contenido del QR no coincide con la donacion registrada', 400)
     }
 
+    const claimed = await tx.donacion.updateMany({
+      where: {
+        id: donacion.id,
+        entregaCodigo: qr.entregaCodigo,
+        estado: 'EN_CAMINO',
+      },
+      data: { estado: 'ENTREGADA' },
+    })
+    if (claimed.count !== 1) {
+      throw appError('Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.', 409)
+    }
+
     const necesidad = await tx.inventario.findUnique({
       where: {
         puestoId_productoId_tipo: {
@@ -506,9 +539,13 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
   })
 
   // Registro en la cadena pública — fuera de la transacción, no bloqueante
-  if (txResult.tipo === 'SOLICITUD_CIUDADANO') {
+  if (txResult.tipo === 'SOLICITUD_CIUDADANO' && qr.type === 'SOLICITUD_CIUDADANO') {
     for (const item of txResult.productos) {
-      appendChainEvent({
+      const cantidadSalida = qr.productos
+        .filter((producto) => normalizeProductoNombre(producto.nombre ?? '') === normalizeProductoNombre(item.producto.nombre))
+        .reduce((total, producto) => total + producto.cantidad, 0)
+
+      void appendChainEvent({
         tipo: 'INVENTARIO_SALIDA',
         actorId: userId,
         actorRol: 'PUESTO_EMERGENCIA',
@@ -516,15 +553,15 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
         entidadId: puestoId,
         payload: {
           producto: { id: item.productoId, nombre: item.producto.nombre },
-          cantidadSalida: item.cantidad,
+          cantidadSalida,
           unidad: item.producto.unidad,
           motivo: 'SOLICITUD_CIUDADANO',
         },
       })
     }
-  } else {
+  } else if (txResult.tipo === 'DONACION_ENTREGA' && txResult.donacion) {
     const don = txResult.donacion
-    appendChainEvent({
+    void appendChainEvent({
       tipo: 'DONACION_ENTREGADA',
       actorId: userId,
       actorRol: 'PUESTO_EMERGENCIA',
@@ -537,11 +574,10 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
         unidad: don.unidad,
         puestoId,
         puestoNombre: don.puesto.nombre,
-        entregaCodigo: don.entregaCodigo,
       },
     })
 
-    appendChainEvent({
+    void appendChainEvent({
       tipo: 'INVENTARIO_ENTRADA',
       actorId: userId,
       actorRol: 'PUESTO_EMERGENCIA',

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { appendChainEvent } = vi.hoisted(() => ({ appendChainEvent: vi.fn() }))
+
+vi.mock('../../../backend/src/lib/chain.js', () => ({ appendChainEvent }))
+
 vi.mock('../../../backend/src/lib/prisma.js', () => {
   const prisma = {
     puestoEmergencia: { findUnique: vi.fn() },
@@ -14,7 +18,9 @@ vi.mock('../../../backend/src/lib/prisma.js', () => {
     donacion: {
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
+    qrConsumption: { create: vi.fn() },
     voluntario: { findUnique: vi.fn(), create: vi.fn() },
     usuario: { findUnique: vi.fn() },
     auditLog: { create: vi.fn(), findFirst: vi.fn() },
@@ -64,6 +70,7 @@ function donacionEnCamino(overrides: Record<string, unknown> = {}) {
     unidad: 'litros',
     estado: 'EN_CAMINO',
     producto: PRODUCTO,
+    puesto: PUESTO_DATA,
     ...overrides,
   }
 }
@@ -89,6 +96,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     mp.$transaction.mockImplementation(
       (callback: unknown) => (callback as (tx: unknown) => unknown)(mp),
     )
+    mp.donacion.updateMany.mockResolvedValue({ count: 1 })
   })
 
   it('compensa necesidad disponible y marca la donacion como ENTREGADA', async () => {
@@ -131,6 +139,12 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     expect(mp.inventario.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ cantidad: 2, tipo: 'DISPONIBLE' }),
+      }),
+    )
+    expect(appendChainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: 'DONACION_ENTREGADA',
+        payload: expect.not.objectContaining({ entregaCodigo: expect.anything() }),
       }),
     )
   })
@@ -198,6 +212,33 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     })
 
     expect(mp.donacion.update).not.toHaveBeenCalled()
+  })
+
+  it('solo aplica una entrega ante dos escaneos simultaneos del mismo QR', async () => {
+    allowPuestoAccess()
+    mp.donacion.findFirst.mockResolvedValue(donacionEnCamino())
+    mp.donacion.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 })
+    mp.inventario.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+    mp.inventario.create.mockResolvedValue({
+      id: 'disp-nuevo',
+      tipo: 'DISPONIBLE',
+      cantidad: 5,
+      producto: PRODUCTO,
+    })
+    mp.donacion.update.mockResolvedValue({ ...donacionEnCamino(), estado: 'ENTREGADA' })
+
+    const confirmations = await Promise.allSettled([
+      confirmarQrInventario(PUESTO_ID, { codigo: codigoDECompacto() }, USER_ID),
+      confirmarQrInventario(PUESTO_ID, { codigo: codigoDECompacto() }, USER_ID),
+    ])
+
+    expect(confirmations.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(confirmations.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    expect(mp.inventario.create).toHaveBeenCalledOnce()
   })
 
   it('rechaza (400) si la cantidad del QR no coincide con la donacion registrada', async () => {

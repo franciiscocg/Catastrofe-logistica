@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { request as httpsRequest } from 'node:https'
 import { request as httpRequest } from 'node:http'
 
@@ -73,7 +73,14 @@ function postBinary(url: string, body: Buffer, contentType: string): Promise<Buf
       (res) => {
         const chunks: Buffer[] = []
         res.on('data', (c: Buffer) => chunks.push(c))
-        res.on('end', () => resolve(Buffer.concat(chunks)))
+        res.on('end', () => {
+          const responseBody = Buffer.concat(chunks)
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            reject(new Error(`TSA HTTP error (${res.statusCode ?? 'unknown'})`))
+            return
+          }
+          resolve(responseBody)
+        })
         res.on('error', reject)
       },
     )
@@ -92,6 +99,27 @@ export interface TSAResult {
   timestamp: Date
 }
 
+function readLength(buffer: Buffer, offset: number) {
+  const first = buffer[offset]
+  if (first === undefined) throw new Error('Malformed TSA response')
+  if ((first & 0x80) === 0) return { length: first, bytes: 1 }
+
+  const size = first & 0x7f
+  if (size < 1 || size > 4 || offset + size >= buffer.length) throw new Error('Malformed TSA response')
+  let length = 0
+  for (let i = 1; i <= size; i += 1) length = (length << 8) | buffer[offset + i]
+  return { length, bytes: size + 1 }
+}
+
+function readTlv(buffer: Buffer, offset: number, expectedTag: number) {
+  if (buffer[offset] !== expectedTag) throw new Error('Malformed TSA response')
+  const { length, bytes } = readLength(buffer, offset + 1)
+  const valueStart = offset + 1 + bytes
+  const valueEnd = valueStart + length
+  if (valueEnd > buffer.length) throw new Error('Malformed TSA response')
+  return { valueStart, valueEnd }
+}
+
 /**
  * Sends a SHA-256 hash to the configured TSA and returns the timestamp token.
  * Throws if the TSA is unreachable or returns a non-success status.
@@ -100,17 +128,16 @@ export async function requestTimestamp(hashHex: string): Promise<TSAResult> {
   const tsq = buildTSQ(hashHex)
   const tsr = await postBinary(TSA_URL, tsq, 'application/timestamp-query')
 
-  // TSR starts with SEQUENCE { status SEQUENCE { PKIStatusInfo }, timeStampToken }
-  // Minimal parse: status[0] byte 0x02 0x01 0x00 means GRANTED
-  // Byte offset 4 is the PKIStatus INTEGER value (0 = granted, 1 = grantedWithMods)
-  if (tsr.length < 6) throw new Error('TSA returned empty response')
-
-  // Walk to the inner status integer — position is after outer SEQUENCE tag+len (2-4 bytes)
-  // then inner SEQUENCE tag+len (2-4 bytes), then INTEGER tag (1) + len (1) + value (1)
-  // We do a conservative check: the status integer must be 0 or 1
-  const statusByte = tsr[6] // works for typical short-length responses
-  if (statusByte !== 0x00 && statusByte !== 0x01) {
-    throw new Error(`TSA denied timestamp (status byte: ${statusByte})`)
+  const outer = readTlv(tsr, 0, 0x30)
+  const statusInfo = readTlv(tsr, outer.valueStart, 0x30)
+  const statusInteger = readTlv(tsr, statusInfo.valueStart, 0x02)
+  const statusBytes = tsr.subarray(statusInteger.valueStart, statusInteger.valueEnd)
+  const status = statusBytes.reduce((value, byte) => (value << 8) | byte, 0)
+  if (status !== 0 && status !== 1) {
+    throw new Error(`TSA denied timestamp (status: ${status})`)
+  }
+  if (statusInfo.valueEnd >= outer.valueEnd) {
+    throw new Error('TSA granted timestamp without a token')
   }
 
   return {
@@ -120,10 +147,9 @@ export async function requestTimestamp(hashHex: string): Promise<TSAResult> {
 }
 
 /**
- * Computes the SHA-256 hash of arbitrary content and requests a timestamp.
- * Convenience wrapper used by chain.ts.
+ * Requests a timestamp for a SHA-256 event hash that is already computed.
  */
-export async function timestampHash(content: string): Promise<TSAResult> {
-  const hash = createHash('sha256').update(content).digest('hex')
-  return requestTimestamp(hash)
+export async function timestampHash(hashHex: string): Promise<TSAResult> {
+  if (!/^[a-f0-9]{64}$/i.test(hashHex)) throw new Error('Invalid SHA-256 hash')
+  return requestTimestamp(hashHex)
 }

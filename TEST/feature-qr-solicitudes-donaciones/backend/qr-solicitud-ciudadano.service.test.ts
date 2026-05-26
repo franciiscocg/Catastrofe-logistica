@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const { appendChainEvent } = vi.hoisted(() => ({ appendChainEvent: vi.fn() }))
+
+vi.mock('../../../backend/src/lib/chain.js', () => ({ appendChainEvent }))
+
 vi.mock('../../../backend/src/lib/prisma.js', () => {
   const prisma = {
     puestoEmergencia: { findUnique: vi.fn() },
@@ -15,6 +19,7 @@ vi.mock('../../../backend/src/lib/prisma.js', () => {
       findFirst: vi.fn(),
       update: vi.fn(),
     },
+    qrConsumption: { create: vi.fn() },
     auditLog: { create: vi.fn(), findFirst: vi.fn() },
     $transaction: vi.fn((callback) => callback(prisma)),
   }
@@ -89,6 +94,12 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
       where: { id: ITEM_DISPONIBLE.id, cantidad: { gte: 5 } },
       data: { cantidad: { decrement: 5 } },
     })
+    expect(appendChainEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: 'INVENTARIO_SALIDA',
+        payload: expect.objectContaining({ cantidadSalida: 5 }),
+      }),
+    )
   })
 
   it('registra auditoria de uso unico con el requestId del QR', async () => {
@@ -153,6 +164,26 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
     })
 
     expect(mp.inventario.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('solo procesa una de dos confirmaciones simultaneas del mismo QR', async () => {
+    allowAccess()
+    mp.auditLog.findFirst.mockResolvedValue(null)
+    mp.qrConsumption.create
+      .mockResolvedValueOnce({ key: 'SOLICITUD_CIUDADANO:req-abc' })
+      .mockRejectedValueOnce({ code: 'P2002' })
+    mp.inventario.findMany.mockResolvedValue([ITEM_DISPONIBLE])
+    mp.inventario.updateMany.mockResolvedValue({ count: 1 })
+    mp.inventario.findUniqueOrThrow.mockResolvedValue({ ...ITEM_DISPONIBLE, cantidad: 15 })
+
+    const confirmations = await Promise.allSettled([
+      confirmarQrInventario(PUESTO_ID, { codigo: codigoSCCompacto() }, USER_ID),
+      confirmarQrInventario(PUESTO_ID, { codigo: codigoSCCompacto() }, USER_ID),
+    ])
+
+    expect(confirmations.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(confirmations.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    expect(mp.inventario.updateMany).toHaveBeenCalledOnce()
   })
 
   it('rechaza un QR de solicitud antiguo que no tiene codigo de un solo uso', async () => {

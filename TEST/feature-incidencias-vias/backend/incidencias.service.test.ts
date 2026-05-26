@@ -89,15 +89,19 @@ describe('listIncidencias', () => {
 
   it('devuelve todas las incidencias', async () => {
     const incidencias = [
-      { id: '1', estado: 'CORTADA', reportante: null, comentarios: [], _count: { comentarios: 0 } },
-      { id: '2', estado: 'TRANSITABLE', reportante: null, comentarios: [], _count: { comentarios: 0 } },
+      { id: '1', estado: 'CORTADA', comentarios: [], _count: { comentarios: 0 } },
+      { id: '2', estado: 'TRANSITABLE', comentarios: [], _count: { comentarios: 0 } },
     ]
     mp.incidenciaVia.findMany.mockResolvedValue(incidencias)
 
     const result = await listIncidencias({})
 
     expect(result).toHaveLength(2)
-    expect(mp.incidenciaVia.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }))
+    const select = mp.incidenciaVia.findMany.mock.calls[0][0].select
+    expect(select).not.toHaveProperty('reportanteId')
+    expect(select).not.toHaveProperty('reportante')
+    expect(select.comentarios.select).not.toHaveProperty('autorId')
+    expect(select.comentarios.select).not.toHaveProperty('autor')
   })
 
   it('filtra por estado cuando se especifica', async () => {
@@ -161,6 +165,16 @@ describe('createComentarioIncidencia', () => {
 
     expect(result.comentario.estado).toBe('TRANSITABLE')
     expect(result.incidencia.estado).toBe('TRANSITABLE')
+
+    const transaction = mp.$transaction.mock.calls[0][0]
+    const tx = {
+      comentarioIncidenciaVia: { create: vi.fn().mockResolvedValue(comentarioCreado) },
+      incidenciaVia: { update: vi.fn().mockResolvedValue(incidenciaActualizada) },
+    }
+    await transaction(tx)
+    const select = tx.comentarioIncidenciaVia.create.mock.calls[0][0].select
+    expect(select).not.toHaveProperty('autorId')
+    expect(select).not.toHaveProperty('autor')
   })
 
   it('lanza error 404 si la incidencia no existe', async () => {

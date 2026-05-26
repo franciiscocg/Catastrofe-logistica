@@ -43,7 +43,7 @@ export async function incidenciasRouter(app: FastifyInstance) {
     preHandler: [requireAuth, requireRole('VOLUNTARIO')],
   }, postFinalizarAsignacionIncidencia)
 
-  app.post('/:id/comentarios', { preHandler: optionalAuth }, postComentarioIncidencia)
+  app.post('/:id/comentarios', { preHandler: requireAuth }, postComentarioIncidencia)
 
   app.patch('/:id/estado', {
     preHandler: [requireAuth, requireRole('COORDINADOR')],

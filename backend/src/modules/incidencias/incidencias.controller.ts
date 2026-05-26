@@ -35,7 +35,7 @@ export async function postIncidencia(request: FastifyRequest, reply: FastifyRepl
 
   try {
     const incidencia = await createIncidencia(input, reportanteId)
-    emitRealtime('incidencia:created', { incidencia })
+    emitRealtime('incidencia:created', { incidenciaId: incidencia.id })
     return reply.status(201).send({ incidencia })
   } catch (error) {
     const duplicateError = error as Error & {
@@ -67,7 +67,7 @@ export async function patchIncidenciaEstado(request: FastifyRequest, reply: Fast
   const input = updateEstadoSchema.parse(request.body)
 
   const incidencia = await updateIncidenciaEstado(id, input)
-  emitRealtime('incidencia:updated', { incidencia })
+  emitRealtime('incidencia:updated', { incidenciaId: incidencia.id })
   return reply.send({ incidencia })
 }
 
@@ -78,7 +78,7 @@ export async function postComentarioIncidencia(request: FastifyRequest, reply: F
   const autorId = user?.sub ?? user?.id
 
   const result = await createComentarioIncidencia(id, input, autorId)
-  emitRealtime('incidencia:updated', { incidencia: result.incidencia, comentario: result.comentario })
+  emitRealtime('incidencia:updated', { incidenciaId: result.incidencia.id })
   return reply.status(201).send(result)
 }
 
@@ -104,7 +104,7 @@ export async function postAsignacionIncidencia(request: FastifyRequest, reply: F
 
   const { id } = request.params as { id: string }
   const asignacion = await createAsignacionIncidencia(usuarioId, id)
-  emitRealtime('incidencia:updated', { incidenciaId: id, asignacion })
+  emitRealtime('incidencia:updated', { incidenciaId: id })
   return reply.status(201).send({ asignacion })
 }
 
@@ -114,6 +114,6 @@ export async function postFinalizarAsignacionIncidencia(request: FastifyRequest,
 
   const { id } = request.params as { id: string }
   const asignacion = await finalizarAsignacionIncidencia(usuarioId, id)
-  emitRealtime('incidencia:updated', { incidenciaId: id, asignacion })
+  emitRealtime('incidencia:updated', { incidenciaId: id })
   return reply.send({ asignacion })
 }

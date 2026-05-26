@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { Prisma } from '@prisma/client'
 import { prisma } from './prisma.js'
 import { timestampHash } from './tsa.js'
 
@@ -17,7 +18,7 @@ export interface ChainEventInput {
   actorRol?: string
   entidad: string
   entidadId: string
-  payload: Record<string, unknown>
+  payload: Prisma.InputJsonObject
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -96,7 +97,7 @@ async function encolar(input: ChainEventInput, error: unknown) {
   const mensaje = error instanceof Error ? error.message : String(error)
   try {
     await prisma.pendingChainEvent.create({
-      data: { payload: input as unknown as Record<string, unknown>, ultimoError: mensaje },
+      data: { payload: input as unknown as Prisma.InputJsonObject, ultimoError: mensaje },
     })
   } catch {
     // Si ni siquiera podemos encolar, el problema es grave (DB caída).
@@ -200,7 +201,7 @@ export async function verifyChain(): Promise<VerificationResult> {
       ev.tipo,
       ev.entidad,
       ev.entidadId,
-      ev.payload as Record<string, unknown>,
+      ev.payload as Prisma.InputJsonObject,
       ev.hashPrevio,
       ev.createdAt,
     )

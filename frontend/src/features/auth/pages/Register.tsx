@@ -89,7 +89,7 @@ export default function Register() {
         return
       }
 
-      login(data.user, data.accessToken, undefined, data.refreshToken, data.accessTokenExpiresAt)
+      login(data.user, data.accessToken, undefined, data.accessTokenExpiresAt)
       navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se ha podido crear la cuenta.'))

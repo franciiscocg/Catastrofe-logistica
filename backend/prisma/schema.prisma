@@ -394,7 +394,7 @@ model PendingChainEvent {
 
 model ChainEvent {
   id           String    @id @default(cuid())
-  sequence     Int       @default(autoincrement())
+  sequence     Int       @unique @default(autoincrement())
   tipo         String
   actorId      String?
   actorRol     String?
@@ -408,8 +408,18 @@ model ChainEvent {
   createdAt    DateTime  @default(now())
 
   @@index([entidad, entidadId])
-  @@index([sequence])
   @@map("chain_events")
+}
+
+model QrConsumption {
+  key       String   @id
+  tipo      String
+  puestoId  String
+  usuarioId String?
+  createdAt DateTime @default(now())
+
+  @@index([puestoId, createdAt])
+  @@map("qr_consumptions")
 }
 
 model IdempotencyRecord {

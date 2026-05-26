@@ -29,6 +29,41 @@ function notFound(message: string) {
   return Object.assign(new Error(message), { statusCode: 404 })
 }
 
+// La posicion exacta describe el corte y es necesaria para evitarlo al calcular rutas.
+// Los identificadores de personas se excluyen de cualquier payload operativo publico.
+const incidenciaOperationalSelect = {
+  id: true,
+  titulo: true,
+  categoria: true,
+  latitud: true,
+  longitud: true,
+  estado: true,
+  descripcion: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.IncidenciaViaSelect
+
+const publicComentarioSelect = {
+  id: true,
+  estado: true,
+  comentario: true,
+  createdAt: true,
+} satisfies Prisma.ComentarioIncidenciaViaSelect
+
+const publicIncidenciaSelect = {
+  ...incidenciaOperationalSelect,
+  comentarios: {
+    orderBy: { createdAt: 'desc' as const },
+    select: publicComentarioSelect,
+  },
+  _count: {
+    select: {
+      comentarios: true,
+      asignacionesVoluntarios: { where: { estado: 'ACTIVA' as const } },
+    },
+  },
+} satisfies Prisma.IncidenciaViaSelect
+
 async function getVoluntarioByUsuario(usuarioId: string) {
   const voluntario = await prisma.voluntario.findUnique({
     where: { usuarioId },
@@ -92,25 +127,7 @@ export async function listIncidencias(query: ListIncidenciasQuery) {
   return prisma.incidenciaVia.findMany({
     where,
     orderBy: { createdAt: 'desc' },
-    include: {
-      reportante: {
-        select: { id: true, nombre: true, apellidos: true },
-      },
-      comentarios: {
-        orderBy: { createdAt: 'desc' },
-        include: {
-          autor: {
-            select: { id: true, nombre: true, apellidos: true },
-          },
-        },
-      },
-      _count: {
-        select: {
-          comentarios: true,
-          asignacionesVoluntarios: { where: { estado: 'ACTIVA' } },
-        },
-      },
-    },
+    select: publicIncidenciaSelect,
   })
 }
 
@@ -129,6 +146,7 @@ export async function createIncidencia(input: CreateIncidenciaInput, reportanteI
       estado: 'CORTADA',
       descripcion: input.descripcion,
     },
+    select: incidenciaOperationalSelect,
   })
 }
 
@@ -147,6 +165,7 @@ export async function updateIncidenciaEstado(id: string, input: UpdateEstadoInpu
   return prisma.incidenciaVia.update({
     where: { id },
     data: { estado: input.estado },
+    select: incidenciaOperationalSelect,
   })
 }
 
@@ -156,7 +175,7 @@ export async function getAsignacionIncidenciaActiva(usuarioId: string) {
   return prisma.asignacionIncidencia.findFirst({
     where: { voluntarioId: voluntario.id, estado: 'ACTIVA' },
     orderBy: { startedAt: 'desc' },
-    include: { incidencia: true },
+    include: { incidencia: { select: incidenciaOperationalSelect } },
   })
 }
 
@@ -167,7 +186,7 @@ export async function listAsignacionesIncidencia(usuarioId: string) {
     where: { voluntarioId: voluntario.id },
     orderBy: { startedAt: 'desc' },
     take: 20,
-    include: { incidencia: true },
+    include: { incidencia: { select: incidenciaOperationalSelect } },
   })
 }
 
@@ -217,7 +236,7 @@ export async function createAsignacionIncidencia(usuarioId: string, incidenciaId
         voluntarioId: voluntario.id,
         incidenciaId,
       },
-      include: { incidencia: true },
+      include: { incidencia: { select: incidenciaOperationalSelect } },
     })
   })
 }
@@ -238,7 +257,7 @@ export async function finalizarAsignacionIncidencia(usuarioId: string, incidenci
       estado: 'FINALIZADA',
       endedAt: new Date(),
     },
-    include: { incidencia: true },
+    include: { incidencia: { select: incidenciaOperationalSelect } },
   })
 }
 
@@ -266,16 +285,13 @@ export async function createComentarioIncidencia(
         estado: input.estado,
         comentario: input.comentario,
       },
-      include: {
-        autor: {
-          select: { id: true, nombre: true, apellidos: true },
-        },
-      },
+      select: publicComentarioSelect,
     })
 
     const incidencia = await tx.incidenciaVia.update({
       where: { id: incidenciaId },
       data: { estado: input.estado },
+      select: incidenciaOperationalSelect,
     })
 
     return { comentario, incidencia }

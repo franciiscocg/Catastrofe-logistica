@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
 
 type TipoEvento =
@@ -134,8 +135,11 @@ function EventCard({ ev }: { ev: ChainEvent }) {
 }
 
 export default function Verificar() {
-  const [input, setInput] = useState('')
-  const [busqueda, setBusqueda] = useState<{ tipo: 'donacion' | 'inventario'; id: string } | null>(null)
+  const { id } = useParams<{ id?: string }>()
+  const [input, setInput] = useState(id ?? '')
+  const [busqueda, setBusqueda] = useState<{ tipo: 'donacion' | 'inventario'; id: string } | null>(
+    id ? { tipo: 'donacion', id } : null,
+  )
 
   const { data: stats } = useQuery<StatsResponse>({
     queryKey: ['audit-stats'],
@@ -161,7 +165,6 @@ export default function Verificar() {
   function handleBuscar() {
     const trimmed = input.trim()
     if (!trimmed) return
-    // IDs que empiecen por "PE-" o similares → inventario de puesto; resto → donación
     setBusqueda({ tipo: 'donacion', id: trimmed })
   }
 

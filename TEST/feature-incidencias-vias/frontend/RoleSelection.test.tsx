@@ -7,11 +7,13 @@ const {
   mockNavigate,
   mockSelectRole,
   mockLogout,
+  mockEndSession,
   mockApiGet,
 } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockSelectRole: vi.fn(),
   mockLogout: vi.fn(),
+  mockEndSession: vi.fn(),
   mockApiGet: vi.fn(),
 }))
 
@@ -35,6 +37,7 @@ vi.mock('../../../frontend/src/store/auth.store', () => ({
 }))
 
 vi.mock('../../../frontend/src/lib/api/client', () => ({
+  endSession: mockEndSession,
   apiClient: {
     get: mockApiGet,
   },
@@ -67,6 +70,7 @@ describe('RoleSelection', () => {
     mockNavigate.mockReset()
     mockSelectRole.mockReset()
     mockLogout.mockReset()
+    mockEndSession.mockReset()
     mockApiGet.mockResolvedValue({ data: { solicitud: null } })
     authState.value = {
       isAuthenticated: false,
@@ -182,6 +186,6 @@ describe('RoleSelection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /cerrar sesi.n/i }))
 
-    expect(mockLogout).toHaveBeenCalledTimes(1)
+    expect(mockEndSession).toHaveBeenCalledTimes(1)
   })
 })
