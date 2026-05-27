@@ -2,13 +2,14 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
 import { emitRealtime } from '../../lib/realtime.js'
-import { createDonacionSchema, updateDonacionEstadoSchema } from './donaciones.schema.js'
+import { createDonacionSchema, updateDonacionEstadoSchema, updateDonacionCantidadSchema } from './donaciones.schema.js'
 import {
   createDonacion,
   generarCodigoEntrega,
   listMisDonaciones,
   listNecesidadesDonacion,
   updateDonacionEstado,
+  updateDonacionCantidad,
 } from './donaciones.service.js'
 
 function getUsuarioId(user: unknown) {
@@ -55,6 +56,19 @@ export async function donacionesRouter(app: FastifyInstance) {
     const { id } = request.params as { id: string }
     const input = updateDonacionEstadoSchema.parse(request.body)
     const donacion = await updateDonacionEstado(usuarioId, id, input.estado)
+    emitRealtime('donacion:updated', { donacionId: donacion.id, puestoId: donacion.puestoId })
+    return reply.send({ donacion })
+  })
+
+  app.patch('/:id/cantidad', {
+    preHandler: [requireAuth, requireRole('VOLUNTARIO')],
+  }, async (request, reply) => {
+    const usuarioId = getUsuarioId(request.user)
+    if (!usuarioId) return reply.status(401).send({ error: 'No autenticado' })
+
+    const { id } = request.params as { id: string }
+    const input = updateDonacionCantidadSchema.parse(request.body)
+    const donacion = await updateDonacionCantidad(usuarioId, id, input.cantidad)
     emitRealtime('donacion:updated', { donacionId: donacion.id, puestoId: donacion.puestoId })
     return reply.send({ donacion })
   })

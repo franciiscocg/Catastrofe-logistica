@@ -49,7 +49,7 @@ export async function buildApp() {
   })
   await app.register(cookie)
   await app.register(rateLimit, {
-    max: 100,
+    max: process.env.NODE_ENV === 'production' ? 100 : 5000,
     timeWindow: '1 minute',
   })
 

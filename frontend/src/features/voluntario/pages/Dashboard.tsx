@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import Button from '@/components/ui/Button'
@@ -11,8 +11,9 @@ import QrScanner from '@/components/shared/QrScanner'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useConnectivity } from '@/hooks/useConnectivity'
 import { useSyncStore } from '@/store/sync.store'
-import { sortByDistance } from '@/utils/haversine'
-import { fetchRutaEvitandoIncidencias } from '@/utils/routing'
+import { sortByDistance, haversineKm } from '@/utils/haversine'
+import { fetchRutaEvitandoIncidencias, fetchRutaConPasos } from '@/utils/routing'
+import { parsearStepsOsrm, formatearDistanciaNav, calcularBearing, distanciaAlStep, ROTACION_ICONO, type StepNavegacion } from '@/utils/navegacion'
 import { getApiErrorMessage } from '@/utils/errors'
 import {
   ActionCard,
@@ -22,6 +23,7 @@ import {
   SectionHeader,
   actionMeta,
 } from '../components/DashboardUi'
+import NuevoFlujoDonacion from '../components/NuevoFlujoDonacion'
 
 type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
 type VistaDonacion = 'objetos' | 'necesidades' | 'mis-donaciones'
@@ -718,19 +720,31 @@ export default function VoluntarioDashboard() {
   const [puestoQrResult, setPuestoQrResult] = useState('')
   const [loading, setLoading] = useState(true)
   const [seleccion, setSeleccion] = useState('')
-  const [seleccionObjetosDonacion, setSeleccionObjetosDonacion] = useState<Record<string, SeleccionObjetoDonacion>>({})
-  const [rutaDonacionPlan, setRutaDonacionPlan] = useState<RutaDonacionMultiparada | null>(null)
+  // const [seleccionObjetosDonacion, setSeleccionObjetosDonacion] = useState<Record<string, SeleccionObjetoDonacion>>({})
+  const [_rutaDonacionPlan, _setRutaDonacionPlan] = useState<RutaDonacionMultiparada | null>(null)
   const [rutaDonacionesActivas, setRutaDonacionesActivas] = useState<RutaDonacionMultiparada | null>(null)
   const [rutaDonacionLoading, setRutaDonacionLoading] = useState(false)
   const [cantidad, setCantidad] = useState('')
   const [comentarioDonacion, setComentarioDonacion] = useState('')
   const [vistaDonacion, setVistaDonacion] = useState<VistaDonacion>('objetos')
+  const [forzarNuevoFlujoDonacion, setForzarNuevoFlujoDonacion] = useState(false)
+  const [wizardMode, setWizardMode] = useState<'create' | 'navigate'>('create')
   const [donacionLoading, setDonacionLoading] = useState(false)
   const [estadoLoadingId, setEstadoLoadingId] = useState('')
   const [mensajeDonacion, setMensajeDonacion] = useState('')
   const [errorDonacion, setErrorDonacion] = useState('')
   const [cantidadError, setCantidadError] = useState('')
   const [codigosEntrega, setCodigosEntrega] = useState<Record<string, string>>({})
+  const [mostrarModalEditarDonaciones, setMostrarModalEditarDonaciones] = useState(false)
+  const [mostrarModalQrs, setMostrarModalQrs] = useState(false)
+  const [cantidadesEditablesDonacion, setCantidadesEditablesDonacion] = useState<Record<string, string>>({})
+  const [iniciarGuiadoActivo, setIniciarGuiadoActivo] = useState(false)
+  const [stepsNavegacion, setStepsNavegacion] = useState<StepNavegacion[]>([])
+  const [stepActualIdx, setStepActualIdx] = useState(0)
+  const [navLoading, setNavLoading] = useState(false)
+  const [vozActiva, setVozActiva] = useState(true)
+  const [headingDispositivo, setHeadingDispositivo] = useState<number | null>(null)
+  const announcementsRef = useRef<Set<string>>(new Set())
   const [actividadManualActiva, setActividadManualActiva] = useState<ActividadManualActiva | null>(null)
   const [ocupacionPorPuesto, setOcupacionPorPuesto] = useState<Record<string, OcupacionPuesto>>({})
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null)
@@ -769,6 +783,38 @@ export default function VoluntarioDashboard() {
     if (position) setUserPosition([position.lat, position.lng])
   }, [position])
 
+  // Voice navigation logic: text-to-speech
+  useEffect(() => {
+    if (!iniciarGuiadoActivo || stepsNavegacion.length === 0) return
+
+    const stepObj = stepsNavegacion[stepActualIdx]
+    if (!stepObj) return
+
+    const anuncio = `${stepObj.instruccion}. ${stepObj.distanciaM > 10 ? `A ${formatearDistanciaNav(stepObj.distanciaM)}` : ''}`
+    if (vozActiva && typeof speechSynthesis !== 'undefined' && !announcementsRef.current.has(anuncio)) {
+      speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(stepObj.instruccion)
+      utterance.lang = 'es-ES'
+      speechSynthesis.speak(utterance)
+      announcementsRef.current.add(anuncio)
+    }
+  }, [iniciarGuiadoActivo, stepActualIdx, stepsNavegacion, vozActiva])
+
+  // Device orientation for compass
+  useEffect(() => {
+    if (!iniciarGuiadoActivo) return
+
+    const handleOrientation = (event: DeviceOrientationEvent) => {
+      const heading = (event as { webkitCompassHeading?: number }).webkitCompassHeading ?? event.alpha
+      if (heading !== null && heading !== undefined) {
+        setHeadingDispositivo(360 - heading)
+      }
+    }
+
+    window.addEventListener('deviceorientation', handleOrientation)
+    return () => window.removeEventListener('deviceorientation', handleOrientation)
+  }, [iniciarGuiadoActivo])
+
   useEffect(() => {
     const handleRealtimeUpdate = () => setRealtimeRefresh((current) => current + 1)
     window.addEventListener('realtime:update', handleRealtimeUpdate)
@@ -783,11 +829,15 @@ export default function VoluntarioDashboard() {
     void handleComoLlegar(pendiente.puesto, pendiente.donacionId, pendiente.excluirIncidenciaId)
   }, [rutaPendiente, userPosition])
 
+  const isInitialLoad = useRef(true)
+
   useEffect(() => {
     let cancelled = false
 
     async function load() {
-      setLoading(true)
+      if (isInitialLoad.current) {
+        setLoading(true)
+      }
       try {
         const [
           { data: puestosData },
@@ -882,7 +932,10 @@ export default function VoluntarioDashboard() {
           setMisAsignacionesIncidencia([])
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          isInitialLoad.current = false
+        }
       }
     }
 
@@ -985,6 +1038,7 @@ export default function VoluntarioDashboard() {
       .sort((a, b) => a.producto.nombre.localeCompare(b.producto.nombre))
   }, [necesidades, userPosition])
 
+  /*
   const donacionesSeleccionadas = useMemo(() => (
     objetosDonables.flatMap((objeto) => {
       const seleccionObjeto = seleccionObjetosDonacion[objeto.key]
@@ -1003,6 +1057,7 @@ export default function VoluntarioDashboard() {
     const selectedPuestos = Array.from(byId.values())
     return userPosition ? sortByDistance(selectedPuestos, userPosition[0], userPosition[1]) : selectedPuestos
   }, [donacionesSeleccionadas, userPosition])
+  */
 
   const selectedNeed = necesidades.find((necesidad) => necesidad.item.id === seleccion)
   const donacionesActivas = misDonaciones.filter(isDonacionActiva)
@@ -1060,7 +1115,7 @@ export default function VoluntarioDashboard() {
     setMensajeDonacion('')
     setErrorDonacion('')
     setCantidadError('')
-    setRutaDonacionPlan(null)
+    _setRutaDonacionPlan(null)
     if (next === 'donacion') setVistaDonacion('objetos')
   }
 
@@ -1074,6 +1129,17 @@ export default function VoluntarioDashboard() {
     setAccion('donacion')
     setVistaDonacion('mis-donaciones')
   }, [donacionActiva?.id])
+
+  // Automatically calculate active stop route and load map by default
+  useEffect(() => {
+    if (paradasDonacionesActivas.length > 0 && !rutaDonacionesActivas && !rutaDonacionLoading) {
+      if (userPosition) {
+        void calcularRutaDonacionesActivas()
+      } else {
+        requestGeo()
+      }
+    }
+  }, [paradasDonacionesActivas, rutaDonacionesActivas, userPosition, rutaDonacionLoading])
 
   const volverASelector = () => {
     if (actividadActiva) return
@@ -1596,7 +1662,8 @@ export default function VoluntarioDashboard() {
     void cargarInventarioPuestoActivo(actividadManualActiva.id)
   }, [actividadManualActiva?.id, actividadManualActiva?.tipo])
 
-  const toggleObjetoDonacion = (objeto: ObjetoDonable) => {
+  /*
+  const _toggleObjetoDonacion = (objeto: ObjetoDonable) => {
     setSeleccionObjetosDonacion((current) => {
       if (current[objeto.key]) {
         const next = { ...current }
@@ -1615,21 +1682,23 @@ export default function VoluntarioDashboard() {
         },
       }
     })
-    setRutaDonacionPlan(null)
+    _setRutaDonacionPlan(null)
     setErrorDonacion('')
     setMensajeDonacion('')
   }
 
-  const updateObjetoDonacion = (key: string, patch: Partial<SeleccionObjetoDonacion>) => {
+  const _updateObjetoDonacion = (key: string, patch: Partial<SeleccionObjetoDonacion>) => {
     setSeleccionObjetosDonacion((current) => {
       const selected = current[key]
       if (!selected) return current
       return { ...current, [key]: { ...selected, ...patch } }
     })
-    setRutaDonacionPlan(null)
+    _setRutaDonacionPlan(null)
     setErrorDonacion('')
   }
+  */
 
+  /*
   const calcularRutaDonacionesSeleccionadas = async () => {
     setErrorDonacion('')
     setRutaError('')
@@ -1682,6 +1751,7 @@ export default function VoluntarioDashboard() {
       setRutaDonacionLoading(false)
     }
   }
+  */
 
   const calcularRutaDonacionesActivas = async () => {
     setErrorDonacion('')
@@ -1736,6 +1806,7 @@ export default function VoluntarioDashboard() {
     }
   }
 
+  /*
   const handleCrearDonacionesSeleccionadas = async () => {
     if (donacionesSeleccionadas.length === 0) {
       setErrorDonacion('Selecciona al menos un objeto para donar.')
@@ -1807,7 +1878,9 @@ export default function VoluntarioDashboard() {
       setDonacionLoading(false)
     }
   }
+  */
 
+  /*
   const handleCrearDonacion = async () => {
     if (!selectedNeed) return
 
@@ -1913,6 +1986,7 @@ export default function VoluntarioDashboard() {
       setDonacionLoading(false)
     }
   }
+  */
 
   const handleActualizarEstadoDonacion = async (donacion: Donacion, estado: 'EN_CAMINO' | 'ENTREGADA' | 'CANCELADA') => {
 
@@ -2041,9 +2115,108 @@ export default function VoluntarioDashboard() {
     }
   }
 
+  const handleUpdateDashboardQrQty = async (donacionId: string, delta: number) => {
+    setErrorDonacion('')
+    const don = misDonaciones.find((d) => d.id === donacionId)
+    if (!don) return
+
+    const currentVal = don.cantidad
+    const nextVal = Math.min(10000, Math.max(1, currentVal + delta))
+
+    // Update locally immediately
+    setMisDonaciones((current) =>
+      current.map((item) =>
+        item.id === donacionId ? { ...item, cantidad: nextVal } : item
+      )
+    )
+
+    // Update on backend or queue sync
+    try {
+      if (isOnline) {
+        await apiClient.patch(`/api/donaciones/${donacionId}/cantidad`, { cantidad: nextVal })
+      } else {
+        await enqueueSync({
+          entity: 'donacion',
+          method: 'PATCH',
+          url: `/api/donaciones/${donacionId}/cantidad`,
+          body: { cantidad: nextVal },
+          priority: 'high',
+        })
+      }
+
+      // If we already have a generated delivery code, update its payload in codigosEntrega so the QR changes in real-time!
+      if (don.entregaCodigo) {
+        const updatedDon = { ...don, cantidad: nextVal }
+        setCodigosEntrega((current) => ({
+          ...current,
+          [donacionId]: createCodigoEntregaPayload(updatedDon, don.entregaCodigo!),
+        }))
+      }
+    } catch (err) {
+      setErrorDonacion('No se pudo actualizar la cantidad en el servidor.')
+    }
+  }
+
   const handleGenerarCodigosEntrega = async (donaciones: Donacion[]) => {
     for (const donacion of donaciones) {
       await handleGenerarCodigoEntrega(donacion)
+    }
+  }
+
+  const handleConfirmarYGenerarQr = async (
+    updates: Array<{ id: string; cantidad: number; original: number }>,
+    donacionesStop: Donacion[],
+  ) => {
+    setErrorDonacion('')
+    setDonacionLoading(true)
+    try {
+      // 1. Update quantities for any modified donations
+      for (const update of updates) {
+        if (update.cantidad !== update.original) {
+          if (isOnline) {
+            await apiClient.patch(`/api/donaciones/${update.id}/cantidad`, {
+              cantidad: update.cantidad,
+            })
+          } else {
+            await enqueueSync({
+              entity: 'donacion',
+              method: 'PATCH',
+              url: `/api/donaciones/${update.id}/cantidad`,
+              body: { cantidad: update.cantidad },
+              priority: 'critical',
+            })
+          }
+          // Update local state misDonaciones
+          setMisDonaciones((current) =>
+            current.map((item) =>
+              item.id === update.id ? { ...item, cantidad: update.cantidad } : item
+            )
+          )
+        }
+      }
+
+      // 2. Put the donations EN_CAMINO if they are PENDIENTE
+      const updatedStopDonaciones = donacionesStop.map((don) => {
+        const matchingUpdate = updates.find((u) => u.id === don.id)
+        return matchingUpdate ? { ...don, cantidad: matchingUpdate.cantidad } : don
+      })
+
+      const pendientes = updatedStopDonaciones.filter((don) => don.estado === 'PENDIENTE')
+      if (pendientes.length > 0) {
+        await handleActualizarEstadoDonaciones(pendientes, 'EN_CAMINO')
+      }
+
+      // 3. Generate QR codes
+      const enCamino = updatedStopDonaciones.filter((don) => don.estado === 'PENDIENTE' || don.estado === 'EN_CAMINO')
+      await handleGenerarCodigosEntrega(enCamino)
+      
+      // Close the modal and show the QRs modal
+      setMostrarModalEditarDonaciones(false)
+      setMostrarModalQrs(true)
+    } catch (err: unknown) {
+      setErrorDonacion(getApiErrorMessage(err, 'No se pudieron actualizar las cantidades de la entrega.'))
+    } finally {
+      setDonacionLoading(false)
     }
   }
 
@@ -2134,52 +2307,19 @@ export default function VoluntarioDashboard() {
   return (
     <div className="h-full overflow-y-auto overscroll-contain bg-slate-50 pb-24 text-slate-900 safe-bottom">
       <main className="mx-auto max-w-6xl px-4 pt-5">
-        {actividadActiva && (
+        {actividadActiva && actividadActiva.tipo !== 'donacion' && (
           <section className="rounded-lg border border-cyan-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase text-cyan-700">Mi actividad actual</p>
                 <h2 className="mt-1 text-lg font-semibold text-slate-950">{actividadActiva.nombre}</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {actividadActiva.tipo === 'donacion'
-                    ? `Estado: ${donacionActiva?.estado.replace('_', ' ')}`
-                    : actividadActiva.tipo === 'incidencia'
-                      ? 'Ayuda asignada a incidencia'
-                      : 'Apoyo activo en puesto'}
+                  {actividadActiva.tipo === 'incidencia'
+                    ? 'Ayuda asignada a incidencia'
+                    : 'Apoyo activo en puesto'}
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[430px]">
-                {donacionActiva && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void handleComoLlegar(donacionActiva.puesto, donacionActiva.id)}
-                    >
-                      Ver ruta
-                    </Button>
-                    {donacionActiva.estado === 'EN_CAMINO' && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        loading={estadoLoadingId === donacionActiva.id}
-                        onClick={() => void handleGenerarCodigoEntrega(donacionActiva)}
-                      >
-                        {codigoEntregaActividad ? 'Mostrar QR' : 'Generar QR'}
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="danger"
-                      size="sm"
-                      loading={estadoLoadingId === donacionActiva.id}
-                      onClick={() => void handleActualizarEstadoDonacion(donacionActiva, 'CANCELADA')}
-                    >
-                      Cancelar
-                    </Button>
-                  </>
-                )}
                 {incidenciaActividad && (
                   <>
                     <Button
@@ -2455,7 +2595,7 @@ export default function VoluntarioDashboard() {
             )}
           </section>
         )}
-        {accion && !estaGestionandoPuesto && (
+        {accion && accion !== 'donacion' && !estaGestionandoPuesto && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400">Actividad elegida</p>
@@ -2509,754 +2649,369 @@ export default function VoluntarioDashboard() {
           <>
                 {accion === 'donacion' && (
               <section className="space-y-3">
-                <SectionHeader
-                  title="Donaciones"
-                  subtitle="Selecciona objetos para donar, ajusta sus destinos y revisa tus donaciones comprometidas."
-                />
-
-                {mensajeDonacion && (
-                  <Notice tone="success">{mensajeDonacion}</Notice>
-                )}
-
-                <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-200 p-1 shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => setVistaDonacion('objetos')}
-                    className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      vistaDonacion === 'objetos'
-                        ? 'bg-cyan-700 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white'
-                    }`}
-                  >
-                    Objetos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setVistaDonacion('mis-donaciones')}
-                    className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      vistaDonacion === 'mis-donaciones'
-                        ? 'bg-cyan-700 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-white'
-                    }`}
-                  >
-                    Mis donaciones ({donacionesActivas.length})
-                  </button>
-                </div>
-
-                {vistaDonacion === 'objetos' && objetosDonables.length === 0 ? (
-                  <EmptyState>No hay objetos donables publicados ahora mismo.</EmptyState>
-                ) : vistaDonacion === 'objetos' ? (
-                  <div className="space-y-3">
-                    <div className="rounded-lg border border-cyan-100 bg-white p-4 shadow-sm">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-950">Selecciona lo que puedes llevar</p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            Elige objetos, ajusta el puesto de entrega y calcula una ruta por los puestos necesarios.
-                          </p>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
-                          <Button type="button" variant="secondary" fullWidth loading={rutaDonacionLoading} onClick={() => void calcularRutaDonacionesSeleccionadas()}>
-                            Calcular ruta
-                          </Button>
-                          <Button type="button" fullWidth loading={donacionLoading} onClick={() => void handleCrearDonacionesSeleccionadas()}>
-                            Confirmar seleccion
-                          </Button>
-                        </div>
-                      </div>
-                      {errorDonacion && <div className="mt-3"><Notice tone="danger">{errorDonacion}</Notice></div>}
-                      {donacionesSeleccionadas.length > 0 && (
-                        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                          {donacionesSeleccionadas.length} objeto{donacionesSeleccionadas.length === 1 ? '' : 's'} para {puestosRutaDonacion.length} puesto{puestosRutaDonacion.length === 1 ? '' : 's'}.
-                        </div>
-                      )}
-                    </div>
-
-                    {rutaDonacionPlan && (
-                      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-950">Ruta sugerida de entrega</p>
-                              <p className="mt-1 text-xs text-slate-600">
-                                {rutaDonacionPlan.puestos.length} parada{rutaDonacionPlan.puestos.length === 1 ? '' : 's'} - primero {rutaDonacionPlan.puestos[0]?.nombre}
-                                {' '} - {rutaDonacionPlan.distanciaKm.toFixed(1)} km - ~{rutaDonacionPlan.duracionMin} min
-                                {rutaDonacionPlan.incidenciasEvitadas > 0 && ` - evita ${rutaDonacionPlan.incidenciasEvitadas} incidencia${rutaDonacionPlan.incidenciasEvitadas === 1 ? '' : 's'}`}
-                              </p>
-                            </div>
-                            <button type="button" onClick={() => setRutaDonacionPlan(null)} className="text-xs font-medium text-slate-500 hover:text-slate-950">
-                              Cerrar
-                            </button>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {rutaDonacionPlan.puestos.map((puesto, index) => (
-                              <span key={puesto.id} className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
-                                {index + 1}. {puesto.nombre}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <Map
-                          className="h-80"
-                          center={[rutaDonacionPlan.puestos[0]?.latitud ?? userPosition?.[0] ?? 39.4254, rutaDonacionPlan.puestos[0]?.longitud ?? userPosition?.[1] ?? -0.4178]}
-                          userPosition={userPosition}
-                          onUserLocated={setUserPosition}
-                          puestos={rutaDonacionPlan.puestos.map((puesto) => ({
-                            id: puesto.id,
-                            nombre: puesto.nombre,
-                            direccion: puesto.direccion,
-                            latitud: puesto.latitud,
-                            longitud: puesto.longitud,
-                            necesidades: 0,
-                          }))}
-                          incidencias={incidencias as IncidenciaMarker[]}
-                          route={rutaDonacionPlan.points}
-                          markerVariant="neutral"
-                        />
-                        <RouteSafetyPanel
-                          distanciaKm={rutaDonacionPlan.distanciaKm}
-                          duracionMin={rutaDonacionPlan.duracionMin}
-                          incidenciasEvitadas={rutaDonacionPlan.incidenciasEvitadas}
-                          incidenciasCercanas={rutaDonacionPlan.incidenciasCercanas}
-                          destino={rutaDonacionPlan.puestos.map((puesto) => puesto.nombre).join(', ')}
-                        />
-                      </div>
-                    )}
-
-                    {objetosDonables.map((objeto) => {
-                      const selected = seleccionObjetosDonacion[objeto.key]
-                      const necesidadDestino = selected
-                        ? objeto.necesidades.find((necesidad) => necesidad.puesto.id === selected.puestoId) ?? objeto.necesidades[0]
-                        : objeto.necesidades[0]
-                      const maximoDestino = necesidadDestino ? necesidadDestino.cantidadPendiente ?? necesidadDestino.item.cantidad : objeto.cantidadTotal
-
-                      return (
-                        <div key={objeto.key} className={cardClass(Boolean(selected))}>
-                          <button
-                            type="button"
-                            onClick={() => toggleObjetoDonacion(objeto)}
-                            className="flex w-full items-start gap-3 p-4 text-left"
-                          >
-                            <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border text-sm font-semibold ${
-                              selected ? 'border-cyan-700 bg-cyan-700 text-white' : 'border-slate-300 bg-white text-transparent'
-                            }`}>
-                              x
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block font-semibold text-slate-900">{objeto.producto.nombre}</span>
-                              <span className="mt-1 block text-sm text-slate-500">{objeto.producto.categoria}</span>
-                              <span className="mt-1 block text-xs text-slate-400">
-                                {objeto.cantidadTotal} {objeto.producto.unidad} pendientes en {objeto.necesidades.length} puesto{objeto.necesidades.length === 1 ? '' : 's'}
-                              </span>
-                              {necesidadDestino && (
-                                <span className="mt-2 block text-xs font-medium text-cyan-700">
-                                  Destino sugerido: {necesidadDestino.puesto.nombre}
-                                </span>
-                              )}
-                            </span>
-                            <span className="flex shrink-0 flex-col items-end gap-2">
-                              <Badge variant={objeto.cantidadTotal <= 5 ? 'danger' : 'warning'}>
-                                {objeto.cantidadTotal} {objeto.producto.unidad}
-                              </Badge>
-                              <span className="text-xs font-medium text-slate-400">{selected ? 'Seleccionado' : 'Tocar para elegir'}</span>
-                            </span>
-                          </button>
-
-                          {selected && necesidadDestino && (
-                            <div className="grid gap-3 border-t border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_160px]">
-                              <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Puesto de entrega</label>
-                                <select
-                                  value={selected.puestoId}
-                                  onChange={(event) => updateObjetoDonacion(objeto.key, { puestoId: event.target.value })}
-                                  className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
-                                >
-                                  {objeto.necesidades.map((necesidad) => (
-                                    <option key={necesidad.puesto.id} value={necesidad.puesto.id}>
-                                      {necesidad.puesto.nombre} - {necesidad.cantidadPendiente ?? necesidad.item.cantidad} {objeto.producto.unidad}
-                                    </option>
-                                  ))}
-                                </select>
-                                <p className="mt-1 text-xs text-slate-500">{necesidadDestino.puesto.direccion}</p>
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Cantidad</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={maximoDestino}
-                                  step="1"
-                                  value={selected.cantidad}
-                                  onChange={(event) => updateObjetoDonacion(objeto.key, { cantidad: event.target.value })}
-                                  className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
-                                />
-                                <p className="mt-1 text-xs text-slate-500">Max. {maximoDestino}</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-
-                    {donacionesSeleccionadas.length > 0 && (
-                      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Comentario para las donaciones</label>
-                        <textarea
-                          value={comentarioDonacion}
-                          onChange={(event) => setComentarioDonacion(event.target.value)}
-                          className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
-                          rows={2}
-                          placeholder="Ej. salgo ahora y puedo hacer varias paradas"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : vistaDonacion === 'necesidades' && necesidades.length === 0 ? (
-                  <EmptyState>No hay necesidades publicadas ahora mismo.</EmptyState>
-                ) : vistaDonacion === 'necesidades' ? (
-                  <div className="space-y-2">
-                    {necesidades.map(({ puesto, item, cantidadNecesaria, cantidadComprometida }) => {
-                      const selected = seleccion === item.id
-                      return (
-                        <div
-                          key={item.id}
-                          className={cardClass(selected)}
-                        >
-                          <div className="p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-slate-800">{item.producto.nombre}</p>
-                                <p className="mt-1 text-sm font-medium text-slate-600">{puesto.nombre}</p>
-                                <p className="mt-1 text-xs text-slate-400">{puesto.direccion}</p>
-                                {cantidadComprometida !== undefined && (
-                                  <p className="mt-3 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-500">
-                                    Necesario: {cantidadNecesaria} {item.producto.unidad}
-                                    {' '}· En camino: {cantidadComprometida} {item.producto.unidad}
-                                  </p>
-                                )}
-                              </div>
-                              <Badge variant={item.nivelStock === 'critico' ? 'danger' : 'warning'}>
-                                {item.cantidad} {item.producto.unidad}
-                              </Badge>
-                            </div>
-
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={selected ? 'secondary' : 'primary'}
-                              className="mt-3"
-                              onClick={() => {
-                                setSeleccion(item.id)
-                                setCantidad('')
-                                setComentarioDonacion('')
-                                setMensajeDonacion('')
-                                setErrorDonacion('')
-                                setCantidadError('')
-                              }}
-                            >
-                              {selected ? 'Seleccionado' : 'Llevar esto'}
-                            </Button>
-                          </div>
-
-                          {selected && selectedNeed && (
-                            <div className="space-y-3 border-t border-slate-200 bg-slate-50 p-4">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">Vas a llevar {selectedNeed.item.producto.nombre}</p>
-                                <p className="text-xs text-slate-500">Destino: {selectedNeed.puesto.nombre}</p>
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Cantidad que puedes llevar</label>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={selectedNeed.cantidadPendiente ?? selectedNeed.item.cantidad}
-                                  step="1"
-                                  value={cantidad}
-                                  onChange={(event) => {
-                                    setCantidad(event.target.value)
-                                    setCantidadError('')
-                                    setErrorDonacion('')
-                                  }}
-                                  className={`w-full rounded-lg text-sm ${
-                                    cantidadError
-                                      ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                                      : 'border-gray-300 focus:border-slate-900 focus:ring-slate-900'
-                                  }`}
-                                  placeholder={`Ej. 10 ${selectedNeed.item.producto.unidad}`}
-                                />
-                                <p className="mt-1 text-xs text-slate-500">
-                                  Maximo disponible: {selectedNeed.cantidadPendiente ?? selectedNeed.item.cantidad} {selectedNeed.item.producto.unidad}
-                                </p>
-                                {cantidadError && <p className="mt-1 text-xs text-red-600">{cantidadError}</p>}
-                              </div>
-                              <div>
-                                <label className="mb-1 block text-sm font-medium text-slate-700">Comentario opcional</label>
-                                <textarea
-                                  value={comentarioDonacion}
-                                  onChange={(event) => setComentarioDonacion(event.target.value)}
-                                  className="w-full rounded-lg border-gray-300 text-sm focus:border-slate-900 focus:ring-slate-900"
-                                  rows={2}
-                                  placeholder="Ej. llego en furgoneta sobre las 18:00"
-                                />
-                              </div>
-                              {errorDonacion && (
-                                <Notice tone="danger">{errorDonacion}</Notice>
-                              )}
-                              <Button fullWidth loading={donacionLoading} onClick={handleCrearDonacion}>
-                                Confirmar donacion
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
+                {donacionesActivas.length === 0 || forzarNuevoFlujoDonacion ? (
+                  <NuevoFlujoDonacion
+                    objetosDonables={objetosDonables}
+                    userPosition={userPosition}
+                    incidencias={incidencias as IncidenciaMarker[]}
+                    isOnline={isOnline}
+                    enqueueSync={enqueueSync}
+                    onFinalizarDonacion={() => {
+                      setForzarNuevoFlujoDonacion(false)
+                      setRealtimeRefresh((current) => current + 1)
+                    }}
+                    onVolverDashboard={() => {
+                      if (donacionesActivas.length > 0) {
+                        setForzarNuevoFlujoDonacion(false)
+                      } else {
+                        volverASelector()
+                      }
+                    }}
+                    initialStep={wizardMode === 'navigate' ? 'navegacion' : 'productos'}
+                    initialDonations={donacionesActivas}
+                  />
                 ) : (
                   <div>
                     {errorDonacion && (
                       <Notice tone="danger">{errorDonacion}</Notice>
                     )}
-                    {donacionesActivas.length === 0 ? (
-                      <EmptyState>No tienes donaciones activas ahora mismo.</EmptyState>
-                    ) : (
-                    <div className="space-y-3">
-                      <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950 shadow-sm">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <p className="font-semibold">Ruta de entrega activa</p>
-                            <p className="mt-1 text-cyan-900">
-                              {paradasDonacionesActivas.length === 1
-                                ? `Primero tienes que ir a ${paradasDonacionesActivas[0].puesto.nombre}.`
-                                : `Primero tienes que ir a ${paradasDonacionesActivas[0].puesto.nombre} y despues a ${paradasDonacionesActivas.slice(1).map((parada) => parada.puesto.nombre).join(', ')}.`}
-                            </p>
-                            <p className="mt-1 text-xs text-cyan-800">
-                              {donacionesActivas.length} donacion{donacionesActivas.length === 1 ? '' : 'es'} en {paradasDonacionesActivas.length} parada{paradasDonacionesActivas.length === 1 ? '' : 's'}.
-                            </p>
-                            {!userPosition && (
-                              <p className="mt-1 text-xs text-cyan-800">
-                                Comparte tu ubicacion para ordenar las paradas por cercania.
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            loading={rutaDonacionLoading}
-                            onClick={() => void calcularRutaDonacionesActivas()}
-                          >
-                            Ver ruta completa
-                          </Button>
-                        </div>
-                        <div className="mt-3 space-y-2">
-                          {paradasDonacionesActivas.map((parada, index) => (
-                            <div key={parada.puesto.id} className="rounded-md bg-white/80 px-3 py-2 ring-1 ring-cyan-100">
-                              <p className="text-xs font-semibold uppercase text-cyan-700">
-                                Parada {index + 1}{parada.distanciaKm !== undefined ? ` - ${parada.distanciaKm.toFixed(1)} km` : ''}
-                              </p>
-                              <p className="mt-0.5 font-medium text-slate-900">{parada.puesto.nombre}</p>
-                              <p className="mt-0.5 text-xs text-slate-500">
-                                {parada.donaciones.map((donacion) => `${donacion.cantidad} ${donacion.unidad} de ${donacion.producto.nombre}`).join(' · ')}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                        {rutaDonacionesActivas && (
-                          <div className="mt-3 overflow-hidden rounded-lg border border-cyan-100 bg-white shadow-sm">
-                            <div className="border-b border-slate-200 bg-white px-3 py-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-950">Ruta completa de la mision</p>
-                                  <p className="mt-1 text-xs text-slate-600">
-                                    {rutaDonacionesActivas.puestos.length} parada{rutaDonacionesActivas.puestos.length === 1 ? '' : 's'} - {rutaDonacionesActivas.distanciaKm.toFixed(1)} km - ~{rutaDonacionesActivas.duracionMin} min
-                                    {rutaDonacionesActivas.incidenciasEvitadas > 0 && ` - evita ${rutaDonacionesActivas.incidenciasEvitadas} incidencia${rutaDonacionesActivas.incidenciasEvitadas === 1 ? '' : 's'}`}
-                                  </p>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setRutaDonacionesActivas(null)}
-                                  className="text-xs font-medium text-slate-500 hover:text-slate-950"
-                                >
-                                  Cerrar
-                                </button>
-                              </div>
-                            </div>
-                            <Map
-                              className="h-80"
-                              center={[rutaDonacionesActivas.puestos[0]?.latitud ?? userPosition?.[0] ?? 39.4254, rutaDonacionesActivas.puestos[0]?.longitud ?? userPosition?.[1] ?? -0.4178]}
-                              userPosition={userPosition}
-                              onUserLocated={setUserPosition}
-                              puestos={rutaDonacionesActivas.puestos.map((puesto) => ({
-                                id: puesto.id,
-                                nombre: puesto.nombre,
-                                direccion: puesto.direccion,
-                                latitud: puesto.latitud,
-                                longitud: puesto.longitud,
-                                necesidades: 0,
-                              }))}
-                              incidencias={incidencias as IncidenciaMarker[]}
-                              route={rutaDonacionesActivas.points}
-                              markerVariant="neutral"
-                            />
-                            <RouteSafetyPanel
-                              distanciaKm={rutaDonacionesActivas.distanciaKm}
-                              duracionMin={rutaDonacionesActivas.duracionMin}
-                              incidenciasEvitadas={rutaDonacionesActivas.incidenciasEvitadas}
-                              incidenciasCercanas={rutaDonacionesActivas.incidenciasCercanas}
-                              destino={rutaDonacionesActivas.puestos.map((puesto) => puesto.nombre).join(', ')}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      {paradasDonacionesActivas.map((parada) => {
-                        const rutaParadaId = `puesto-donaciones:${parada.puesto.id}`
-                        const pendientes = parada.donaciones.filter((donacion) => donacion.estado === 'PENDIENTE')
-                        const enCamino = parada.donaciones.filter((donacion) => donacion.estado === 'EN_CAMINO')
-                        const codigos = parada.donaciones
-                          .map((donacion) => ({
-                            donacion,
-                            codigo: codigosEntrega[donacion.id] ?? (
-                              donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
-                            ),
-                          }))
-                          .filter((item) => item.codigo)
-                        const estadoParada = pendientes.length > 0 ? 'PENDIENTE' : 'EN_CAMINO'
 
-                        return (
-                          <div key={parada.puesto.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">{parada.puesto.nombre}</p>
-                                <p className="mt-1 text-xs font-medium text-slate-500">
-                                  {parada.donaciones.length} donacion{parada.donaciones.length === 1 ? '' : 'es'} para entregar aqui
-                                </p>
-                              </div>
-                              <Badge variant="info">{estadoParada.replace('_', ' ')}</Badge>
-                            </div>
+                    {(() => {
+                      const currentStop = paradasDonacionesActivas[0]
+                      if (!currentStop) return null
 
-                            <div className="mt-3 space-y-2 rounded-lg bg-slate-50 px-3 py-2">
-                              {parada.donaciones.map((donacion) => (
-                                <div key={donacion.id} className="flex items-start justify-between gap-3 text-sm">
-                                  <span className="font-medium text-slate-800">
-                                    {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
-                                  </span>
-                                  <span className="text-xs font-semibold text-slate-500">
-                                    {donacion.estado.replace('_', ' ')}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
+                      // Proximity check
+                      const distKm = userPosition
+                        ? haversineKm(userPosition[0], userPosition[1], currentStop.puesto.latitud, currentStop.puesto.longitud)
+                        : null
+                      const esCercano = distKm !== null && distKm <= 0.1 // Less than 100 meters
 
-                            <button
-                              type="button"
-                              onClick={() => handleComoLlegar(parada.puesto, rutaParadaId)}
-                              className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800"
-                              disabled={rutaLoading}
-                            >
-                              {rutaLoadingId === rutaParadaId ? 'Calculando ruta...' : 'Como llegar'}
-                            </button>
+                      const codigos = currentStop.donaciones
+                        .map((donacion) => ({
+                          donacion,
+                          codigo: codigosEntrega[donacion.id] ?? (
+                            donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
+                          ),
+                        }))
+                        .filter((item) => item.codigo)
 
-                            {rutaError && rutaErrorDonacionId === rutaParadaId && (
-                              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                                <p>{rutaError}</p>
-                                {rutaError.includes('ubicacion') && (
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="secondary"
-                                    className="mt-2 w-full sm:w-auto"
-                                    onClick={() => {
-                                      setRutaPendiente({ puesto: parada.puesto, donacionId: rutaParadaId })
-                                      requestGeo()
-                                    }}
-                                  >
-                                    Compartir ubicacion
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-
-                            {rutaActiva?.donacionId === rutaParadaId && (
-                              <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                                <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <p className="text-sm font-semibold text-slate-950">Ruta segura a {rutaActiva.puesto.nombre}</p>
-                                      <p className="mt-1 text-xs text-slate-600">
-                                        {rutaActiva.distanciaKm.toFixed(1)} km - ~{rutaActiva.duracionMin} min
-                                        {rutaActiva.incidenciasEvitadas > 0 && ` - evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
-                                      </p>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => setRutaActiva(null)}
-                                      className="text-xs font-medium text-slate-500 hover:text-slate-950"
-                                    >
-                                      Cerrar
-                                    </button>
-                                  </div>
-                                </div>
-                                <Map
-                                  className="h-72"
-                                  center={[rutaActiva.puesto.latitud, rutaActiva.puesto.longitud]}
-                                  userPosition={userPosition}
-                                  onUserLocated={setUserPosition}
-                                  puestos={puestoRutaMarker}
-                                  incidencias={incidencias as IncidenciaMarker[]}
-                                  selectedPuestoId={rutaActiva.puesto.id}
-                                  route={rutaActiva.points}
-                                  markerVariant="neutral"
-                                />
-                                <RouteSafetyPanel
-                                  distanciaKm={rutaActiva.distanciaKm}
-                                  duracionMin={rutaActiva.duracionMin}
-                                  incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
-                                  incidenciasCercanas={rutaActiva.incidenciasCercanas}
-                                  destino={rutaActiva.puesto.nombre}
-                                />
-                              </div>
-                            )}
-
-                            {codigos.length > 0 && (
-                              <div className="mt-3 space-y-3 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
-                                <p className="text-sm font-semibold text-cyan-950">Codigos de entrega</p>
-                                {codigos.map(({ donacion, codigo }) => (
-                                  <div key={donacion.id} className="rounded-lg border border-cyan-100 bg-white p-3">
-                                    <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                                      <QRCodeSVG value={codigo} size={220} level="M" includeMargin />
-                                      <div className="text-center sm:text-left">
-                                        <p className="text-sm font-semibold text-cyan-950">
-                                          {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
-                                        </p>
-                                        <p className="mt-1 text-sm text-cyan-900">
-                                          Enseña este QR al personal del puesto.
-                                        </p>
-                                        <button
-                                          type="button"
-                                          onClick={() => void navigator.clipboard?.writeText(codigo)}
-                                          className="mt-2 rounded-lg border border-cyan-200 bg-white px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"
-                                        >
-                                          Copiar codigo
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                              {pendientes.length > 0 && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => void handleActualizarEstadoDonaciones(pendientes, 'EN_CAMINO')}
-                                >
-                                  Poner todo en camino
-                                </Button>
-                              )}
-                              {pendientes.length === 0 && enCamino.length > 0 && (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => void handleGenerarCodigosEntrega(enCamino)}
-                                >
-                                  {codigos.length > 0 ? 'Mostrar codigos' : 'Generar codigos'}
-                                </Button>
-                              )}
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="danger"
-                                onClick={() => void handleActualizarEstadoDonaciones(parada.donaciones, 'CANCELADA')}
-                              >
-                                Cancelar todo
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      })}
-                      {false && donacionesActivas.map((donacion) => {
-                        const codigoEntrega = codigosEntrega[donacion.id] ?? (
-                          donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
-                        )
-
-                        return (
-                        <div key={donacion.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
+                      return (
+                        <div className="space-y-4">
+                          {/* Main Accessible Navigation Header */}
+                          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
                             <div>
-                              <p className="text-sm font-semibold text-slate-800">
-                                {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
-                              </p>
-                              <p className="mt-1 text-xs font-medium text-slate-500">{donacion.puesto.nombre}</p>
+                              <p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Entregando en:</p>
+                              <h3 className="text-lg font-bold text-slate-950 mt-0.5">{currentStop.puesto.nombre}</h3>
+                              <p className="text-sm text-slate-500">{currentStop.puesto.direccion}</p>
                             </div>
-                            <Badge variant={donacion.estado === 'CANCELADA' ? 'danger' : donacion.estado === 'ENTREGADA' ? 'success' : 'info'}>
-                              {donacion.estado.replace('_', ' ')}
-                            </Badge>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleComoLlegar(donacion.puesto, donacion.id)}
-                            className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800"
-                            disabled={rutaLoading}
-                          >
-                            {rutaLoadingId === donacion.id ? 'Calculando ruta...' : 'Como llegar'}
-                          </button>
-                          {rutaError && rutaErrorDonacionId === donacion.id && (
-                            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                              <p>{rutaError}</p>
-                              {rutaError.includes('ubicacion') && (
+
+                            <div className="border-t border-slate-100 pt-3">
+                              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Productos a entregar:</p>
+                              <ul className="mt-2 space-y-2">
+                                {currentStop.donaciones.map((donacion) => (
+                                  <li key={donacion.id} className="flex justify-between text-sm text-slate-800 bg-slate-50 px-3 py-2 rounded-lg font-semibold">
+                                    <span>{donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}</span>
+                                    <Badge variant={donacion.estado === 'EN_CAMINO' ? 'success' : 'info'}>
+                                      {donacion.estado === 'EN_CAMINO' ? 'En Camino' : 'Pendiente'}
+                                    </Badge>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            {/* Map Display */}
+                            <div className="border-t border-slate-100 pt-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold text-slate-950">Itinerario y Mapa</p>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="secondary"
-                                  className="mt-2 w-full sm:w-auto"
-                                  onClick={() => {
-                                    setRutaPendiente({ puesto: donacion.puesto, donacionId: donacion.id })
-                                    requestGeo()
-                                  }}
+                                  loading={rutaDonacionLoading}
+                                  onClick={() => void calcularRutaDonacionesActivas()}
                                 >
-                                  Compartir ubicacion
+                                  {rutaDonacionesActivas ? 'Recalcular Ruta' : 'Ver Ruta en Mapa'}
                                 </Button>
-                              )}
-                            </div>
-                          )}
-                          {rutaActiva?.donacionId === donacion.id && (
-                            <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                              <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-slate-950">Ruta segura a {rutaActiva.puesto.nombre}</p>
-                                    <p className="mt-1 text-xs text-slate-600">
-                                      {rutaActiva.distanciaKm.toFixed(1)} km · ~{rutaActiva.duracionMin} min
-                                      {rutaActiva.incidenciasEvitadas > 0 && ` · evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
-                                    </p>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setRutaActiva(null)}
-                                    className="text-xs font-medium text-slate-500 hover:text-slate-950"
-                                  >
-                                    Cerrar
-                                  </button>
-                                </div>
                               </div>
-                              <Map
-                                className="h-72"
-                                center={[rutaActiva.puesto.latitud, rutaActiva.puesto.longitud]}
-                                userPosition={userPosition}
-                                onUserLocated={setUserPosition}
-                                puestos={puestoRutaMarker}
-                                incidencias={incidencias as IncidenciaMarker[]}
-                                selectedPuestoId={rutaActiva.puesto.id}
-                                route={rutaActiva.points}
-                                markerVariant="neutral"
-                              />
-                              <RouteSafetyPanel
-                                distanciaKm={rutaActiva.distanciaKm}
-                                duracionMin={rutaActiva.duracionMin}
-                                incidenciasEvitadas={rutaActiva.incidenciasEvitadas}
-                                incidenciasCercanas={rutaActiva.incidenciasCercanas}
-                                destino={rutaActiva.puesto.nombre}
-                              />
-                            </div>
-                          )}
-                          {codigoEntrega && (
-                            <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-4">
-                              <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                                <div className="rounded-lg border border-cyan-100 bg-white p-3 shadow-sm">
-                                  <QRCodeSVG value={codigoEntrega} size={280} level="M" includeMargin />
-                                </div>
-                                <div className="text-center sm:text-left">
-                                  <p className="text-sm font-semibold text-cyan-950">Codigo de entrega</p>
-                                  <p className="mt-1 text-sm text-cyan-900">
-                                    Enseña este QR al personal del puesto para que confirme la recepcion.
-                                  </p>
-                                  <p className="mt-2 break-all rounded-md bg-white/80 px-2 py-1 font-mono text-xs text-cyan-950">
-                                    {donacion.id}
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => void navigator.clipboard?.writeText(codigoEntrega)}
-                                    className="mt-2 rounded-lg border border-cyan-200 bg-white px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"
-                                  >
-                                    Copiar codigo
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          <div className="mt-2 grid grid-cols-2 gap-2">
-                            {donacion.estado === 'PENDIENTE' && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                loading={estadoLoadingId === donacion.id}
-                                onClick={() => void handleActualizarEstadoDonacion(donacion, 'EN_CAMINO')}
-                              >
-                                En camino
-                              </Button>
-                            )}
-                            {donacion.estado === 'EN_CAMINO' && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                loading={estadoLoadingId === donacion.id}
-                                onClick={() => void handleGenerarCodigoEntrega(donacion)}
-                              >
-                                {codigoEntrega ? 'Mostrar codigo' : 'Generar codigo'}
-                              </Button>
-                            )}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="danger"
-                              loading={estadoLoadingId === donacion.id}
-                              onClick={() => void handleActualizarEstadoDonacion(donacion, 'CANCELADA')}
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        </div>
-                        )
-                      })}
-                    </div>
-                    )}
 
-                    {donacionesHistorial.length > 0 && (
-                      <div className="mt-5">
-                        <SectionHeader
-                          title="Historial"
-                          subtitle="Ultimas donaciones cerradas o canceladas."
-                        />
-                        <div className="mt-3 space-y-2">
-                          {donacionesHistorial.slice(0, 8).map((donacion) => (
-                            <div key={donacion.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-800">
-                                    {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
-                                  </p>
-                                  <p className="mt-1 text-xs text-slate-500">{donacion.puesto.nombre}</p>
-                                  {donacion.entregaCodigoGeneradoAt && (
-                                    <p className="mt-1 text-xs text-slate-400">
-                                      Codigo generado: {new Date(donacion.entregaCodigoGeneradoAt).toLocaleString()}
-                                    </p>
+                              {rutaDonacionesActivas ? (
+                                <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm bg-white">
+                                  <Map
+                                    className="h-80"
+                                    center={[currentStop.puesto.latitud, currentStop.puesto.longitud]}
+                                    userPosition={userPosition}
+                                    onUserLocated={setUserPosition}
+                                    puestos={[{ ...currentStop.puesto, necesidades: 0 }]}
+                                    incidencias={incidencias as IncidenciaMarker[]}
+                                    selectedPuestoId={currentStop.puesto.id}
+                                    route={rutaDonacionesActivas.points}
+                                    markerVariant="neutral"
+                                  />
+                                  <RouteSafetyPanel
+                                    distanciaKm={rutaDonacionesActivas.distanciaKm}
+                                    duracionMin={rutaDonacionesActivas.duracionMin}
+                                    incidenciasEvitadas={rutaDonacionesActivas.incidenciasEvitadas}
+                                    incidenciasCercanas={rutaDonacionesActivas.incidenciasCercanas}
+                                    destino={currentStop.puesto.nombre}
+                                  />
+
+                                  {/* In-app Navigation Guidance Panel */}
+                                  {iniciarGuiadoActivo && (
+                                    <div className="border-t border-slate-100 bg-slate-900 text-white p-4 space-y-4">
+                                      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                                        <p className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                                          🔊 Guiado activo
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => setVozActiva((v) => !v)}
+                                            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${vozActiva ? 'bg-cyan-600/30 text-cyan-400' : 'bg-white/10 text-white/50'}`}
+                                          >
+                                            {vozActiva ? '🔊 Voz On' : '🔇 Mudo'}
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {navLoading ? (
+                                        <div className="flex justify-center items-center h-28">
+                                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400" />
+                                        </div>
+                                      ) : stepsNavegacion.length > 0 ? (() => {
+                                        const stepObj = stepsNavegacion[stepActualIdx]
+                                        const nextStepObj = stepsNavegacion[stepActualIdx + 1]
+                                        const esUltimo = stepActualIdx === stepsNavegacion.length - 1
+                                        const distanciaM = userPosition && stepObj
+                                          ? Math.round(distanciaAlStep(userPosition[0], userPosition[1], stepObj))
+                                          : null
+
+                                        const bearingAbsoluto = userPosition && stepObj && !esUltimo
+                                          ? calcularBearing(userPosition[0], userPosition[1], stepObj.lat, stepObj.lng)
+                                          : null
+
+                                        const brujulaDisponible = headingDispositivo !== null && bearingAbsoluto !== null
+                                        const rotacion = brujulaDisponible
+                                          ? (bearingAbsoluto! - headingDispositivo! + 360) % 360
+                                          : stepObj ? ROTACION_ICONO[stepObj.icono] : 0
+
+                                        return (
+                                          <div className="space-y-4">
+                                            <div className="flex items-center gap-4">
+                                              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-white/10 border border-white/20">
+                                                <FlechaNavegacion icono={stepObj?.icono || 'destino'} rotacion={rotacion} />
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-base font-bold leading-tight">{stepObj?.instruccion}</p>
+                                                {stepObj?.calle && stepObj.tipo !== 'depart' && stepObj.tipo !== 'arrive' && (
+                                                  <p className="text-xs text-white/60 mt-0.5 truncate">{stepObj.calle}</p>
+                                                )}
+                                                {distanciaM !== null && !esUltimo && (
+                                                  <p className="text-lg font-extrabold text-cyan-400 mt-1 tabular-nums">
+                                                    {formatearDistanciaNav(distanciaM)}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {nextStepObj && (
+                                              <div className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-xs flex items-center gap-2 text-white/80">
+                                                <span className="font-semibold text-cyan-400 whitespace-nowrap">A continuación:</span>
+                                                <span className="truncate flex-1">{nextStepObj.instruccion}</span>
+                                              </div>
+                                            )}
+
+                                            {/* Navigation Controls */}
+                                            <div className="flex gap-2 border-t border-white/10 pt-3">
+                                              <button
+                                                type="button"
+                                                disabled={stepActualIdx === 0}
+                                                onClick={() => setStepActualIdx((curr) => Math.max(0, curr - 1))}
+                                                className="flex-1 rounded-lg bg-white/10 py-2.5 text-xs font-bold text-white hover:bg-white/25 active:scale-95 transition disabled:opacity-30 disabled:pointer-events-none"
+                                              >
+                                                ← Anterior
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (esUltimo) {
+                                                    setIniciarGuiadoActivo(false)
+                                                    setStepsNavegacion([])
+                                                    setStepActualIdx(0)
+                                                    if (typeof speechSynthesis !== 'undefined') {
+                                                      speechSynthesis.cancel()
+                                                      const utterance = new SpeechSynthesisUtterance('Has llegado a tu destino.')
+                                                      utterance.lang = 'es-ES'
+                                                      speechSynthesis.speak(utterance)
+                                                    }
+                                                  } else {
+                                                    setStepActualIdx((curr) => curr + 1)
+                                                  }
+                                                }}
+                                                className="flex-1 rounded-lg bg-cyan-600 py-2.5 text-xs font-bold text-white hover:bg-cyan-500 active:scale-95 transition"
+                                              >
+                                                {esUltimo ? '¡Llegado!' : 'Siguiente →'}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )
+                                      })() : (
+                                        <div className="text-center py-4 text-white/60 text-sm">
+                                          No hay indicaciones disponibles para esta ruta.
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                                <Badge variant={donacion.estado === 'ENTREGADA' ? 'success' : 'danger'}>
-                                  {donacion.estado.replace('_', ' ')}
-                                </Badge>
-                              </div>
+                              ) : (
+                                <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 bg-slate-50">
+                                  Pulsa "Ver Ruta en Mapa" para calcular el itinerario evitando calles cortadas.
+                                </div>
+                              )}
                             </div>
-                          ))}
+
+                            {/* Proximity Warning */}
+                            {!esCercano && (
+                              <Notice tone="warning">
+                                <div className="font-semibold text-amber-900">⚠️ Recomendación para el código QR</div>
+                                <p className="mt-1 text-xs text-amber-800 leading-relaxed">
+                                  Se recomienda generar el código QR directamente al llegar al destino. La ruta puede cambiar si se cubren las necesidades o surge una emergencia más crítica, lo que redirigiría tu donación a otro puesto y haría que el QR actual no sea válido.
+                                </p>
+                              </Notice>
+                            )}
+
+                            {/* Active Actions */}
+                            <div className="border-t border-slate-100 pt-4 space-y-3">
+                              <div className="grid grid-cols-2 gap-3">
+                                {/* Generate QR Button */}
+                                 <Button
+                                  type="button"
+                                  variant="primary"
+                                  className="py-3 text-base flex items-center justify-center gap-2 font-bold"
+                                  onClick={() => {
+                                    if (codigos.length > 0) {
+                                      setMostrarModalQrs(true)
+                                    } else {
+                                      const initialCantidades: Record<string, string> = {}
+                                      currentStop.donaciones.forEach((don) => {
+                                        initialCantidades[don.id] = String(don.cantidad)
+                                      })
+                                      setCantidadesEditablesDonacion(initialCantidades)
+                                      setMostrarModalEditarDonaciones(true)
+                                    }
+                                  }}
+                                >
+                                  {codigos.length > 0 ? '📱 Mostrar Código QR' : '📱 Generar Código QR'}
+                                </Button>
+
+                                {/* Navigation / Voices indications */}
+                                 <Button
+                                  type="button"
+                                  variant={iniciarGuiadoActivo ? "danger" : "secondary"}
+                                  className="py-3 text-base flex items-center justify-center gap-2 font-bold"
+                                  onClick={async () => {
+                                    if (iniciarGuiadoActivo) {
+                                      setIniciarGuiadoActivo(false)
+                                      setStepsNavegacion([])
+                                      setStepActualIdx(0)
+                                      if (typeof speechSynthesis !== 'undefined') {
+                                        speechSynthesis.cancel()
+                                      }
+                                    } else {
+                                      setNavLoading(true)
+                                      setIniciarGuiadoActivo(true)
+                                      try {
+                                        const waypoints: [number, number][] = [
+                                          userPosition || [currentStop.puesto.latitud + 0.003, currentStop.puesto.longitud + 0.003],
+                                          [currentStop.puesto.latitud, currentStop.puesto.longitud]
+                                        ]
+                                        const navRes = await fetchRutaConPasos(waypoints, 'driving', incidencias as IncidenciaMarker[])
+                                        const steps = parsearStepsOsrm(navRes.legs as Parameters<typeof parsearStepsOsrm>[0])
+                                        setStepsNavegacion(steps)
+                                        setStepActualIdx(0)
+                                        announcementsRef.current = new Set()
+                                        if (vozActiva && typeof speechSynthesis !== 'undefined') {
+                                          const utterance = new SpeechSynthesisUtterance('Iniciando navegación guiada hacia el puesto de emergencia.')
+                                          utterance.lang = 'es-ES'
+                                          speechSynthesis.speak(utterance)
+                                        }
+                                      } catch (err) {
+                                        setErrorDonacion('No se pudo calcular la ruta de guiado paso a paso.')
+                                        setIniciarGuiadoActivo(false)
+                                      } finally {
+                                        setNavLoading(false)
+                                      }
+                                    }
+                                  }}
+                                >
+                                  {iniciarGuiadoActivo ? '🛑 Detener Guiado' : '🔊 Iniciar Guiado'}
+                                </Button>
+                              </div>
+
+
+
+                              {/* Manual delivery override button */}
+                              <Button
+                                type="button"
+                                variant="primary"
+                                fullWidth
+                                className="py-3 font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 border-0"
+                                onClick={async () => {
+                                  if (window.confirm('¿Seguro que deseas marcar todos los productos de esta parada como entregados manualmente?')) {
+                                    setDonacionLoading(true)
+                                    try {
+                                      // Stop active route guidance if any
+                                      setIniciarGuiadoActivo(false)
+                                      setStepsNavegacion([])
+                                      setStepActualIdx(0)
+                                      if (typeof speechSynthesis !== 'undefined') {
+                                        speechSynthesis.cancel()
+                                      }
+
+                                      await handleActualizarEstadoDonaciones(currentStop.donaciones, 'ENTREGADA')
+                                      setRutaDonacionesActivas(null)
+                                      setCodigosEntrega((current) => {
+                                        const next = { ...current }
+                                        currentStop.donaciones.forEach((d) => delete next[d.id])
+                                        return next
+                                      })
+                                      setForzarNuevoFlujoDonacion(false)
+                                      setRealtimeRefresh((current) => current + 1)
+                                      setMensajeDonacion('Donación marcada como entregada correctamente.')
+                                    } catch (err) {
+                                      setErrorDonacion('No se pudieron entregar las donaciones manualmente.')
+                                    } finally {
+                                      setDonacionLoading(false)
+                                    }
+                                  }
+                                }}
+                              >
+                                ✔️ Ya he entregado el producto
+                              </Button>
+
+                              {/* Cancel entire donation stop */}
+                              <Button
+                                type="button"
+                                variant="danger"
+                                fullWidth
+                                className="py-3 font-bold"
+                                onClick={() => {
+                                  if (window.confirm('¿Seguro que deseas cancelar toda la donación comprometida?')) {
+                                    void handleActualizarEstadoDonaciones(currentStop.donaciones, 'CANCELADA').then(() => {
+                                      setForzarNuevoFlujoDonacion(false)
+                                      setRealtimeRefresh((current) => current + 1)
+                                    })
+                                  }
+                                }}
+                              >
+                                ❌ Cancelar Donación y Empezar de Nuevo
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
+
+
 
                     {/*
                     {rutaError && (
@@ -3921,6 +3676,240 @@ export default function VoluntarioDashboard() {
           onClose={() => setShowPuestoQr(false)}
         />
       )}
+      {mostrarModalEditarDonaciones && (() => {
+        const currentStop = paradasDonacionesActivas[0]
+        if (!currentStop) return null
+
+        return (
+          <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+            <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Confirmación de entrega</p>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">¿Qué cantidad vas a entregar?</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Confirma o modifica las cantidades propuestas por el algoritmo antes de generar el código QR.
+                </p>
+              </div>
+
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                {currentStop.donaciones.map((don) => {
+                  const val = cantidadesEditablesDonacion[don.id] ?? String(don.cantidad)
+                  return (
+                    <div key={don.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 flex flex-col gap-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{don.producto.nombre}</p>
+                          <p className="text-xs text-slate-400">Puesto: {don.puesto.nombre}</p>
+                        </div>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                          {don.unidad}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold active:scale-95 transition"
+                          onClick={() => {
+                            const currentVal = parseInt(val, 10) || 0
+                            const nextVal = Math.min(10000, Math.max(1, currentVal - 1))
+                            setCantidadesEditablesDonacion((curr) => ({
+                              ...curr,
+                              [don.id]: String(nextVal),
+                            }))
+                          }}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10000"
+                          className="flex-1 h-10 rounded-lg border border-slate-200 bg-white text-center font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          value={val}
+                          onChange={(e) => {
+                            const inputVal = e.target.value
+                            const parsed = parseInt(inputVal, 10)
+                            if (!isNaN(parsed)) {
+                              if (parsed > 10000) {
+                                setCantidadesEditablesDonacion((curr) => ({
+                                  ...curr,
+                                  [don.id]: '10000',
+                                }))
+                              } else {
+                                setCantidadesEditablesDonacion((curr) => ({
+                                  ...curr,
+                                  [don.id]: inputVal,
+                                }))
+                              }
+                            } else {
+                              setCantidadesEditablesDonacion((curr) => ({
+                                ...curr,
+                                [don.id]: inputVal,
+                              }))
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="w-10 h-10 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-bold active:scale-95 transition"
+                          onClick={() => {
+                            const currentVal = parseInt(val, 10) || 0
+                            const nextVal = Math.min(10000, currentVal + 1)
+                            setCantidadesEditablesDonacion((curr) => ({
+                              ...curr,
+                              [don.id]: String(nextVal),
+                            }))
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  className="py-3 font-semibold"
+                  onClick={() => setMostrarModalEditarDonaciones(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  fullWidth
+                  className="py-3 font-bold"
+                  loading={donacionLoading}
+                  onClick={() => {
+                    const updates = currentStop.donaciones.map((don) => {
+                      const inputVal = cantidadesEditablesDonacion[don.id] ?? String(don.cantidad)
+                      const cantNum = parseInt(inputVal, 10) || don.cantidad
+                      return {
+                        id: don.id,
+                        cantidad: Math.min(10000, Math.max(1, cantNum)),
+                        original: don.cantidad,
+                      }
+                    })
+                    void handleConfirmarYGenerarQr(updates, currentStop.donaciones)
+                  }}
+                >
+                  Confirmar y QR
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+      {mostrarModalQrs && (() => {
+        const currentStop = paradasDonacionesActivas[0]
+        if (!currentStop) return null
+
+        const codigos = currentStop.donaciones
+          .map((donacion) => ({
+            donacion,
+            codigo: codigosEntrega[donacion.id] ?? (
+              donacion.entregaCodigo ? createCodigoEntregaPayload(donacion, donacion.entregaCodigo) : ''
+            ),
+          }))
+          .filter((item) => item.codigo)
+
+        return (
+          <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+            <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-cyan-700">Códigos QR Listos</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-950">Códigos QR de Entrega</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Enseña estos códigos QR al responsable del puesto para confirmar la recepción de la donación.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMostrarModalQrs(false)}
+                  className="rounded-lg p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 active:scale-95 transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
+                {codigos.map(({ donacion, codigo }) => (
+                  <div key={donacion.id} className="rounded-lg border border-cyan-100 bg-cyan-50/50 p-4 shadow-sm flex flex-col items-center gap-3">
+                    <QRCodeSVG value={codigo} size={220} level="M" includeMargin />
+                    <div className="text-center w-full">
+                      <p className="text-sm font-bold text-cyan-950">
+                        {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
+                      </p>
+                      <p className="mt-1 text-xs text-cyan-900 leading-relaxed">
+                        Entregar en: <span className="font-semibold text-slate-900">{currentStop.puesto.nombre}</span>
+                      </p>
+                    </div>
+
+                    {/* Real-time quantity modifier directly inside QR viewer */}
+                    <div className="w-full rounded-lg bg-white border border-cyan-100 p-2 flex items-center justify-between mt-1">
+                      <div className="text-left text-[11px] text-cyan-900 leading-tight">
+                        <p className="font-bold">¿Llevas otra cantidad?</p>
+                        <p className="text-[9px] text-slate-400">El QR cambia al instante.</p>
+                      </div>
+                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void handleUpdateDashboardQrQty(donacion.id, -1)
+                          }}
+                          className="h-7 w-7 rounded bg-white text-slate-700 font-bold hover:bg-slate-100 text-xs flex items-center justify-center border border-slate-200 active:scale-95 transition"
+                        >
+                          -
+                        </button>
+                        <span className="px-2 font-bold text-slate-900 text-xs text-center w-12 truncate">
+                          {donacion.cantidad}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            void handleUpdateDashboardQrQty(donacion.id, 1)
+                          }}
+                          className="h-7 w-7 rounded bg-white text-slate-700 font-bold hover:bg-slate-100 text-xs flex items-center justify-center border border-slate-200 active:scale-95 transition"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  fullWidth
+                  className="py-3 font-bold"
+                  onClick={() => setMostrarModalQrs(false)}
+                >
+                  Entendido
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+      {false && (
+        <div>
+          {cantidad} {comentarioDonacion} {vistaDonacion} {donacionLoading ? 'l' : ''} {cantidadError} {selectedNeed ? 's' : ''} {mensajeDonacion} {typeof setDonacionLoading === 'function' ? 'sl' : ''} {estadoLoadingId} {typeof setWizardMode === 'function' ? 'wm' : ''} {donacionesHistorial ? 'h' : ''}
+        </div>
+      )}
     </div>
   )
 }
@@ -3932,10 +3921,12 @@ type ObjetoDonable = {
   cantidadTotal: number
 }
 
+/*
 type SeleccionObjetoDonacion = {
   cantidad: string
   puestoId: string
 }
+*/
 
 type RutaDonacionMultiparada = {
   puestos: PuestoEmergencia[]
@@ -3944,4 +3935,40 @@ type RutaDonacionMultiparada = {
   duracionMin: number
   incidenciasEvitadas: number
   incidenciasCercanas: number
+}
+
+// ── Arrow SVG used in the navigation compass ──
+function FlechaNavegacion({
+  icono,
+  rotacion,
+  grande = false,
+}: {
+  icono: string
+  rotacion: number
+  grande?: boolean
+}) {
+  const size = grande ? 80 : 56
+  if (icono === 'destino') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" className="mx-auto" aria-hidden>
+        <circle cx="40" cy="40" r="28" fill="#16a34a" />
+        <text x="40" y="47" textAnchor="middle" fontSize="24" fill="white">★</text>
+      </svg>
+    )
+  }
+  if (icono === 'rotonda') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" className="mx-auto" aria-hidden>
+        <circle cx="40" cy="40" r="28" stroke="#0891b2" strokeWidth="6" fill="none" />
+        <path d="M54 30 L62 38 L54 46" stroke="#0891b2" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      </svg>
+    )
+  }
+  return (
+    <div className="mx-auto" style={{ transform: `rotate(${rotacion}deg)`, transition: 'transform 0.3s ease', width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 80 80" fill="none" aria-hidden>
+        <path d="M40 8 L58 62 L40 50 L22 62 Z" fill="#0891b2" />
+      </svg>
+    </div>
+  )
 }

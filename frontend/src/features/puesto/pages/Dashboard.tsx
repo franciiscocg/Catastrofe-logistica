@@ -1087,6 +1087,7 @@ export default function PuestoDashboard() {
   const [showHistory, setShowHistory] = useState(false)
   const [showDeliveries, setShowDeliveries] = useState(false)
   const [qrResult, setQrResult] = useState<{ text: string; parsed: QrOperativo | null; ts: number } | null>(null)
+  const [qrCantidadOverride, setQrCantidadOverride] = useState<number | ''>('')
   const [qrConfirmando, setQrConfirmando] = useState(false)
   const [qrError, setQrError] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'DISPONIBLE' | 'NECESARIO'>('todos')
@@ -1232,11 +1233,13 @@ export default function PuestoDashboard() {
     setQrConfirmando(true)
     setQrError('')
     try {
-      await puestoApi.confirmarQr(puesto.id, qrResult.text)
+      const overrideVal = qrCantidadOverride !== '' ? Number(qrCantidadOverride) : undefined
+      await puestoApi.confirmarQr(puesto.id, qrResult.text, overrideVal)
       await qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })
       await qc.invalidateQueries({ queryKey: ['inventario-historial', puesto.id] })
       await qc.invalidateQueries({ queryKey: ['mis-donaciones'] })
       setQrResult(null)
+      setQrCantidadOverride('')
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { error?: string; details?: Array<{ message?: string }> } } }).response?.data
       const detail = data?.details?.[0]?.message
@@ -1245,7 +1248,7 @@ export default function PuestoDashboard() {
     } finally {
       setQrConfirmando(false)
     }
-  }, [puesto?.id, qc, qrResult])
+  }, [puesto?.id, qc, qrResult, qrCantidadOverride])
 
   // Filtrado
   const inventarioAgrupado = agruparInventario(inventario)
@@ -1431,7 +1434,7 @@ export default function PuestoDashboard() {
                     : 'Formato no reconocido'}
               </p>
             </div>
-            <button onClick={() => setQrResult(null)} className="flex-shrink-0 text-slate-400 hover:text-slate-700">x</button>
+             <button onClick={() => { setQrResult(null); setQrCantidadOverride(''); }} className="flex-shrink-0 text-slate-400 hover:text-slate-700">x</button>
           </div>
 
           {qrResult.parsed ? (
@@ -1448,9 +1451,23 @@ export default function PuestoDashboard() {
                       <span className="min-w-0 truncate font-medium">
                         {producto.categoria ? `${CATEGORIA_EMOJI[producto.categoria] ?? ''} ` : ''}{producto.nombre ?? producto.productoId}
                       </span>
-                      <span className="flex-shrink-0 font-semibold">
-                        {formatCantidad(producto.cantidad)} {producto.unidad}
-                      </span>
+                      {qrResult.parsed?.type === 'DONACION_ENTREGA' ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="any"
+                            value={qrCantidadOverride}
+                            onChange={(e) => setQrCantidadOverride(e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-20 rounded border border-gray-300 px-2 py-0.5 text-right font-semibold text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          />
+                          <span className="text-xs font-semibold text-gray-600">{producto.unidad}</span>
+                        </div>
+                      ) : (
+                        <span className="flex-shrink-0 font-semibold">
+                          {formatCantidad(producto.cantidad)} {producto.unidad}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1459,7 +1476,7 @@ export default function PuestoDashboard() {
                 <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{qrError}</p>
               )}
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" onClick={() => setQrResult(null)}>Cancelar</Button>
+                <Button variant="secondary" onClick={() => { setQrResult(null); setQrCantidadOverride(''); }}>Cancelar</Button>
                 <Button loading={qrConfirmando} onClick={() => void handleConfirmarQr()}>
                   Confirmar
                 </Button>
@@ -1477,7 +1494,9 @@ export default function PuestoDashboard() {
       {showQr && (
         <QrScanner
           onResult={(text) => {
-            setQrResult({ text, parsed: parseQrOperativo(text), ts: Date.now() })
+            const parsed = parseQrOperativo(text)
+            setQrResult({ text, parsed, ts: Date.now() })
+            setQrCantidadOverride(parsed?.type === 'DONACION_ENTREGA' ? parsed.cantidad : '')
             setQrError('')
             setShowQr(false)
           }}
