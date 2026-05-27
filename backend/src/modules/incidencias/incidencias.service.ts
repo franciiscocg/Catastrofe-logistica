@@ -5,6 +5,7 @@ import type {
   CreateComentarioIncidenciaInput,
   ListIncidenciasQuery,
   UpdateEstadoInput,
+  UpdateIncidenciaInput,
 } from './incidencias.schema.js'
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -162,10 +163,130 @@ export async function updateIncidenciaEstado(id: string, input: UpdateEstadoInpu
     throw error
   }
 
-  return prisma.incidenciaVia.update({
+  return prisma.$transaction(async (tx) => {
+    const incidencia = await tx.incidenciaVia.update({
+      where: { id },
+      data: { estado: input.estado },
+      select: incidenciaOperationalSelect,
+    })
+
+    if (input.estado === 'TRANSITABLE') {
+      await tx.asignacionIncidencia.updateMany({
+        where: { incidenciaId: id, estado: 'ACTIVA' },
+        data: { estado: 'FINALIZADA', endedAt: new Date() },
+      })
+    }
+
+    return incidencia
+  })
+}
+
+export async function updateIncidenciaByCoordinator(
+  id: string,
+  input: UpdateIncidenciaInput,
+  coordinadorId: string,
+) {
+  const anterior = await prisma.incidenciaVia.findUnique({
     where: { id },
-    data: { estado: input.estado },
     select: incidenciaOperationalSelect,
+  })
+  if (!anterior) throw notFound('Incidencia no encontrada')
+
+  return prisma.$transaction(async (tx) => {
+    const incidencia = await tx.incidenciaVia.update({
+      where: { id },
+      data: input,
+      select: incidenciaOperationalSelect,
+    })
+    if (input.estado === 'TRANSITABLE') {
+      await tx.asignacionIncidencia.updateMany({
+        where: { incidenciaId: id, estado: 'ACTIVA' },
+        data: { estado: 'FINALIZADA', endedAt: new Date() },
+      })
+    }
+    await tx.auditLog.create({
+      data: {
+        usuarioId: coordinadorId,
+        accion: 'EDITAR_INCIDENCIA',
+        entidad: 'INCIDENCIA',
+        entidadId: id,
+        datos: { anterior, cambios: input },
+      },
+    })
+    return incidencia
+  })
+}
+
+export async function deleteIncidencia(id: string, coordinadorId: string) {
+  const incidencia = await prisma.incidenciaVia.findUnique({
+    where: { id },
+    select: incidenciaOperationalSelect,
+  })
+  if (!incidencia) throw notFound('Incidencia no encontrada')
+
+  await prisma.$transaction(async (tx) => {
+    await tx.asignacionIncidencia.deleteMany({ where: { incidenciaId: id } })
+    await tx.comentarioIncidenciaVia.deleteMany({ where: { incidenciaId: id } })
+    await tx.incidenciaVia.delete({ where: { id } })
+    await tx.auditLog.create({
+      data: {
+        usuarioId: coordinadorId,
+        accion: 'ELIMINAR_INCIDENCIA',
+        entidad: 'INCIDENCIA',
+        entidadId: id,
+        datos: incidencia,
+      },
+    })
+  })
+}
+
+export async function listVoluntariosIncidenciaByCoordinator(incidenciaId: string) {
+  const existe = await prisma.incidenciaVia.findUnique({ where: { id: incidenciaId }, select: { id: true } })
+  if (!existe) throw notFound('Incidencia no encontrada')
+
+  return prisma.asignacionIncidencia.findMany({
+    where: { incidenciaId, estado: 'ACTIVA' },
+    orderBy: { startedAt: 'asc' },
+    select: {
+      id: true,
+      startedAt: true,
+      voluntario: {
+        select: {
+          usuario: {
+            select: { nombre: true, apellidos: true, email: true, telefono: true },
+          },
+        },
+      },
+    },
+  })
+}
+
+export async function removeVoluntarioIncidenciaByCoordinator(
+  incidenciaId: string,
+  asignacionId: string,
+  coordinadorId: string,
+) {
+  const asignacion = await prisma.asignacionIncidencia.findFirst({
+    where: { id: asignacionId, incidenciaId, estado: 'ACTIVA' },
+    select: { id: true, voluntarioId: true },
+  })
+  if (!asignacion) throw notFound('Voluntario activo no encontrado en esta incidencia')
+
+  return prisma.$transaction(async (tx) => {
+    const retirada = await tx.asignacionIncidencia.update({
+      where: { id: asignacionId },
+      data: { estado: 'CANCELADA', endedAt: new Date() },
+    })
+    await tx.auditLog.create({
+      data: {
+        usuarioId: coordinadorId,
+        accion: 'RETIRAR_VOLUNTARIO_INCIDENCIA',
+        entidad: 'INCIDENCIA',
+        entidadId: incidenciaId,
+        datos: { asignacionId, voluntarioId: asignacion.voluntarioId },
+      },
+    })
+    return retirada
   })
 }
 
@@ -293,6 +414,13 @@ export async function createComentarioIncidencia(
       data: { estado: input.estado },
       select: incidenciaOperationalSelect,
     })
+
+    if (input.estado === 'TRANSITABLE') {
+      await tx.asignacionIncidencia.updateMany({
+        where: { incidenciaId, estado: 'ACTIVA' },
+        data: { estado: 'FINALIZADA', endedAt: new Date() },
+      })
+    }
 
     return { comentario, incidencia }
   })

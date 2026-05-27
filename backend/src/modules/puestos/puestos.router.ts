@@ -24,6 +24,12 @@ type SolicitudPuestoInput = {
 type PuestoUpdateInput = Partial<SolicitudPuestoInput> & {
   activo?: boolean
   capacidadTrabajo?: number
+  estadoSolicitud?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
+}
+
+type PuestoCoordinadorCreateInput = SolicitudPuestoInput & {
+  adminEmail: string
+  capacidadTrabajo?: number
 }
 
 function badRequest(message: string) {
@@ -158,6 +164,12 @@ function formatPuestoCoordinador(puesto: {
   const voluntariosActivos = puesto._count.asignacionesVoluntarios
   const solicitudesPendientes = puesto._count.solicitudesParticipacion
   const necesidades = puesto._count.inventario
+  const necesitaVoluntarios = puesto.activo
+    && puesto.estadoSolicitud === 'APROBADO'
+    && voluntariosActivos < puesto.capacidadTrabajo
+  const necesitaRecursos = puesto.activo
+    && puesto.estadoSolicitud === 'APROBADO'
+    && necesidades > 0
   const estadoOperativo = !puesto.activo
     ? 'CERRADO'
     : voluntariosActivos >= puesto.capacidadTrabajo
@@ -185,6 +197,8 @@ function formatPuestoCoordinador(puesto: {
     personasTotales: responsables + voluntariosActivos,
     solicitudesPendientes,
     necesidades,
+    necesitaVoluntarios,
+    necesitaRecursos,
     estadoOperativo,
     createdAt: puesto.createdAt,
     updatedAt: puesto.updatedAt,
@@ -239,6 +253,7 @@ function validatePuestoUpdate(body: PuestoUpdateInput) {
     longitud?: number
     activo?: boolean
     capacidadTrabajo?: number
+    estadoSolicitud?: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
   } = {}
 
   if (body.nombre !== undefined) {
@@ -277,6 +292,12 @@ function validatePuestoUpdate(body: PuestoUpdateInput) {
       throw badRequest('La capacidad debe ser un numero entero entre 1 y 500')
     }
     data.capacidadTrabajo = body.capacidadTrabajo
+  }
+  if (body.estadoSolicitud !== undefined) {
+    if (!['PENDIENTE', 'APROBADO', 'RECHAZADO'].includes(body.estadoSolicitud)) {
+      throw badRequest('El estado del puesto no es valido')
+    }
+    data.estadoSolicitud = body.estadoSolicitud
   }
 
   if (Object.keys(data).length === 0) throw badRequest('No hay cambios para guardar')
@@ -517,6 +538,55 @@ export async function puestosRouter(app: FastifyInstance) {
     return reply.send({ puestos: puestos.map(formatPuestoCoordinador) })
   })
 
+  app.post('/coordinador', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const coordinadorId = (req.user as { id: string }).id
+    const body = req.body as Partial<PuestoCoordinadorCreateInput>
+    const input = validateSolicitudPuesto(body)
+    if (!body.adminEmail?.trim()) throw badRequest('El email del responsable es obligatorio')
+    const capacidadTrabajo = body.capacidadTrabajo ?? 6
+    if (!Number.isInteger(capacidadTrabajo) || capacidadTrabajo < 1 || capacidadTrabajo > 500) {
+      throw badRequest('La capacidad debe ser un numero entero entre 1 y 500')
+    }
+
+    const puestoId = await prisma.$transaction(async (tx) => {
+      const admin = await tx.usuario.findUnique({ where: { email: body.adminEmail!.trim().toLowerCase() } })
+      if (!admin) throw notFound('No existe una cuenta con ese email para asignar el puesto')
+
+      const puesto = await tx.puestoEmergencia.create({
+        data: {
+          ...input,
+          capacidadTrabajo,
+          adminId: admin.id,
+          estadoSolicitud: 'APROBADO',
+          activo: true,
+        },
+        select: { id: true },
+      })
+      if (!admin.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
+        await tx.usuario.update({
+          where: { id: admin.id },
+          data: { roles: [...admin.roles, RolUsuario.PUESTO_EMERGENCIA] },
+        })
+      }
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'CREAR_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: puesto.id,
+          datos: { adminId: admin.id, adminEmail: admin.email, nombre: input.nombre },
+        },
+      })
+      return puesto.id
+    })
+
+    const puesto = await findPuestoCoordinador(puestoId)
+    emitRealtime('puesto:updated', { puestoId })
+    return reply.status(201).send({ puesto })
+  })
+
   app.patch('/coordinador/:id', {
     preHandler: [requireAuth, requireRole('COORDINADOR')],
   }, async (req, reply) => {
@@ -625,6 +695,12 @@ export async function puestosRouter(app: FastifyInstance) {
             },
           },
         },
+        trabajadores: {
+          orderBy: { addedAt: 'asc' },
+          include: {
+            usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } },
+          },
+        },
         solicitudesParticipacion: {
           orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
           include: {
@@ -668,10 +744,112 @@ export async function puestosRouter(app: FastifyInstance) {
       puesto: formatPuestoCoordinador(puesto),
       inventario: puesto.inventario,
       participantes: puesto.asignacionesVoluntarios.map(formatParticipante),
+      responsables: puesto.trabajadores,
       solicitudesParticipacion: puesto.solicitudesParticipacion,
       donaciones: puesto.donaciones,
       actividad,
     })
+  })
+
+  app.post('/coordinador/:id/responsables', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { email } = (req.body ?? {}) as { email?: string }
+    const coordinadorId = (req.user as { id: string }).id
+    if (!email?.trim()) throw badRequest('El email es obligatorio')
+
+    const trabajador = await prisma.$transaction(async (tx) => {
+      const puesto = await tx.puestoEmergencia.findUnique({ where: { id }, select: { adminId: true } })
+      if (!puesto) throw notFound('Puesto no encontrado')
+      const usuario = await tx.usuario.findUnique({ where: { email: email.trim().toLowerCase() } })
+      if (!usuario) throw notFound('Usuario no encontrado')
+      if (usuario.id === puesto.adminId) throw badRequest('El usuario ya es responsable principal del puesto')
+      if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
+        await tx.usuario.update({
+          where: { id: usuario.id },
+          data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
+        })
+      }
+      const asignado = await tx.puestoTrabajador.upsert({
+        where: { puestoId_usuarioId: { puestoId: id, usuarioId: usuario.id } },
+        update: {},
+        create: { puestoId: id, usuarioId: usuario.id, addedBy: coordinadorId },
+        include: { usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } } },
+      })
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'ASIGNAR_RESPONSABLE_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: id,
+          datos: { usuarioId: usuario.id, email: usuario.email },
+        },
+      })
+      return asignado
+    })
+
+    emitRealtime('puesto:updated', { puestoId: id })
+    return reply.status(201).send({ trabajador })
+  })
+
+  app.post('/coordinador/:id/voluntarios', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { email } = (req.body ?? {}) as { email?: string }
+    const coordinadorId = (req.user as { id: string }).id
+    if (!email?.trim()) throw badRequest('El email es obligatorio')
+
+    const asignacion = await prisma.$transaction(async (tx) => {
+      const puesto = await tx.puestoEmergencia.findUnique({
+        where: { id },
+        select: { id: true, activo: true, capacidadTrabajo: true },
+      })
+      if (!puesto || !puesto.activo) throw notFound('Puesto activo no encontrado')
+      const usuario = await tx.usuario.findUnique({ where: { email: email.trim().toLowerCase() } })
+      if (!usuario) throw notFound('Usuario no encontrado')
+      if (!usuario.roles.includes(RolUsuario.VOLUNTARIO)) {
+        await tx.usuario.update({
+          where: { id: usuario.id },
+          data: { roles: [...usuario.roles, RolUsuario.VOLUNTARIO] },
+        })
+      }
+      const voluntario = await tx.voluntario.upsert({
+        where: { usuarioId: usuario.id },
+        update: {},
+        create: { usuarioId: usuario.id },
+      })
+      const activa = await tx.asignacionPuesto.findFirst({ where: { voluntarioId: voluntario.id, estado: 'ACTIVA' } })
+      if (activa?.puestoId === id) throw badRequest('El voluntario ya esta asignado a este puesto')
+      const ocupacion = await tx.asignacionPuesto.count({ where: { puestoId: id, estado: 'ACTIVA' } })
+      if (ocupacion >= puesto.capacidadTrabajo) throw badRequest('Este puesto esta lleno ahora mismo')
+      if (activa) {
+        await tx.asignacionPuesto.update({
+          where: { id: activa.id },
+          data: { estado: 'FINALIZADA', endedAt: new Date() },
+        })
+      }
+      const asignada = await tx.asignacionPuesto.create({
+        data: { voluntarioId: voluntario.id, puestoId: id },
+        include: {
+          voluntario: { include: { usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } } } },
+        },
+      })
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'ASIGNAR_VOLUNTARIO_PUESTO',
+          entidad: 'PUESTO',
+          entidadId: id,
+          datos: { usuarioId: usuario.id, puestoAnteriorId: activa?.puestoId ?? null },
+        },
+      })
+      return asignada
+    })
+
+    emitRealtime('puesto:updated', { puestoId: id })
+    return reply.status(201).send({ asignacion })
   })
 
   app.post('/coordinador/participaciones/:solicitudId/aceptar', {

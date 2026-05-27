@@ -204,6 +204,8 @@ describe('GET /coordinador — listado de puestos para coordinador', () => {
     const response = await app.inject({ method: 'GET', url: '/api/puestos/coordinador' })
 
     expect(response.json().puestos[0].estadoOperativo).toBe('SIN_RECURSOS')
+    expect(response.json().puestos[0].necesitaVoluntarios).toBe(true)
+    expect(response.json().puestos[0].necesitaRecursos).toBe(true)
     await app.close()
   })
 

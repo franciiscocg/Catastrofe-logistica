@@ -78,11 +78,10 @@ export default function AppShell() {
             >
               Perfil
             </button>
-            {selectedRole !== 'coordinador' && (
-              <button
-                onClick={handleChangeRole}
-                className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${accent.button}`}
-              >
+            <button
+              onClick={handleChangeRole}
+              className={`inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${accent.button}`}
+            >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="h-3.5 w-3.5"
@@ -98,9 +97,8 @@ export default function AppShell() {
                   <path d="M7 22l-4-4 4-4" />
                   <path d="M21 13v2a4 4 0 0 1-4 4H3" />
                 </svg>
-                Cambiar rol
-              </button>
-            )}
+              Cambiar rol
+            </button>
           </div>
         </div>
       </header>
