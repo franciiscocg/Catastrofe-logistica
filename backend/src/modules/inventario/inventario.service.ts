@@ -155,6 +155,14 @@ export async function listInventario(puestoId: string) {
   })
 }
 
+export async function listAllInventario() {
+  return prisma.inventario.findMany({
+    where: { puesto: { activo: true } },
+    include: { producto: true },
+    orderBy: [{ tipo: 'asc' }, { producto: { nombre: 'asc' } }],
+  })
+}
+
 export async function listInventarioHistorial(puestoId: string, userId: string) {
   await assertPuestoResponsableAccess(puestoId, userId)
 

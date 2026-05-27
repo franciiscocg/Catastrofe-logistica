@@ -1893,20 +1893,30 @@ export default function CiudadanoDashboard() {
   const { data: inventarioApiData } = useQuery({
     queryKey: ['inventario-ciudadano-busqueda', puestoIds],
     queryFn: async () => {
-      const entries = await Promise.all(
-        puestosBase.map(async (puesto) => {
-          try {
-            const response = await apiClient.get<{ inventario: ApiInventarioItem[] }>(
-              `/api/inventario/puesto/${puesto.id}`,
-            )
-            return [puesto.id, normalizeApiInventario(response.data.inventario)] as const
-          } catch {
-            return [puesto.id, { disponible: [], necesario: [] }] as const
-          }
-        }),
-      )
+      try {
+        const response = await apiClient.get<{ inventario: (ApiInventarioItem & { puestoId: string })[] }>('/api/inventario')
+        const allItems = response.data.inventario ?? []
 
-      return Object.fromEntries(entries) as InventarioPorPuesto
+        const grouped: Record<string, ApiInventarioItem[]> = {}
+        puestosBase.forEach((p) => {
+          grouped[p.id] = []
+        })
+        allItems.forEach((item) => {
+          if (grouped[item.puestoId] !== undefined) {
+            grouped[item.puestoId].push(item)
+          } else {
+            grouped[item.puestoId] = [item]
+          }
+        })
+
+        const entries = puestosBase.map((puesto) => {
+          const items = grouped[puesto.id] ?? []
+          return [puesto.id, normalizeApiInventario(items)] as const
+        })
+        return Object.fromEntries(entries) as InventarioPorPuesto
+      } catch {
+        return {} as InventarioPorPuesto
+      }
     },
     enabled: puestosBase.length > 0,
     staleTime: 1000 * 30,

@@ -2,9 +2,14 @@ import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../../middleware/auth.middleware.js'
 import { emitInventoryEvents, emitRealtime } from '../../lib/realtime.js'
 import { addItemSchema, confirmarQrSchema, updateCantidadSchema } from './inventario.schema.js'
-import { listInventario, listInventarioHistorial, addItem, updateCantidad, deleteItem, confirmarQrInventario, getEstadoSolicitudQr } from './inventario.service.js'
+import { listInventario, listAllInventario, listInventarioHistorial, addItem, updateCantidad, deleteItem, confirmarQrInventario, getEstadoSolicitudQr } from './inventario.service.js'
 
 export async function inventarioRouter(app: FastifyInstance) {
+  app.get('/', async (_req, reply) => {
+    const inventario = await listAllInventario()
+    return reply.send({ inventario })
+  })
+
   app.get('/puesto/:puestoId', async (req, reply) => {
     const { puestoId } = req.params as { puestoId: string }
     const inventario = await listInventario(puestoId)

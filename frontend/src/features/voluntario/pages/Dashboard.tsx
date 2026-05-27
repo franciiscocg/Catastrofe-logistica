@@ -736,6 +736,7 @@ export default function VoluntarioDashboard() {
   const [cantidadError, setCantidadError] = useState('')
   const [codigosEntrega, setCodigosEntrega] = useState<Record<string, string>>({})
   const [mostrarModalEditarDonaciones, setMostrarModalEditarDonaciones] = useState(false)
+  const [mostrarConfirmarEntregaManual, setMostrarConfirmarEntregaManual] = useState(false)
   const [mostrarModalQrs, setMostrarModalQrs] = useState(false)
   const [cantidadesEditablesDonacion, setCantidadesEditablesDonacion] = useState<Record<string, string>>({})
   const [iniciarGuiadoActivo, setIniciarGuiadoActivo] = useState(false)
@@ -868,12 +869,20 @@ export default function VoluntarioDashboard() {
           ? [asignacionActiva.puesto, ...puestosBase]
           : puestosBase
 
-        const inventarios = await Promise.all(
-          loadedPuestos.map(async (puesto) => {
-            const { data } = await apiClient.get(`/api/inventario/puesto/${puesto.id}`)
-            return [puesto.id, data.inventario ?? []] as const
-          }),
-        )
+        const { data: bulkInventarioData } = await apiClient.get('/api/inventario').catch(() => ({ data: { inventario: [] } }))
+        const inventarioItems = bulkInventarioData.inventario ?? []
+
+        const inventarioPorPuestoMap: Record<string, ItemInventario[]> = {}
+        loadedPuestos.forEach((puesto) => {
+          inventarioPorPuestoMap[puesto.id] = []
+        })
+        inventarioItems.forEach((item: any) => {
+          if (inventarioPorPuestoMap[item.puestoId] !== undefined) {
+            inventarioPorPuestoMap[item.puestoId].push(item)
+          } else {
+            inventarioPorPuestoMap[item.puestoId] = [item]
+          }
+        })
 
         if (!cancelled) {
           setPuestos(loadedPuestos)
@@ -899,7 +908,7 @@ export default function VoluntarioDashboard() {
               nombre: getIncidenciaTitulo(asignacionIncidenciaActiva.incidencia),
             })
           }
-          setInventarioPorPuesto(Object.fromEntries(inventarios))
+          setInventarioPorPuesto(inventarioPorPuestoMap)
           setIncidencias(incidenciasData.incidencias ?? [])
           setNecesidadesApi(apiNecesidades.map((necesidad: NecesidadDonacionApi) => ({
             puesto: necesidad.puesto,
@@ -2955,35 +2964,7 @@ export default function VoluntarioDashboard() {
                                 variant="primary"
                                 fullWidth
                                 className="py-3 font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2 border-0"
-                                onClick={async () => {
-                                  if (window.confirm('¿Seguro que deseas marcar todos los productos de esta parada como entregados manualmente?')) {
-                                    setDonacionLoading(true)
-                                    try {
-                                      // Stop active route guidance if any
-                                      setIniciarGuiadoActivo(false)
-                                      setStepsNavegacion([])
-                                      setStepActualIdx(0)
-                                      if (typeof speechSynthesis !== 'undefined') {
-                                        speechSynthesis.cancel()
-                                      }
-
-                                      await handleActualizarEstadoDonaciones(currentStop.donaciones, 'ENTREGADA')
-                                      setRutaDonacionesActivas(null)
-                                      setCodigosEntrega((current) => {
-                                        const next = { ...current }
-                                        currentStop.donaciones.forEach((d) => delete next[d.id])
-                                        return next
-                                      })
-                                      setForzarNuevoFlujoDonacion(false)
-                                      setRealtimeRefresh((current) => current + 1)
-                                      setMensajeDonacion('Donación marcada como entregada correctamente.')
-                                    } catch (err) {
-                                      setErrorDonacion('No se pudieron entregar las donaciones manualmente.')
-                                    } finally {
-                                      setDonacionLoading(false)
-                                    }
-                                  }
-                                }}
+                                onClick={() => setMostrarConfirmarEntregaManual(true)}
                               >
                                 ✔️ Ya he entregado el producto
                               </Button>
@@ -3676,6 +3657,85 @@ export default function VoluntarioDashboard() {
           onClose={() => setShowPuestoQr(false)}
         />
       )}
+      {mostrarConfirmarEntregaManual && (() => {
+        const currentStop = paradasDonacionesActivas[0]
+        if (!currentStop) return null
+
+        return (
+          <div className="fixed inset-0 z-[1000] flex items-end bg-slate-950/40 px-4 py-4 sm:items-center sm:justify-center">
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Confirmación Manual</p>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">Entrega Manual de Productos</h2>
+                <p className="mt-2 text-sm text-slate-500 font-medium">
+                  ¿Seguro que deseas marcar todos los productos de esta parada como entregados manualmente?
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-3 space-y-2">
+                <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">Productos a entregar:</p>
+                <div className="space-y-1">
+                  {currentStop.donaciones.map((don) => (
+                    <div key={don.id} className="flex justify-between items-center text-xs text-slate-700">
+                      <span>• {don.producto.nombre}</span>
+                      <span className="font-semibold">{don.cantidad} {don.unidad}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  fullWidth
+                  onClick={() => setMostrarConfirmarEntregaManual(false)}
+                  disabled={donacionLoading}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  fullWidth
+                  className="bg-emerald-600 hover:bg-emerald-700 border-0 text-white font-semibold"
+                  loading={donacionLoading}
+                  onClick={async () => {
+                    setDonacionLoading(true)
+                    try {
+                      // Stop active route guidance if any
+                      setIniciarGuiadoActivo(false)
+                      setStepsNavegacion([])
+                      setStepActualIdx(0)
+                      if (typeof speechSynthesis !== 'undefined') {
+                        speechSynthesis.cancel()
+                      }
+
+                      await handleActualizarEstadoDonaciones(currentStop.donaciones, 'ENTREGADA')
+                      setRutaDonacionesActivas(null)
+                      setCodigosEntrega((current) => {
+                        const next = { ...current }
+                        currentStop.donaciones.forEach((d) => delete next[d.id])
+                        return next
+                      })
+                      setForzarNuevoFlujoDonacion(false)
+                      setRealtimeRefresh((current) => current + 1)
+                      setMensajeDonacion('Donación marcada como entregada correctamente.')
+                    } catch (err) {
+                      setErrorDonacion('No se pudieron entregar las donaciones manualmente.')
+                    } finally {
+                      setDonacionLoading(false)
+                      setMostrarConfirmarEntregaManual(false)
+                    }
+                  }}
+                >
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
       {mostrarModalEditarDonaciones && (() => {
         const currentStop = paradasDonacionesActivas[0]
         if (!currentStop) return null
