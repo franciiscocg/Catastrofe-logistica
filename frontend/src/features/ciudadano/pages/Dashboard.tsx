@@ -80,7 +80,6 @@ type ProductoOption = {
   total: number
 }
 type RadioBusquedaProductos = 2 | 5 | 10 | 'todos'
-type OrdenProductos = 'relevancia' | 'cantidad' | 'nombre'
 
 type InventarioPorPuesto = Record<string, { disponible: ItemInventario[]; necesario: ItemInventario[] }>
 type ReverseGeocodeResponse = {
@@ -443,13 +442,11 @@ function SelectorProductosSheet({
   productosRecomendados,
   productoOptions,
   textoBusqueda,
-  radioBusqueda,
   userPosition,
   onTextoBusquedaChange,
   onAgregarProducto,
   onQuitarProducto,
   onLimpiarProductos,
-  onRadioBusquedaChange,
   onVerRutas,
   onClose,
 }: {
@@ -457,19 +454,15 @@ function SelectorProductosSheet({
   productosRecomendados: ProductoOption[]
   productoOptions: ProductoOption[]
   textoBusqueda: string
-  radioBusqueda: RadioBusquedaProductos
   userPosition: [number, number] | null
   onTextoBusquedaChange: (texto: string) => void
   onAgregarProducto: (nombre: string) => void
   onQuitarProducto: (nombre: string) => void
   onLimpiarProductos: () => void
-  onRadioBusquedaChange: (radio: RadioBusquedaProductos) => void
   onVerRutas: () => void
   onClose: () => void
 }) {
-  const [inputFocused, setInputFocused] = useState(false)
   const [categoriaActiva, setCategoriaActiva] = useState<string>('Todas')
-  const [ordenProductos, setOrdenProductos] = useState<OrdenProductos>('relevancia')
 
   const textoBusquedaNorm = textoBusqueda.trim().toLocaleLowerCase('es')
   const sugerenciasBase = textoBusquedaNorm
@@ -483,336 +476,244 @@ function SelectorProductosSheet({
     : sugerenciasBase.filter((o) => o.categoria === categoriaActiva)
   const recomendadosSet = new Set(productosRecomendados.map((p) => p.nombre))
   const sugerencias = [...sugerenciasFiltradas].sort((a, b) => {
-    if (ordenProductos === 'cantidad') return b.total - a.total || a.nombre.localeCompare(b.nombre, 'es')
-    if (ordenProductos === 'nombre') return a.nombre.localeCompare(b.nombre, 'es')
     const scoreA = recomendadosSet.has(a.nombre) ? 1 : 0
     const scoreB = recomendadosSet.has(b.nombre) ? 1 : 0
     return scoreB - scoreA || b.total - a.total || a.nombre.localeCompare(b.nombre, 'es')
   })
-  const sugerenciasVisibles = sugerencias.slice(0, 8)
+  const sugerenciasVisibles = sugerencias.slice(0, 12)
   const categoriasDisponibles = Array.from(new Set(productoOptions.map((o) => o.categoria))).slice(0, 7)
   const productosEnCatalogo = productoOptions.length
   const unidadesTotales = productoOptions.reduce((acc, item) => acc + item.total, 0)
   const puedeVerRutas = productosSeleccionados.length > 0
-  const radios: Array<{ value: RadioBusquedaProductos; label: string }> = [
-    { value: 2, label: '2 km' },
-    { value: 5, label: '5 km' },
-    { value: 10, label: '10 km' },
-    { value: 'todos', label: 'Todos' },
-  ]
-  const ordenes: Array<{ value: OrdenProductos; label: string }> = [
-    { value: 'relevancia', label: 'Relevancia' },
-    { value: 'cantidad', label: 'Mas cantidad' },
-    { value: 'nombre', label: 'A-Z' },
-  ]
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-slate-50">
-      <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 flex items-center justify-between bg-white">
-        <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Busqueda inteligente</p>
-          <p className="font-semibold text-gray-900">Buscar productos</p>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-50">
+      <div className="flex-shrink-0 border-b border-slate-200 bg-white px-4 py-3">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Ciudadano</p>
+            <h1 className="truncate text-lg font-semibold text-slate-950">Buscar productos</h1>
+          </div>
+          <div className="hidden grid-cols-3 gap-2 text-center sm:grid">
+            <div className="rounded-lg border border-slate-200 px-3 py-1.5">
+              <p className="text-sm font-semibold text-slate-950">{productosEnCatalogo}</p>
+              <p className="text-[11px] text-slate-500">productos</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 px-3 py-1.5">
+              <p className="text-sm font-semibold text-slate-950">{categoriasDisponibles.length}</p>
+              <p className="text-[11px] text-slate-500">categorias</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 px-3 py-1.5">
+              <p className="text-sm font-semibold text-slate-950">{Math.round(unidadesTotales)}</p>
+              <p className="text-[11px] text-slate-500">unidades</p>
+            </div>
+          </div>
         <button
           type="button"
           onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50"
           aria-label="Cerrar busqueda"
         >
           x
         </button>
+        </div>
       </div>
 
-      <div className="mx-auto w-full max-w-5xl overflow-y-auto flex-1 px-4 pb-5 pt-4 space-y-4">
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-gray-950">Que necesitas recoger?</h2>
-              <p className="mt-0.5 text-xs text-gray-500">Selecciona uno o varios productos y calcularemos la mejor combinacion de puestos.</p>
-            </div>
-            <div className="rounded-xl bg-slate-900 px-2.5 py-1.5 text-right text-white">
-              <p className="text-sm font-semibold leading-none">{productosSeleccionados.length}</p>
-              <p className="mt-0.5 text-[10px] uppercase tracking-wide text-slate-300">lista</p>
-            </div>
-          </div>
-
-          <div className="relative mb-3">
-            <label className="sr-only">Buscar producto o categoria</label>
-            <input
-              type="search"
-              value={textoBusqueda}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setTimeout(() => setInputFocused(false), 150)}
-              onChange={(e) => onTextoBusquedaChange(e.target.value)}
-              placeholder="Buscar agua, mantas, medicamentos..."
-              autoComplete="off"
-              className="h-12 w-full rounded-xl border border-gray-300 bg-white px-4 pr-24 text-sm text-gray-900 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-              {sugerencias.length} items
-            </span>
-            {inputFocused && sugerencias.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl">
-                {sugerenciasVisibles.map((item) => (
-                  <button
-                    key={item.nombre}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      if (!productosSeleccionados.includes(item.nombre)) onAgregarProducto(item.nombre)
-                      setInputFocused(false)
-                    }}
-                    disabled={productosSeleccionados.includes(item.nombre)}
-                    className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm transition-colors ${
-                      productosSeleccionados.includes(item.nombre)
-                        ? 'bg-gray-50 text-gray-400 cursor-default'
-                        : 'hover:bg-slate-50 text-gray-800'
-                    }`}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
-                        {item.categoria.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium">{item.nombre}</span>
-                        <span className="block truncate text-xs text-gray-400">{item.categoria}</span>
-                      </span>
-                    </span>
-                    {productosSeleccionados.includes(item.nombre)
-                      ? <span className="text-xs text-emerald-700 font-medium">Anadido</span>
-                      : <span className="ml-3 flex-shrink-0 text-xs text-gray-400">{item.total} {item.unidad}</span>
-                    }
-                  </button>
-                ))}
-                {sugerencias.length > sugerenciasVisibles.length && (
-                  <p className="border-t border-gray-100 px-3.5 py-2 text-xs text-gray-500">
-                    Afina la busqueda para ver menos resultados.
-                  </p>
-                )}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="mx-auto grid w-full max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <main className="min-w-0 space-y-4">
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <div className="relative">
+                <label className="sr-only">Buscar producto o categoria</label>
+                <input
+                  type="search"
+                  value={textoBusqueda}
+                  onChange={(e) => onTextoBusquedaChange(e.target.value)}
+                  placeholder="Buscar agua, mantas, medicamentos..."
+                  autoComplete="off"
+                  className="h-12 w-full rounded-lg border border-slate-300 bg-white px-4 pr-20 text-sm text-slate-950 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                  {sugerencias.length}
+                </span>
               </div>
-            )}
-          </div>
 
-          {productosRecomendados.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Accesos rapidos</p>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {productosRecomendados.map((p) => {
-                  const selected = productosSeleccionados.includes(p.nombre)
-                  return (
-                    <button
-                      key={p.nombre}
-                      type="button"
-                      onClick={() => { if (!selected) onAgregarProducto(p.nombre) }}
-                      disabled={selected}
-                      className={`flex flex-shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-                        selected
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-700">
-                        {p.categoria.slice(0, 1).toUpperCase()}
-                      </span>
-                      {p.nombre}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+            </section>
 
-          <div className="mt-4 grid gap-3 border-t border-gray-100 pt-4 md:grid-cols-2">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Ordenar por</p>
-              <div className="grid grid-cols-3 gap-1 rounded-xl border border-gray-200 bg-slate-50 p-1">
-                {ordenes.map((orden) => (
-                  <button
-                    key={orden.value}
-                    type="button"
-                    onClick={() => setOrdenProductos(orden.value)}
-                    className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
-                      ordenProductos === orden.value
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-gray-500 hover:bg-white/70'
-                    }`}
-                  >
-                    {orden.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Radio de busqueda</p>
-              <div className="grid grid-cols-4 gap-1 rounded-xl border border-gray-200 bg-slate-50 p-1">
-                {radios.map((radio) => (
-                  <button
-                    key={String(radio.value)}
-                    type="button"
-                    onClick={() => onRadioBusquedaChange(radio.value)}
-                    className={`h-9 rounded-lg text-xs font-semibold transition-colors ${
-                      radioBusqueda === radio.value
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-gray-500 hover:bg-white/70'
-                    }`}
-                  >
-                    {radio.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {categoriasDisponibles.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Filtrar categoria</p>
+            <section className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {['Todas', ...categoriasDisponibles].map((categoria) => (
                   <button
                     key={categoria}
                     type="button"
                     onClick={() => setCategoriaActiva(categoria)}
-                    className={`flex-shrink-0 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
+                    className={`flex-shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                       categoriaActiva === categoria
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-gray-200 bg-white text-gray-700 hover:bg-slate-50'
+                        ? 'bg-slate-950 text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
                     {categoria}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-        </section>
+            </section>
 
-        {productosSeleccionados.length > 0 && (
-          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-950">Lista de recogida</h3>
-                <p className="text-xs text-gray-500">{productosSeleccionados.length} producto{productosSeleccionados.length !== 1 ? 's' : ''} seleccionado{productosSeleccionados.length !== 1 ? 's' : ''}</p>
+            <section className="rounded-lg border border-slate-200 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-950">Disponibles</h2>
+                  <p className="text-xs text-slate-500">{sugerencias.length} resultado{sugerencias.length !== 1 ? 's' : ''}</p>
+                </div>
+                {textoBusqueda && (
+                  <button
+                    type="button"
+                    onClick={() => onTextoBusquedaChange('')}
+                    className="rounded-md px-2.5 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                  >
+                    Limpiar
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
-                  Planificable
-                </span>
-                <button
-                  type="button"
-                  onClick={onLimpiarProductos}
-                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
-                >
-                  Limpiar
-                </button>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              {productosSeleccionados.map((nombre) => {
-                const option = productoOptions.find((o) => o.nombre === nombre)
-                const nivel = option ? getNivelDisponibilidad(option.total) : null
-                return (
-                  <div key={nombre} className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
-                        {(option?.categoria ?? nombre).slice(0, 1).toUpperCase()}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900">{nombre}</p>
-                        <p className="truncate text-xs text-gray-500">
-                          {option ? `${option.total} ${option.unidad} disponibles` : 'Producto seleccionado'}
-                        </p>
-                        {nivel && (
-                          <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${nivel.className}`}>
-                            {nivel.label}
+
+              {sugerenciasVisibles.length === 0 ? (
+                <div className="px-4 py-10 text-center">
+                  <p className="text-sm font-semibold text-slate-950">No hay productos disponibles</p>
+                  <p className="mt-1 text-xs text-slate-500">Prueba con otra categoria o un termino mas general.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {sugerenciasVisibles.map((item) => {
+                    const selected = productosSeleccionados.includes(item.nombre)
+                    const nivel = getNivelDisponibilidad(item.total)
+                    return (
+                      <button
+                        key={item.nombre}
+                        type="button"
+                        onClick={() => {
+                          if (selected) onQuitarProducto(item.nombre)
+                          else onAgregarProducto(item.nombre)
+                        }}
+                        className="grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-700">
+                            {item.categoria.slice(0, 1).toUpperCase()}
                           </span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onQuitarProducto(nombre)}
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                      aria-label={`Quitar ${nombre}`}
-                    >
-                      x
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-        )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-950">{item.nombre}</p>
+                            <p className="truncate text-xs text-slate-500">{item.categoria}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 sm:justify-end">
+                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${nivel.className}`}>
+                            {item.total} {item.unidad}
+                          </span>
+                          <span className={`flex h-8 min-w-24 items-center justify-center rounded-md px-3 text-xs font-semibold ${
+                            selected ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-950 text-white'
+                          }`}>
+                            {selected ? 'Anadido' : 'Anadir'}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
-        {!userPosition && productosSeleccionados.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
-            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para ordenar resultados por cercania y calcular rutas reales.</p>
-          </div>
-        )}
+              {sugerencias.length > sugerenciasVisibles.length && (
+                <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+                  Mostrando los primeros {sugerenciasVisibles.length}. Usa la busqueda para afinar.
+                </p>
+              )}
+            </section>
+          </main>
 
-        {productosSeleccionados.length === 0 && productosRecomendados.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
-            <p className="text-sm font-semibold text-gray-900">No hay productos disponibles</p>
-            <p className="mt-1 text-xs text-gray-500">Cuando un puesto publique inventario, aparecera aqui.</p>
-          </div>
-        )}
-
-        {productoOptions.length > 0 && (
-          <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-xl bg-slate-50 px-2 py-3">
-                <p className="text-base font-semibold text-gray-950">{productosEnCatalogo}</p>
-                <p className="text-[11px] text-gray-500">productos</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 px-2 py-3">
-                <p className="text-base font-semibold text-gray-950">{categoriasDisponibles.length}</p>
-                <p className="text-[11px] text-gray-500">categorias</p>
-              </div>
-              <div className="rounded-xl bg-slate-50 px-2 py-3">
-                <p className="text-base font-semibold text-gray-950">{Math.round(unidadesTotales)}</p>
-                <p className="text-[11px] text-gray-500">unidades</p>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {categoriasDisponibles.map((categoria) => (
-                <span key={categoria} className="rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
-                  {categoria}
+          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            <section className="rounded-lg border border-slate-200 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recogida</p>
+                  <h2 className="text-sm font-semibold text-slate-950">Tu lista</h2>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {productosSeleccionados.length}
                 </span>
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
+              </div>
 
-      <div className="mx-auto w-full max-w-5xl flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3">
-        {puedeVerRutas && (
-          <p className="mb-2 text-center text-xs text-gray-500">
-            Radio: {radioBusqueda === 'todos' ? 'todos los puestos' : `${radioBusqueda} km`}
-            {!userPosition && ' · se afinara al activar ubicacion'}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={onVerRutas}
-          disabled={!puedeVerRutas}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none"
-        >
-          {puedeVerRutas
-            ? `Ver mejores opciones (${productosSeleccionados.length})`
-            : 'Selecciona productos para continuar'}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-2 flex h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
-        >
-          Volver
-        </button>
+              {productosSeleccionados.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm font-semibold text-slate-950">Selecciona productos</p>
+                  <p className="mt-1 text-xs text-slate-500">Te mostraremos los puestos que mejor cubren la lista.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 p-3">
+                  {productosSeleccionados.map((nombre) => {
+                    const option = productoOptions.find((o) => o.nombre === nombre)
+                    return (
+                      <div key={nombre} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-950">{nombre}</p>
+                          <p className="truncate text-xs text-slate-500">
+                            {option ? `${option.total} ${option.unidad} disponibles` : 'Producto seleccionado'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onQuitarProducto(nombre)}
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          aria-label={`Quitar ${nombre}`}
+                        >
+                          x
+                        </button>
+                      </div>
+                    )
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={onLimpiarProductos}
+                    className="flex h-9 w-full items-center justify-center rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Vaciar lista
+                  </button>
+                </div>
+              )}
+            </section>
+
+            {!userPosition && productosSeleccionados.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
+                <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para ordenar por cercania y calcular rutas reales.</p>
+              </div>
+            )}
+
+            <section className="rounded-lg border border-slate-200 bg-white p-3">
+              <button
+                type="button"
+                onClick={onVerRutas}
+                disabled={!puedeVerRutas}
+                className="flex h-12 w-full items-center justify-center rounded-lg bg-blue-600 px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
+              >
+                {puedeVerRutas
+                  ? `Ver mejores opciones (${productosSeleccionados.length})`
+                  : 'Selecciona productos'}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-2 flex h-10 w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-6 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Volver
+              </button>
+            </section>
+          </aside>
+        </div>
       </div>
     </div>
   )
 }
+
 function tiempoEstimadoMin(distanciaKm: number, modo: ModoTransporte): number {
   // Road distance is ~1.3x straight-line; speed: driving 25 km/h urban, walking 4.5 km/h
   const velocidad = modo === 'driving' ? 25 : 4.5
@@ -2290,13 +2191,11 @@ export default function CiudadanoDashboard() {
           productosRecomendados={productosRecomendados}
           productoOptions={productoOptions}
           textoBusqueda={textoBusquedaProducto}
-          radioBusqueda={radioBusquedaProductos}
           userPosition={currentUserPosition}
           onTextoBusquedaChange={setTextoBusquedaProducto}
           onAgregarProducto={handleAgregarProducto}
           onQuitarProducto={handleQuitarProducto}
           onLimpiarProductos={handleLimpiarProductos}
-          onRadioBusquedaChange={setRadioBusquedaProductos}
           onVerRutas={handleVerRutasProductos}
           onClose={() => setVista(panelReturnVista)}
         />
