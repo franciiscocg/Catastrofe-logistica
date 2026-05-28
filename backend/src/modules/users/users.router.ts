@@ -144,4 +144,79 @@ export async function usersRouter(app: FastifyInstance) {
 
     return reply.send({ usuario })
   })
+
+  app.delete('/coordinador/:id', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, async (req, reply) => {
+    const coordinadorId = (req.user as { id: string }).id
+    const { id } = req.params as { id: string }
+
+    if (id === coordinadorId) {
+      return reply.status(400).send({ error: 'No puedes eliminar tu propia cuenta de coordinador' })
+    }
+
+    const actual = await prisma.usuario.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        nombre: true,
+        apellidos: true,
+        roles: true,
+        activo: true,
+      },
+    })
+    if (!actual) return reply.status(404).send({ error: 'Usuario no encontrado' })
+
+    if (actual.roles.includes('COORDINADOR')) {
+      const coordinadoresActivos = await prisma.usuario.count({
+        where: { activo: true, roles: { has: 'COORDINADOR' } },
+      })
+      if (coordinadoresActivos <= 1) {
+        return reply.status(400).send({ error: 'Debe quedar al menos un coordinador activo' })
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.updateMany({
+        where: { usuarioId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      })
+
+      await tx.puestoTrabajador.deleteMany({ where: { usuarioId: id } })
+
+      await tx.usuario.update({
+        where: { id },
+        data: {
+          activo: false,
+          email: `usuario-eliminado-${id}@deleted.local`,
+          nombre: 'Usuario',
+          apellidos: 'eliminado',
+          telefono: null,
+          dni: null,
+          roles: ['CIUDADANO'],
+        },
+      })
+
+      await tx.auditLog.create({
+        data: {
+          usuarioId: coordinadorId,
+          accion: 'ELIMINAR_USUARIO',
+          entidad: 'USUARIO',
+          entidadId: id,
+          datos: {
+            anterior: {
+              email: actual.email,
+              nombre: actual.nombre,
+              apellidos: actual.apellidos,
+              roles: actual.roles,
+              activo: actual.activo,
+            },
+          },
+        },
+      })
+    })
+
+    return reply.send({ ok: true })
+  })
 }

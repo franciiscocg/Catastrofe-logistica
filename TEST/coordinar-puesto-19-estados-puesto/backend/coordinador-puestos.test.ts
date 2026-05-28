@@ -166,7 +166,7 @@ describe('GET /coordinador — listado de puestos para coordinador', () => {
     expect(puesto.id).toBe(PUESTO_ID)
     expect(puesto.estadoOperativo).toBeDefined()
     expect(puesto.voluntariosActivos).toBe(2)
-    expect(puesto.responsables).toBe(2) // trabajadores(1) + admin(1)
+    expect(puesto.responsables).toBe(1) // responsable principal
     await app.close()
   })
 

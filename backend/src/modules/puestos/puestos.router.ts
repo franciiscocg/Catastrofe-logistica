@@ -160,7 +160,7 @@ function formatPuestoCoordinador(puesto: {
     inventario: number
   }
 }) {
-  const responsables = puesto._count.trabajadores + 1
+  const responsables = 1
   const voluntariosActivos = puesto._count.asignacionesVoluntarios
   const solicitudesPendientes = puesto._count.solicitudesParticipacion
   const necesidades = puesto._count.inventario
@@ -751,7 +751,7 @@ export async function puestosRouter(app: FastifyInstance) {
     })
   })
 
-  app.post('/coordinador/:id/responsables', {
+  app.patch('/coordinador/:id/responsable', {
     preHandler: [requireAuth, requireRole('COORDINADOR')],
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
@@ -759,38 +759,38 @@ export async function puestosRouter(app: FastifyInstance) {
     const coordinadorId = (req.user as { id: string }).id
     if (!email?.trim()) throw badRequest('El email es obligatorio')
 
-    const trabajador = await prisma.$transaction(async (tx) => {
+    const puestoActualizadoId = await prisma.$transaction(async (tx) => {
       const puesto = await tx.puestoEmergencia.findUnique({ where: { id }, select: { adminId: true } })
       if (!puesto) throw notFound('Puesto no encontrado')
       const usuario = await tx.usuario.findUnique({ where: { email: email.trim().toLowerCase() } })
       if (!usuario) throw notFound('Usuario no encontrado')
-      if (usuario.id === puesto.adminId) throw badRequest('El usuario ya es responsable principal del puesto')
+      if (usuario.id === puesto.adminId) throw badRequest('El usuario ya es responsable del puesto')
       if (!usuario.roles.includes(RolUsuario.PUESTO_EMERGENCIA)) {
         await tx.usuario.update({
           where: { id: usuario.id },
           data: { roles: [...usuario.roles, RolUsuario.PUESTO_EMERGENCIA] },
         })
       }
-      const asignado = await tx.puestoTrabajador.upsert({
-        where: { puestoId_usuarioId: { puestoId: id, usuarioId: usuario.id } },
-        update: {},
-        create: { puestoId: id, usuarioId: usuario.id, addedBy: coordinadorId },
-        include: { usuario: { select: { id: true, nombre: true, apellidos: true, email: true, telefono: true } } },
+      await tx.puestoTrabajador.deleteMany({ where: { puestoId: id, usuarioId: usuario.id } })
+      await tx.puestoEmergencia.update({
+        where: { id },
+        data: { adminId: usuario.id },
       })
       await tx.auditLog.create({
         data: {
           usuarioId: coordinadorId,
-          accion: 'ASIGNAR_RESPONSABLE_PUESTO',
+          accion: 'CAMBIAR_RESPONSABLE_PUESTO',
           entidad: 'PUESTO',
           entidadId: id,
-          datos: { usuarioId: usuario.id, email: usuario.email },
+          datos: { anteriorId: puesto.adminId, nuevoId: usuario.id, email: usuario.email },
         },
       })
-      return asignado
+      return id
     })
 
     emitRealtime('puesto:updated', { puestoId: id })
-    return reply.status(201).send({ trabajador })
+    const puesto = await findPuestoCoordinador(puestoActualizadoId)
+    return reply.send({ puesto })
   })
 
   app.post('/coordinador/:id/voluntarios', {

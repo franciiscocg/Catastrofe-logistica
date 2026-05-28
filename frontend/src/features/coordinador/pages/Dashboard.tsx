@@ -6,7 +6,7 @@ import { apiClient } from '@/lib/api/client'
 
 type SolicitudEstado = 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'
 type PuestoEstado = 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
-type Vista = 'incidencias' | 'usuarios' | 'puestos'
+type Vista = 'resumen' | 'puestos' | 'incidencias' | 'usuarios'
 type FiltroIncidencias = 'todas' | 'cortadas' | 'transitables' | 'sin-voluntarios'
 type FiltroUsuarios = 'todos' | 'CIUDADANO' | 'VOLUNTARIO' | 'PUESTO_EMERGENCIA' | 'COORDINADOR'
 type FiltroPuestos = 'aprobados' | 'pendientes' | 'rechazados'
@@ -60,10 +60,6 @@ interface PuestoDetalle {
     decidedAt?: string | null
     responsable?: { nombre: string; apellidos: string } | null
   }>
-  responsables: Array<{
-    id: string
-    usuario: { nombre: string; apellidos: string; email: string; telefono?: string | null }
-  }>
   donaciones: Array<{
     id: string
     cantidad: number
@@ -108,13 +104,6 @@ interface Incidencia {
   createdAt: string
   updatedAt?: string
   _count: { comentarios: number; asignacionesVoluntarios: number }
-}
-
-interface IncidenciaForm {
-  titulo: string
-  categoria: string
-  descripcion: string
-  estado: Incidencia['estado']
 }
 
 interface VoluntarioIncidencia {
@@ -185,9 +174,29 @@ function parseApiError(err: unknown, fallback: string) {
     ?? fallback
 }
 
+function formatTipoPuesto(tipo: string) {
+  const labels: Record<string, string> = {
+    centro_civico: 'Centro cívico',
+    centro_cívico: 'Centro cívico',
+    pabellon: 'Pabellón',
+    pabellón: 'Pabellón',
+    almacen: 'Almacén',
+    almacén: 'Almacén',
+    colegio: 'Colegio',
+    hospital: 'Hospital',
+  }
+  const normalizado = tipo.trim().toLowerCase()
+  return labels[normalizado]
+    ?? normalizado
+      .split(/[\s_-]+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+}
+
 export default function CoordinadorDashboard() {
   const queryClient = useQueryClient()
-  const [vista, setVista] = useState<Vista>('usuarios')
+  const [vista, setVista] = useState<Vista>('resumen')
   const [busquedaIncidencias, setBusquedaIncidencias] = useState('')
   const [filtroIncidencias, setFiltroIncidencias] = useState<FiltroIncidencias>('todas')
   const [busquedaUsuarios, setBusquedaUsuarios] = useState('')
@@ -205,15 +214,9 @@ export default function CoordinadorDashboard() {
   const [responsableEmail, setResponsableEmail] = useState('')
   const [voluntarioEmail, setVoluntarioEmail] = useState('')
   const [voluntariosIncidenciaId, setVoluntariosIncidenciaId] = useState<string | null>(null)
-  const [incidenciaEditando, setIncidenciaEditando] = useState<Incidencia | null>(null)
-  const [incidenciaForm, setIncidenciaForm] = useState<IncidenciaForm | null>(null)
-  const [incidenciaAEliminar, setIncidenciaAEliminar] = useState<Incidencia | null>(null)
-  const [voluntarioARetirar, setVoluntarioARetirar] = useState<{
-    incidenciaId: string
-    asignacionId: string
-    nombre: string
-  } | null>(null)
   const [usuarioForm, setUsuarioForm] = useState<UsuarioForm | null>(null)
+  const [usuarioAEliminar, setUsuarioAEliminar] = useState<UsuarioGestion | null>(null)
+  const [incidenciaAEliminar, setIncidenciaAEliminar] = useState<Incidencia | null>(null)
 
   const {
     data: puestos = [],
@@ -286,44 +289,6 @@ export default function CoordinadorDashboard() {
         .then((r) => r.data.voluntarios),
   })
 
-  const eliminarIncidencia = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/incidencias/${id}`),
-    onSuccess: () => {
-      setIncidenciaAEliminar(null)
-      queryClient.invalidateQueries({ queryKey: ['incidencias-coordinador'] })
-    },
-    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo eliminar la incidencia')),
-  })
-
-  const guardarIncidencia = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: IncidenciaForm }) =>
-      apiClient.patch(`/api/incidencias/coordinador/${id}`, {
-        titulo: data.titulo.trim() || null,
-        categoria: data.categoria || null,
-        descripcion: data.descripcion.trim() || null,
-        estado: data.estado,
-      }),
-    onSuccess: () => {
-      setActionError('')
-      setIncidenciaEditando(null)
-      setIncidenciaForm(null)
-      queryClient.invalidateQueries({ queryKey: ['incidencias-coordinador'] })
-      queryClient.invalidateQueries({ queryKey: ['voluntarios-incidencia-coordinador'] })
-    },
-    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo editar la incidencia')),
-  })
-
-  const retirarVoluntarioIncidencia = useMutation({
-    mutationFn: ({ incidenciaId, asignacionId }: { incidenciaId: string; asignacionId: string }) =>
-      apiClient.delete(`/api/incidencias/coordinador/${incidenciaId}/voluntarios/${asignacionId}`),
-    onSuccess: () => {
-      setVoluntarioARetirar(null)
-      queryClient.invalidateQueries({ queryKey: ['incidencias-coordinador'] })
-      queryClient.invalidateQueries({ queryKey: ['voluntarios-incidencia-coordinador', voluntariosIncidenciaId] })
-    },
-    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo retirar el voluntario')),
-  })
-
   const gestionarUsuario = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { roles: string[] } }) =>
       apiClient.patch(`/api/users/coordinador/${id}`, data),
@@ -334,15 +299,38 @@ export default function CoordinadorDashboard() {
     onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo actualizar el usuario')),
   })
 
-  const asignarResponsable = useMutation({
+  const eliminarUsuario = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/api/users/coordinador/${id}`),
+    onSuccess: () => {
+      setActionError('')
+      setUsuarioAEliminar(null)
+      setUsuarioForm(null)
+      queryClient.invalidateQueries({ queryKey: ['usuarios-coordinador'] })
+    },
+    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo eliminar el usuario')),
+  })
+
+  const eliminarIncidencia = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/api/incidencias/${id}`),
+    onSuccess: () => {
+      setActionError('')
+      setIncidenciaAEliminar(null)
+      setVoluntariosIncidenciaId(null)
+      queryClient.invalidateQueries({ queryKey: ['incidencias-coordinador'] })
+      queryClient.invalidateQueries({ queryKey: ['voluntarios-incidencia-coordinador'] })
+    },
+    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo eliminar la incidencia')),
+  })
+
+  const cambiarResponsable = useMutation({
     mutationFn: ({ id, email }: { id: string; email: string }) =>
-      apiClient.post(`/api/puestos/coordinador/${id}/responsables`, { email }),
+      apiClient.patch(`/api/puestos/coordinador/${id}/responsable`, { email }),
     onSuccess: () => {
       setResponsableEmail('')
       invalidateGestion()
       queryClient.invalidateQueries({ queryKey: ['puesto-detalle-coordinador', detalleId] })
     },
-    onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo asignar el responsable')),
+    onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo cambiar el responsable')),
   })
 
   const asignarVoluntario = useMutation({
@@ -417,6 +405,7 @@ export default function CoordinadorDashboard() {
         || puesto.nombre.toLowerCase().includes(term)
         || puesto.direccion.toLowerCase().includes(term)
         || puesto.tipo.toLowerCase().includes(term)
+        || formatTipoPuesto(puesto.tipo).toLowerCase().includes(term)
         || puesto.admin.email.toLowerCase().includes(term)
 
       const coincideFiltro = (filtroPuestos === 'aprobados' && puesto.activo && puesto.estadoSolicitud === 'APROBADO')
@@ -426,6 +415,36 @@ export default function CoordinadorDashboard() {
       return coincideTexto && coincideFiltro
     })
   }, [busquedaPuestos, filtroPuestos, puestos])
+
+  const puestosPendientes = useMemo(() => (
+    puestos.filter((puesto) => puesto.activo && puesto.estadoSolicitud === 'PENDIENTE')
+  ), [puestos])
+
+  const puestosActivos = useMemo(() => (
+    puestos.filter((puesto) => puesto.activo && puesto.estadoSolicitud === 'APROBADO')
+  ), [puestos])
+
+  const puestosConNecesidades = useMemo(() => (
+    puestosActivos
+      .filter((puesto) => puesto.necesitaRecursos || puesto.necesitaVoluntarios || puesto.solicitudesPendientes > 0)
+      .sort((a, b) => (
+        b.solicitudesPendientes - a.solicitudesPendientes
+        || Number(b.necesitaRecursos) - Number(a.necesitaRecursos)
+        || Number(b.necesitaVoluntarios) - Number(a.necesitaVoluntarios)
+      ))
+  ), [puestosActivos])
+
+  const incidenciasCortadas = useMemo(() => (
+    incidencias.filter((incidencia) => incidencia.estado === 'CORTADA')
+  ), [incidencias])
+
+  const usuariosSinVerificar = useMemo(() => (
+    usuarios.filter((usuario) => usuario.activo && !usuario.emailVerified)
+  ), [usuarios])
+
+  const loadingInicial = isLoadingPuestos || isLoadingIncidencias || isLoadingUsuarios
+  const usuariosActivos = usuarios.filter((usuario) => usuario.activo).length
+  const trabajoPendiente = puestosPendientes.length + puestosConNecesidades.length + usuariosSinVerificar.length
 
   const openEdit = (puesto: PuestoCoordinador) => {
     setActionError('')
@@ -451,59 +470,43 @@ export default function CoordinadorDashboard() {
     })
   }
 
-  const openEditIncidencia = (incidencia: Incidencia) => {
-    setActionError('')
-    setIncidenciaEditando(incidencia)
-    setIncidenciaForm({
-      titulo: incidencia.titulo ?? '',
-      categoria: incidencia.categoria ?? '',
-      descripcion: incidencia.descripcion ?? '',
-      estado: incidencia.estado,
-    })
-  }
-
   return (
-    <div className="min-h-full bg-gray-50 pb-8">
-      <section className="border-b border-gray-200 bg-white px-4 py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase text-purple-700">Coordinacion</p>
-            <h1 className="text-xl font-semibold text-gray-950">Gestion general</h1>
-            <p className="mt-1 text-sm text-gray-500">Consulta y edita la informacion operativa de la aplicacion.</p>
-          </div>
-          <Badge variant="info">Coordinador</Badge>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {[
-            { label: 'Incidencias', value: incidencias.length },
-            { label: 'Usuarios', value: usuarios.length },
-            { label: 'Puestos', value: puestos.filter((puesto) => puesto.activo).length },
-          ].map((stat) => (
-            <div key={stat.label} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-              <p className="text-lg font-semibold text-gray-950">{stat.value}</p>
-              <p className="text-xs text-gray-500">{stat.label}</p>
+    <div className="min-h-full bg-slate-50 pb-8">
+      <section className="border-b border-slate-200 bg-white px-4 py-5 sm:px-6">
+        <div className="mx-auto max-w-5xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Coordinacion</p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">Panel operativo</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                Gestiona permisos, puestos y la salud general de la aplicacion desde una vista limpia.
+              </p>
             </div>
-          ))}
-        </div>
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-xl font-semibold text-slate-950">{trabajoPendiente}</span>
+              <span className="text-xs font-medium text-slate-500">elementos a revisar</span>
+            </div>
+          </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1">
-          {[
-            { id: 'incidencias', label: 'Incidencias' },
-            { id: 'usuarios', label: 'Usuarios' },
-            { id: 'puestos', label: 'Puestos' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setVista(tab.id as Vista)}
-              className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                vista === tab.id ? 'bg-white text-gray-950 shadow-sm' : 'text-gray-500 hover:text-gray-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          <div className="mt-5 grid grid-cols-4 gap-1 rounded-lg bg-slate-100 p-1">
+            {[
+              { id: 'resumen', label: 'Resumen' },
+              { id: 'puestos', label: 'Puestos' },
+              { id: 'incidencias', label: 'Incidencias' },
+              { id: 'usuarios', label: 'Usuarios' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setVista(tab.id as Vista)}
+                className={`rounded-md px-2 py-2 text-sm font-medium transition ${
+                  vista === tab.id ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
       </section>
@@ -520,8 +523,103 @@ export default function CoordinadorDashboard() {
         ))}
       </datalist>
 
+      {vista === 'resumen' && (
+        <section className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+          {loadingInicial ? (
+            <LoadingState />
+          ) : (
+            <div className="space-y-5">
+              <Panel title="Gestion pendiente" text="Acciones administrativas que mantienen la aplicacion ordenada.">
+                <div className="divide-y divide-slate-100">
+                  <ActionRow
+                    title="Validar nuevos puestos"
+                    text={puestosPendientes.length > 0
+                      ? 'Solicitudes listas para revisar.'
+                      : 'Sin solicitudes pendientes.'}
+                    value={puestosPendientes.length}
+                    tone={puestosPendientes.length > 0 ? 'warning' : 'muted'}
+                    actionLabel="Revisar"
+                    onAction={() => {
+                      setVista('puestos')
+                      setFiltroPuestos('pendientes')
+                    }}
+                  />
+                  <ActionRow
+                    title="Revisar actividad de incidencias"
+                    text={incidencias.length > 0
+                      ? 'Consulta incidencias y voluntarios asignados.'
+                      : 'Todavia no hay incidencias registradas.'}
+                    value={incidencias.length}
+                    tone={incidenciasCortadas.length > 0 ? 'warning' : 'muted'}
+                    actionLabel="Consultar"
+                    onAction={() => {
+                      setVista('incidencias')
+                      setFiltroIncidencias('todas')
+                    }}
+                  />
+                  <ActionRow
+                    title="Supervisar puestos activos"
+                    text={puestosConNecesidades.length > 0
+                      ? 'Puestos con recursos, personal o solicitudes pendientes.'
+                      : 'Sin avisos administrativos en puestos activos.'}
+                    value={puestosConNecesidades.length}
+                    tone={puestosConNecesidades.length > 0 ? 'warning' : 'muted'}
+                    actionLabel="Ver"
+                    onAction={() => {
+                      setVista('puestos')
+                      setFiltroPuestos('aprobados')
+                    }}
+                  />
+                </div>
+              </Panel>
+
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <Panel title="Puestos con avisos" text="Informacion de seguimiento administrativo.">
+                  {puestosConNecesidades.length === 0 ? (
+                    <CompactEmpty text="No hay avisos de puestos ahora mismo." />
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {puestosConNecesidades.slice(0, 5).map((puesto) => (
+                        <button
+                          key={puesto.id}
+                          type="button"
+                          onClick={() => {
+                            setDetailError('')
+                            setDetalleId(puesto.id)
+                          }}
+                          className="grid w-full gap-2 py-3 text-left transition-colors hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-950">{puesto.nombre}</p>
+                            <p className="truncate text-xs text-slate-500">{puesto.direccion}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                            {puesto.solicitudesPendientes > 0 && <Badge variant="warning">{puesto.solicitudesPendientes} solicitudes</Badge>}
+                            {puesto.necesitaVoluntarios && <Badge variant="info">Falta gente</Badge>}
+                            {puesto.necesitaRecursos && <Badge variant="danger">Faltan recursos</Badge>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+
+                <Panel title="Resumen" text="Lectura rapida de la plataforma.">
+                  <div className="divide-y divide-slate-100">
+                    <Metric label="Puestos activos" value={String(puestosActivos.length)} />
+                    <Metric label="Vias cortadas" value={String(incidenciasCortadas.length)} />
+                    <Metric label="Usuarios activos" value={String(usuariosActivos)} />
+                    <Metric label="Usuarios sin verificar" value={String(usuariosSinVerificar.length)} />
+                  </div>
+                </Panel>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
       {vista === 'puestos' && (
-        <section className="px-4 pt-4">
+        <section className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
           <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
             <div>
               <h2 className="font-semibold text-gray-950">Puestos de emergencia</h2>
@@ -583,10 +681,10 @@ export default function CoordinadorDashboard() {
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                      <Metric label="Tipo" value={puesto.tipo} />
-                      <Metric label="Personas" value={String(puesto.personasTotales)} />
-                      <Metric label="Voluntarios" value={`${puesto.voluntariosActivos}/${puesto.capacidadTrabajo}`} />
-                      <Metric label="Necesidades" value={String(puesto.necesidades)} />
+                      <CardMetric label="Tipo" value={formatTipoPuesto(puesto.tipo)} />
+                      <CardMetric label="Personas" value={String(puesto.personasTotales)} />
+                      <CardMetric label="Voluntarios" value={`${puesto.voluntariosActivos}/${puesto.capacidadTrabajo}`} />
+                      <CardMetric label="Necesidades" value={String(puesto.necesidades)} />
                     </div>
 
                     <div className="mt-3 grid gap-1 text-xs text-gray-500">
@@ -607,10 +705,10 @@ export default function CoordinadorDashboard() {
       )}
 
       {vista === 'incidencias' && (
-        <section className="px-4 pt-4">
+        <section className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
           <div className="mb-4 space-y-3 rounded-lg border border-gray-200 bg-white p-3">
             <h2 className="font-semibold text-gray-950">Incidencias registradas</h2>
-            <p className="text-xs text-gray-500">Consulta, edita y revisa los voluntarios que se han unido a cada incidencia.</p>
+            <p className="text-xs text-gray-500">Consulta el estado de las incidencias y los voluntarios que se han unido.</p>
             <input
               value={busquedaIncidencias}
               onChange={(e) => setBusquedaIncidencias(e.target.value)}
@@ -651,9 +749,6 @@ export default function CoordinadorDashboard() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => openEditIncidencia(incidencia)}>
-                        Editar
-                      </Button>
                       <Button
                         size="sm"
                         variant="secondary"
@@ -662,6 +757,14 @@ export default function CoordinadorDashboard() {
                         )}
                       >
                         {voluntariosIncidenciaId === incidencia.id ? 'Ocultar voluntarios' : 'Ver voluntarios'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-700 hover:bg-red-50"
+                        onClick={() => setIncidenciaAEliminar(incidencia)}
+                      >
+                        Eliminar
                       </Button>
                     </div>
                   </div>
@@ -685,16 +788,10 @@ export default function CoordinadorDashboard() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-red-700 hover:bg-red-50"
-                                loading={retirarVoluntarioIncidencia.isPending
-                                  && retirarVoluntarioIncidencia.variables?.asignacionId === asignacion.id}
-                                onClick={() => setVoluntarioARetirar({
-                                  incidenciaId: incidencia.id,
-                                  asignacionId: asignacion.id,
-                                  nombre: `${asignacion.voluntario.usuario.nombre} ${asignacion.voluntario.usuario.apellidos}`,
-                                })}
+                                className="text-gray-500"
+                                disabled
                               >
-                                Retirar
+                                Asignado
                               </Button>
                             </div>
                           ))}
@@ -710,7 +807,7 @@ export default function CoordinadorDashboard() {
       )}
 
       {vista === 'usuarios' && (
-        <section className="px-4 pt-4">
+        <section className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
           <div className="mb-4 space-y-3 rounded-lg border border-gray-200 bg-white p-3">
             <h2 className="font-semibold text-gray-950">Usuarios y roles</h2>
             <p className="text-xs text-gray-500">Consulta las cuentas y guarda los cambios de permisos de forma controlada.</p>
@@ -745,7 +842,7 @@ export default function CoordinadorDashboard() {
                       <h2 className="font-semibold text-gray-950">{usuario.nombre} {usuario.apellidos}</h2>
                       <p className="text-sm text-gray-500">{usuario.email}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                       <Button
                         size="sm"
                         variant="secondary"
@@ -756,6 +853,14 @@ export default function CoordinadorDashboard() {
                         )}
                       >
                         {usuarioForm?.id === usuario.id ? 'Cancelar' : 'Editar roles'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-700 hover:bg-red-50"
+                        onClick={() => setUsuarioAEliminar(usuario)}
+                      >
+                        Eliminar
                       </Button>
                     </div>
                   </div>
@@ -815,7 +920,7 @@ export default function CoordinadorDashboard() {
           <div className="space-y-4">
             <ModalTitle
               title="Eliminar incidencia"
-              text={`Esta accion retirara "${incidenciaAEliminar.titulo || 'Incidencia en via'}" y las asignaciones de voluntarios asociadas.`}
+              text={`Se eliminara "${incidenciaAEliminar.titulo || 'Incidencia en via'}" y sus asignaciones asociadas. Usa esta accion solo para registros erroneos o abuso.`}
             />
             <ModalActions onCancel={() => setIncidenciaAEliminar(null)}>
               <Button
@@ -823,109 +928,30 @@ export default function CoordinadorDashboard() {
                 loading={eliminarIncidencia.isPending}
                 onClick={() => eliminarIncidencia.mutate(incidenciaAEliminar.id)}
               >
-                Confirmar eliminacion
+                Eliminar incidencia
               </Button>
             </ModalActions>
           </div>
         </Modal>
       )}
 
-      {voluntarioARetirar && (
+      {usuarioAEliminar && (
         <Modal>
           <div className="space-y-4">
             <ModalTitle
-              title="Retirar voluntario"
-              text={`Se retirara a ${voluntarioARetirar.nombre} de esta incidencia. Podra volver a ofrecerse en otra tarea si procede.`}
+              title="Eliminar usuario"
+              text={`Se desactivara y anonimizara la cuenta de ${usuarioAEliminar.nombre} ${usuarioAEliminar.apellidos}. Se revocaran sus sesiones y se conservara el historial operativo.`}
             />
-            <ModalActions onCancel={() => setVoluntarioARetirar(null)}>
+            <ModalActions onCancel={() => setUsuarioAEliminar(null)}>
               <Button
                 variant="danger"
-                loading={retirarVoluntarioIncidencia.isPending}
-                onClick={() => retirarVoluntarioIncidencia.mutate(voluntarioARetirar)}
+                loading={eliminarUsuario.isPending}
+                onClick={() => eliminarUsuario.mutate(usuarioAEliminar.id)}
               >
-                Confirmar retirada
+                Eliminar usuario
               </Button>
             </ModalActions>
           </div>
-        </Modal>
-      )}
-
-      {incidenciaEditando && incidenciaForm && (
-        <Modal>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              guardarIncidencia.mutate({ id: incidenciaEditando.id, data: incidenciaForm })
-            }}
-          >
-            <ModalTitle title="Editar incidencia" text="Actualiza la informacion que necesita el equipo para actuar." />
-            <label className="block text-sm text-gray-700">
-              <span className="mb-1 block font-medium">Titulo</span>
-              <input
-                value={incidenciaForm.titulo}
-                onChange={(e) => setIncidenciaForm({ ...incidenciaForm, titulo: e.target.value })}
-                maxLength={120}
-                placeholder="Incidencia en via"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm text-gray-700">
-                <span className="mb-1 block font-medium">Categoria</span>
-                <select
-                  value={incidenciaForm.categoria}
-                  onChange={(e) => setIncidenciaForm({ ...incidenciaForm, categoria: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Sin categoria</option>
-                  <option value="inundacion">Inundacion</option>
-                  <option value="obstaculos_via">Obstaculos en via</option>
-                  <option value="limpieza">Limpieza</option>
-                  <option value="asistencia">Asistencia</option>
-                </select>
-              </label>
-              <label className="block text-sm text-gray-700">
-                <span className="mb-1 block font-medium">Estado</span>
-                <select
-                  value={incidenciaForm.estado}
-                  onChange={(e) => setIncidenciaForm({ ...incidenciaForm, estado: e.target.value as Incidencia['estado'] })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="CORTADA">Cortada</option>
-                  <option value="TRANSITABLE">Transitable</option>
-                </select>
-              </label>
-            </div>
-            <label className="block text-sm text-gray-700">
-              <span className="mb-1 block font-medium">Descripcion</span>
-              <textarea
-                value={incidenciaForm.descripcion}
-                onChange={(e) => setIncidenciaForm({ ...incidenciaForm, descripcion: e.target.value })}
-                rows={3}
-                maxLength={500}
-                className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <ModalActions onCancel={() => {
-              setIncidenciaEditando(null)
-              setIncidenciaForm(null)
-            }}>
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-red-700 hover:bg-red-50"
-                onClick={() => {
-                  setIncidenciaEditando(null)
-                  setIncidenciaForm(null)
-                  setIncidenciaAEliminar(incidenciaEditando)
-                }}
-              >
-                Eliminar registro
-              </Button>
-              <Button type="submit" loading={guardarIncidencia.isPending}>Guardar cambios</Button>
-            </ModalActions>
-          </form>
         </Modal>
       )}
 
@@ -1063,80 +1089,99 @@ export default function CoordinadorDashboard() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Metric label="Capacidad" value={String(detalle.puesto.capacidadTrabajo)} />
-                  <Metric label="Voluntarios" value={String(detalle.puesto.voluntariosActivos)} />
-                  <Metric label="Responsables" value={String(detalle.puesto.responsables)} />
-                  <Metric label="Peticiones" value={String(detalle.puesto.solicitudesPendientes)} />
+                  <CardMetric label="Capacidad voluntaria" value={String(detalle.puesto.capacidadTrabajo)} />
+                  <CardMetric label="Voluntarios actuales" value={String(detalle.puesto.voluntariosActivos)} />
+                  <CardMetric label="Plazas libres" value={String(Math.max(detalle.puesto.capacidadTrabajo - detalle.puesto.voluntariosActivos, 0))} />
+                  <CardMetric label="Solicitudes pendientes" value={String(detalle.puesto.solicitudesPendientes)} />
                 </div>
 
-                <DetailSection title="Asignacion directa">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <form
-                      className="space-y-2"
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        asignarResponsable.mutate({ id: detalle.puesto.id, email: responsableEmail })
-                      }}
-                    >
-                      <p className="text-xs font-medium text-gray-600">Nuevo responsable del puesto</p>
-                      <input
-                        type="email"
-                        list="coordinador-usuarios"
-                        required
-                        value={responsableEmail}
-                        onChange={(e) => setResponsableEmail(e.target.value)}
-                        placeholder="responsable@email.com"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      />
-                      <Button type="submit" size="sm" loading={asignarResponsable.isPending}>Asignar responsable</Button>
-                    </form>
-                    <form
-                      className="space-y-2"
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        asignarVoluntario.mutate({ id: detalle.puesto.id, email: voluntarioEmail })
-                      }}
-                    >
-                      <p className="text-xs font-medium text-gray-600">Incorporar voluntario operativo</p>
-                      <input
-                        type="email"
-                        list="coordinador-usuarios"
-                        required
-                        value={voluntarioEmail}
-                        onChange={(e) => setVoluntarioEmail(e.target.value)}
-                        placeholder="voluntario@email.com"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      />
-                      <Button type="submit" size="sm" loading={asignarVoluntario.isPending}>Asignar voluntario</Button>
-                    </form>
+                {detailError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {detailError}
                   </div>
-                </DetailSection>
+                )}
 
-                <DetailSection title="Responsables adicionales">
-                  {detalle.responsables.length === 0 ? (
-                    <p className="text-sm text-gray-500">No hay responsables adicionales asignados.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {detalle.responsables.map((responsable) => (
-                        <p key={responsable.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                          {responsable.usuario.nombre} {responsable.usuario.apellidos} - {responsable.usuario.email}
-                        </p>
-                      ))}
+                <div className="grid gap-4 md:grid-cols-2">
+                  <DetailSection title="Responsable">
+                    <p className="text-sm font-medium text-gray-950">
+                      {detalle.puesto.admin.nombre} {detalle.puesto.admin.apellidos}
+                    </p>
+                    <p className="text-sm text-gray-500">{detalle.puesto.admin.email}</p>
+                    {detalle.puesto.admin.telefono && (
+                      <p className="mt-1 text-xs text-gray-500">{detalle.puesto.admin.telefono}</p>
+                    )}
+                  </DetailSection>
+
+                  <DetailSection title="Voluntarios actuales">
+                    <p className="mb-3 text-xs text-gray-500">
+                      {detalle.puesto.voluntariosActivos} ocupadas de {detalle.puesto.capacidadTrabajo} plazas
+                      {' - '}{Math.max(detalle.puesto.capacidadTrabajo - detalle.puesto.voluntariosActivos, 0)} libres
+                    </p>
+                    {detalle.participantes.length === 0 ? (
+                      <p className="text-sm text-gray-500">No hay voluntarios activos ahora mismo.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {detalle.participantes.map((participante) => (
+                          <p key={participante.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                            {participante.usuario.nombre} {participante.usuario.apellidos} - {participante.usuario.email}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </DetailSection>
+                </div>
+
+                <DetailSection title="Recursos disponibles y necesidades">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase text-green-700">Disponibles</p>
+                      {detalle.inventario.filter((item) => item.tipo === 'DISPONIBLE').length === 0 ? (
+                        <p className="text-sm text-gray-500">Sin recursos disponibles registrados.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {detalle.inventario.filter((item) => item.tipo === 'DISPONIBLE').map((item) => (
+                            <p key={item.id} className="rounded-lg bg-green-50 px-3 py-2 text-sm text-gray-700">
+                              {item.producto.nombre}: {item.cantidad} {item.producto.unidad}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase text-amber-700">Necesidades</p>
+                      {detalle.inventario.filter((item) => item.tipo === 'NECESARIO').length === 0 ? (
+                        <p className="text-sm text-gray-500">No hay necesidades pendientes registradas.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {detalle.inventario.filter((item) => item.tipo === 'NECESARIO').map((item) => (
+                            <p key={item.id} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-gray-700">
+                              {item.producto.nombre}: {item.cantidad} {item.producto.unidad}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {detalle.donaciones.length > 0 && (
+                    <div className="mt-3 border-t border-gray-100 pt-3">
+                      <p className="mb-2 text-xs font-medium uppercase text-gray-500">Donaciones en curso</p>
+                      <div className="space-y-2">
+                        {detalle.donaciones.map((donacion) => (
+                          <p key={donacion.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                            {donacion.producto.nombre}: {donacion.cantidad} {donacion.unidad} - {donacion.estado}
+                          </p>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </DetailSection>
 
-                <DetailSection title="Solicitudes de participacion">
-                  {detailError && (
-                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                      {detailError}
-                    </div>
-                  )}
-                  {detalle.solicitudesParticipacion.length === 0 ? (
-                    <p className="text-sm text-gray-500">No hay solicitudes para este puesto.</p>
+                <DetailSection title="Solicitudes de voluntariado pendientes">
+                  {detalle.solicitudesParticipacion.filter((solicitud) => solicitud.estado === 'PENDIENTE').length === 0 ? (
+                    <p className="text-sm text-gray-500">No hay solicitudes pendientes para este puesto.</p>
                   ) : (
                     <div className="space-y-2">
-                      {detalle.solicitudesParticipacion.map((solicitud) => (
+                      {detalle.solicitudesParticipacion.filter((solicitud) => solicitud.estado === 'PENDIENTE').map((solicitud) => (
                         <div key={solicitud.id} className="rounded-lg border border-gray-200 p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -1148,85 +1193,28 @@ export default function CoordinadorDashboard() {
                             {estadoSolicitudBadge(solicitud.estado)}
                           </div>
                           <p className="mt-2 text-xs text-gray-500">Solicitada: {fechaSolicitud(solicitud.createdAt)}</p>
-                          {solicitud.decidedAt && (
-                            <p className="mt-1 text-xs text-gray-500">
-                              Resuelta: {fechaSolicitud(solicitud.decidedAt)}
-                              {solicitud.responsable && ` por ${solicitud.responsable.nombre} ${solicitud.responsable.apellidos}`}
-                            </p>
-                          )}
-                          {solicitud.motivoRechazo && (
-                            <p className="mt-2 text-xs text-red-700">Motivo rechazo: {solicitud.motivoRechazo}</p>
-                          )}
-                          {solicitud.estado === 'PENDIENTE' && (
-                            <div className="mt-3 flex gap-2">
-                              <Button
-                                size="sm"
-                                className="bg-green-600 hover:bg-green-700"
-                                loading={aceptarParticipacion.isPending && aceptarParticipacion.variables === solicitud.id}
-                                onClick={() => aceptarParticipacion.mutate(solicitud.id)}
-                              >
-                                Aceptar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                loading={rechazarParticipacion.isPending && rechazarParticipacion.variables?.id === solicitud.id}
-                                onClick={() => {
-                                  setRechazoParticipacionId(solicitud.id)
-                                  setMotivoRechazoParticipacion('')
-                                }}
-                              >
-                                Rechazar
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </DetailSection>
-
-                <DetailSection title="Voluntarios activos">
-                  {detalle.participantes.length === 0 ? (
-                    <p className="text-sm text-gray-500">No hay voluntarios activos ahora mismo.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {detalle.participantes.map((participante) => (
-                        <p key={participante.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                          {participante.usuario.nombre} {participante.usuario.apellidos} - {participante.usuario.email}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                </DetailSection>
-
-                <DetailSection title="Inventario">
-                  {detalle.inventario.length === 0 ? (
-                    <p className="text-sm text-gray-500">Sin inventario registrado.</p>
-                  ) : (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {detalle.inventario.map((item) => (
-                        <div key={item.id} className="rounded-lg bg-gray-50 px-3 py-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-medium text-gray-950">{item.producto.nombre}</p>
-                            <Badge variant={item.tipo === 'NECESARIO' ? 'warning' : 'success'}>{item.tipo}</Badge>
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700"
+                              loading={aceptarParticipacion.isPending && aceptarParticipacion.variables === solicitud.id}
+                              onClick={() => aceptarParticipacion.mutate(solicitud.id)}
+                            >
+                              Aceptar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              loading={rechazarParticipacion.isPending && rechazarParticipacion.variables?.id === solicitud.id}
+                              onClick={() => {
+                                setRechazoParticipacionId(solicitud.id)
+                                setMotivoRechazoParticipacion('')
+                              }}
+                            >
+                              Rechazar
+                            </Button>
                           </div>
-                          <p className="text-xs text-gray-500">{item.cantidad} {item.producto.unidad}</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </DetailSection>
-
-                <DetailSection title="Donaciones en curso">
-                  {detalle.donaciones.length === 0 ? (
-                    <p className="text-sm text-gray-500">No hay donaciones en camino o pendientes.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {detalle.donaciones.map((donacion) => (
-                        <p key={donacion.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                          {donacion.producto.nombre}: {donacion.cantidad} {donacion.unidad} - {donacion.estado}
-                        </p>
                       ))}
                     </div>
                   )}
@@ -1251,6 +1239,50 @@ export default function CoordinadorDashboard() {
                   )}
                 </DetailSection>
 
+                <DetailSection title="Gestion del equipo">
+                  <p className="mb-3 text-xs text-gray-500">El puesto mantiene un responsable principal y voluntarios de apoyo.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <form
+                      className="space-y-2"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        cambiarResponsable.mutate({ id: detalle.puesto.id, email: responsableEmail })
+                      }}
+                    >
+                      <p className="text-xs font-medium text-gray-600">Cambiar responsable principal</p>
+                      <input
+                        type="email"
+                        list="coordinador-usuarios"
+                        required
+                        value={responsableEmail}
+                        onChange={(e) => setResponsableEmail(e.target.value)}
+                        placeholder="responsable@email.com"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <Button type="submit" size="sm" loading={cambiarResponsable.isPending}>Cambiar responsable</Button>
+                    </form>
+                    <form
+                      className="space-y-2"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        asignarVoluntario.mutate({ id: detalle.puesto.id, email: voluntarioEmail })
+                      }}
+                    >
+                      <p className="text-xs font-medium text-gray-600">Incorporar voluntario operativo</p>
+                      <input
+                        type="email"
+                        list="coordinador-usuarios"
+                        required
+                        value={voluntarioEmail}
+                        onChange={(e) => setVoluntarioEmail(e.target.value)}
+                        placeholder="voluntario@email.com"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <Button type="submit" size="sm" loading={asignarVoluntario.isPending}>Asignar voluntario</Button>
+                    </form>
+                  </div>
+                </DetailSection>
+
                 <div className="flex justify-end">
                   <Button
                     variant="secondary"
@@ -1273,9 +1305,75 @@ export default function CoordinadorDashboard() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg bg-gray-50 px-3 py-2">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="truncate text-sm font-medium text-gray-950">{value}</p>
+    <div className="flex items-center justify-between gap-3 py-3">
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className="shrink-0 text-sm font-semibold text-slate-950">{value}</p>
+    </div>
+  )
+}
+
+function CardMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+    </div>
+  )
+}
+
+function Panel({ title, text, children }: { title: string; text: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-2">
+        <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
+        <p className="mt-1 text-xs text-slate-500">{text}</p>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function ActionRow({
+  title,
+  text,
+  value,
+  tone,
+  actionLabel,
+  onAction,
+}: {
+  title: string
+  text: string
+  value: number
+  tone: 'danger' | 'warning' | 'muted'
+  actionLabel: string
+  onAction: () => void
+}) {
+  const toneClass = tone === 'danger'
+    ? 'bg-red-50 text-red-700'
+    : tone === 'warning'
+      ? 'bg-amber-50 text-amber-700'
+      : 'bg-slate-100 text-slate-500'
+
+  return (
+    <div className="grid gap-3 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+      <div className={`flex h-9 w-9 items-center justify-center rounded-md text-sm font-semibold ${toneClass}`}>
+        {value}
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-slate-950">{title}</p>
+        <p className="mt-0.5 text-sm text-slate-500">{text}</p>
+      </div>
+      <Button size="sm" variant="secondary" onClick={onAction}>
+        {actionLabel}
+      </Button>
+    </div>
+  )
+}
+
+function CompactEmpty({ text }: { text: string }) {
+  return (
+    <div className="rounded-lg bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+      {text}
     </div>
   )
 }
@@ -1290,16 +1388,16 @@ function FilterBar({
   options: Array<{ value: string; label: string }>
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
       {options.map((option) => (
         <button
           key={option.value}
           type="button"
           onClick={() => onChange(option.value)}
-          className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+          className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
             value === option.value
-              ? 'border-purple-500 bg-purple-50 text-purple-700'
-              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+              ? 'bg-white text-slate-950 shadow-sm'
+              : 'text-slate-500 hover:text-slate-900'
           }`}
         >
           {option.label}
@@ -1338,7 +1436,7 @@ function DetailSection({ title, children }: { title: string; children: React.Rea
 function Modal({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/40 px-4 py-6 sm:items-center">
-      <div className={`w-full rounded-lg border border-gray-200 bg-white p-4 shadow-xl ${wide ? 'max-w-2xl' : 'max-w-sm'}`}>
+      <div className={`w-full rounded-lg border border-gray-200 bg-white p-4 shadow-xl ${wide ? 'max-w-4xl' : 'max-w-sm'}`}>
         {children}
       </div>
     </div>
@@ -1393,6 +1491,7 @@ function formatAccion(accion: string) {
     EDITAR_PUESTO: 'Puesto editado',
     DESACTIVAR_PUESTO: 'Puesto desactivado',
     ELIMINAR_PUESTO: 'Puesto eliminado',
+    CAMBIAR_RESPONSABLE_PUESTO: 'Responsable actualizado',
     ACEPTAR_PARTICIPACION_PUESTO: 'Participacion aceptada',
     RECHAZAR_PARTICIPACION_PUESTO: 'Participacion rechazada',
   }
