@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
+import { Check, HeartHandshake, Lightbulb, Store, UserRound } from 'lucide-react'
 
 export interface RoleInfoData {
   title: string
@@ -65,10 +66,15 @@ export default function RoleInfoModal({ isOpen, onClose, info }: RoleInfoModalPr
   if (!isOpen || !info) return null
 
   const c = colorMap[info.color]
+  const HeaderIcon = info.title.includes('Voluntario')
+    ? HeartHandshake
+    : info.title.includes('Puesto')
+      ? Store
+      : UserRound
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
       onClick={onClose}
     >
       <div className="absolute inset-0 bg-black/60" aria-hidden="true" />
@@ -77,57 +83,53 @@ export default function RoleInfoModal({ isOpen, onClose, info }: RoleInfoModalPr
         role="dialog"
         aria-modal="true"
         aria-labelledby="role-modal-title"
-        className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md shadow-2xl max-h-[92vh] flex flex-col"
+        className="relative flex max-h-[92vh] w-full flex-col rounded-t-3xl bg-white shadow-2xl sm:max-w-md sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header con color del rol */}
-        <div className={clsx('px-6 pt-7 pb-7 text-white text-center rounded-t-3xl', c.header)}>
-          <div className="text-7xl mb-4 leading-none" aria-hidden="true">{info.icon}</div>
+        <div className={clsx('rounded-t-3xl px-6 pb-7 pt-7 text-center text-white', c.header)}>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15" aria-hidden="true">
+            <HeaderIcon className="h-8 w-8" />
+          </div>
           <h2 id="role-modal-title" className="text-3xl font-bold tracking-tight">
             {info.title}
           </h2>
-          <p className="mt-2 text-white/80 text-base leading-relaxed">{info.what}</p>
+          <p className="mt-2 text-base leading-relaxed text-white/80">{info.what}</p>
         </div>
 
-        {/* Cuerpo scrollable */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-5 space-y-3">
-
-          {/* Acciones como filas visuales */}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
           {info.canDo.map((item) => (
             <div
               key={item}
-              className="flex items-center gap-4 bg-gray-50 rounded-2xl px-4 py-4"
+              className="flex items-center gap-4 rounded-2xl bg-gray-50 px-4 py-4"
             >
               <div
                 className={clsx(
-                  'flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold',
+                  'flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full',
                   c.checkBg,
                   c.checkText,
                 )}
                 aria-hidden="true"
               >
-                ✓
+                <Check className="h-5 w-5" />
               </div>
-              <span className="text-gray-800 text-base font-medium leading-snug">{item}</span>
+              <span className="text-base font-medium leading-snug text-gray-800">{item}</span>
             </div>
           ))}
 
-          {/* Cuándo usarlo */}
-          <div className={clsx('flex items-start gap-3 rounded-2xl border px-4 py-4 mt-1', c.callout)}>
-            <span className="text-xl flex-shrink-0 mt-0.5" aria-hidden="true">💡</span>
-            <p className={clsx('text-sm leading-relaxed font-medium', c.calloutText)}>
+          <div className={clsx('mt-1 flex items-start gap-3 rounded-2xl border px-4 py-4', c.callout)}>
+            <Lightbulb className={clsx('mt-0.5 h-5 w-5 flex-shrink-0', c.calloutText)} aria-hidden="true" />
+            <p className={clsx('text-sm font-medium leading-relaxed', c.calloutText)}>
               {info.whenToUse}
             </p>
           </div>
         </div>
 
-        {/* Botón cerrar */}
         <div className="px-5 py-4">
           <button
             ref={closeRef}
             onClick={onClose}
             className={clsx(
-              'w-full py-4 rounded-2xl font-bold text-lg transition-colors',
+              'w-full rounded-2xl py-4 text-lg font-bold transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
               c.closeBtn,
               c.ring,

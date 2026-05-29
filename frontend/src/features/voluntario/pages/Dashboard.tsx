@@ -16,12 +16,10 @@ import { fetchRutaEvitandoIncidencias, fetchRutaConPasos } from '@/utils/routing
 import { parsearStepsOsrm, formatearDistanciaNav, calcularBearing, distanciaAlStep, ROTACION_ICONO, type StepNavegacion } from '@/utils/navegacion'
 import { getApiErrorMessage } from '@/utils/errors'
 import {
-  ActionCard,
   EmptyState,
   Notice,
   RouteSafetyPanel,
   SectionHeader,
-  actionMeta,
 } from '../components/DashboardUi'
 import { AddInventarioPuestoSheet, OperacionInventarioPuestoSheet } from '../components/InventarioPuestoSheets'
 import {
@@ -31,6 +29,7 @@ import {
   type OperacionInventarioPuesto,
 } from '../components/inventarioPuesto'
 import NuevoFlujoDonacion from '../components/NuevoFlujoDonacion'
+import { ActividadElegidaHeader, SelectorAccionVoluntario } from '../components/VoluntarioSections'
 
 type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
 type VistaDonacion = 'objetos' | 'necesidades' | 'mis-donaciones'
@@ -2193,47 +2192,14 @@ export default function VoluntarioDashboard() {
           </section>
         )}
         {accion && accion !== 'donacion' && !estaGestionandoPuesto && (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">Actividad elegida</p>
-              <h2 className="mt-0.5 text-lg font-semibold text-slate-950">
-                {actionMeta[accion].title}
-              </h2>
-            </div>
-            {!actividadActiva && (
-              <Button type="button" variant="secondary" size="sm" onClick={volverASelector}>
-                Volver
-              </Button>
-            )}
-          </div>
+          <ActividadElegidaHeader
+            accion={accion}
+            actividadBloqueada={Boolean(actividadActiva)}
+            onVolver={volverASelector}
+          />
         )}
         {!accion && !estaGestionandoPuesto && (
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <SectionHeader
-              title="Que quieres hacer ahora?"
-              subtitle="Elige una linea de trabajo. Cuando inicies una actividad, el resto quedara bloqueado hasta que la termines."
-            />
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <ActionCard
-            icon="📦"
-            title="Hacer una donacion"
-            subtitle="Compromete material necesario y confirma la entrega en el puesto."
-            onClick={() => resetSelection('donacion')}
-          />
-          <ActionCard
-            icon="🚧"
-            title="Ayudar en incidencia"
-            subtitle="Apuntate a un aviso abierto y mantente asignado hasta cerrarlo."
-            onClick={() => resetSelection('incidencia')}
-          />
-          <ActionCard
-            icon="🏪"
-            title="Ayudar en puesto"
-            subtitle="Incorporate como apoyo operativo en un punto de asistencia."
-            onClick={() => resetSelection('puesto')}
-          />
-            </div>
-          </section>
+          <SelectorAccionVoluntario onSeleccionar={resetSelection} />
         )}
       </main>
 
@@ -2760,8 +2726,8 @@ export default function VoluntarioDashboard() {
                                       <div>
                                         <p className="text-sm font-semibold text-slate-950">Ruta segura a la incidencia</p>
                                         <p className="mt-1 text-xs text-slate-600">
-                                          {rutaActiva.distanciaKm.toFixed(1)} km Â· ~{rutaActiva.duracionMin} min
-                                          {rutaActiva.incidenciasEvitadas > 0 && ` Â· evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
+                                          {rutaActiva.distanciaKm.toFixed(1)} km · ~{rutaActiva.duracionMin} min
+                                          {rutaActiva.incidenciasEvitadas > 0 && ` · evita ${rutaActiva.incidenciasEvitadas} incidencia${rutaActiva.incidenciasEvitadas === 1 ? '' : 's'}`}
                                         </p>
                                       </div>
                                       <button

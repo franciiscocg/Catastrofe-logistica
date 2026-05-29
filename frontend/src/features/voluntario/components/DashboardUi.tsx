@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react'
+import { AlertTriangle, ArrowRight, PackageCheck, Store } from 'lucide-react'
 
 export type AccionVoluntario = 'donacion' | 'incidencia' | 'puesto'
 
 export const actionMeta: Record<AccionVoluntario, {
   title: string
-  mark: string
+  Icon: typeof PackageCheck
   classes: { wrapper: string; mark: string; line: string }
 }> = {
   donacion: {
-    title: 'Hacer una donacion',
-    mark: 'D',
+    title: 'Hacer una donación',
+    Icon: PackageCheck,
     classes: {
       wrapper: 'border-cyan-200 bg-white hover:border-cyan-400 hover:shadow-cyan-950/10',
       mark: 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-200',
@@ -18,7 +19,7 @@ export const actionMeta: Record<AccionVoluntario, {
   },
   incidencia: {
     title: 'Ayudar en incidencia',
-    mark: '!',
+    Icon: AlertTriangle,
     classes: {
       wrapper: 'border-amber-200 bg-white hover:border-amber-400 hover:shadow-amber-950/10',
       mark: 'bg-amber-500 text-white',
@@ -27,7 +28,7 @@ export const actionMeta: Record<AccionVoluntario, {
   },
   puesto: {
     title: 'Ayudar en puesto',
-    mark: 'P',
+    Icon: Store,
     classes: {
       wrapper: 'border-indigo-200 bg-white hover:border-indigo-400 hover:shadow-indigo-950/10',
       mark: 'bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200',
@@ -52,7 +53,6 @@ export function ActionCard({
 }: {
   type?: AccionVoluntario
   title?: string
-  icon?: string
   subtitle: string
   onClick: () => void
 }) {
@@ -60,6 +60,7 @@ export function ActionCard({
     title?.includes('incidencia') ? 'incidencia' : title?.includes('puesto') ? 'puesto' : 'donacion'
   )
   const meta = actionMeta[inferredType]
+  const Icon = meta.Icon
 
   return (
     <button
@@ -68,12 +69,12 @@ export function ActionCard({
     >
       <span className={`absolute inset-x-0 top-0 h-1 ${meta.classes.line}`} />
       <span className={`inline-flex h-11 w-11 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${meta.classes.mark}`}>
-        {meta.mark}
+        <Icon className="h-5 w-5" aria-hidden="true" />
       </span>
       <p className="mt-5 text-base font-semibold text-slate-950">{meta.title}</p>
       <p className="mt-2 text-sm leading-5 text-slate-500">{subtitle}</p>
       <span className="mt-5 inline-flex items-center text-sm font-semibold text-slate-700 transition-colors group-hover:text-slate-950">
-        Abrir <span className="ml-2 transition-transform group-hover:translate-x-1">-&gt;</span>
+        Abrir <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />
       </span>
     </button>
   )

@@ -27,6 +27,7 @@ import {
   type StepNavegacion,
 } from '@/utils/navegacion'
 import CiudadanoInicio from '../components/CiudadanoInicio'
+import { ActualizarIncidenciaSheet, HistorialComentariosSheet } from '../components/IncidenciaComentarioSheets'
 import InventarioSheet from '../components/InventarioSheet'
 import PanelNavegacionActiva from '../components/PanelNavegacionActiva'
 import {
@@ -125,7 +126,7 @@ export async function fetchRuta(
   ))
 
   const best = candidates[0]
-  if (!best) throw new Error('No se encontrÃ³ ruta disponible')
+  if (!best) throw new Error('No se encontró ruta disponible')
   return {
     ...best,
     incidenciasEvitadas: Math.max(0, candidates[candidates.length - 1].incidenciasCercanas - best.incidenciasCercanas),
@@ -1426,134 +1427,27 @@ export default function CiudadanoDashboard() {
       )}
 
       {historialComentariosIncidencia && (
-        <div className="fixed inset-x-0 bottom-0 z-[2100] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[72vh]">
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="w-10 h-1 bg-gray-300 rounded-full" />
-          </div>
-
-          <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
-            <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Historial</p>
-              <p className="font-semibold text-gray-900">Comentarios de la incidencia</p>
-            </div>
-            <button
-              onClick={() => setHistorialComentariosIncidencia(null)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-3">
-            {(historialComentariosIncidencia.comentarios ?? []).length === 0 ? (
-              <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-3">
-                Todavia no hay comentarios en esta incidencia.
-              </p>
-            ) : (
-              historialComentariosIncidencia.comentarios?.map((comentario) => (
-                <article key={comentario.id} className="border border-gray-200 rounded-xl p-3 bg-white">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
-                      comentario.estado === 'CORTADA'
-                        ? 'bg-red-50 text-red-700 border border-red-200'
-                        : 'bg-green-50 text-green-700 border border-green-200'
-                    }`}
-                    >
-                      {comentario.estado === 'CORTADA' ? 'Sigue cortada' : 'Resuelta'}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(comentario.createdAt).toLocaleString('es-ES')}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-800">{comentario.comentario}</p>
-                  {comentario.autor && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      {comentario.autor.nombre} {comentario.autor.apellidos}
-                    </p>
-                  )}
-                </article>
-              ))
-            )}
-          </div>
-        </div>
+        <HistorialComentariosSheet
+          incidencia={historialComentariosIncidencia}
+          onClose={() => setHistorialComentariosIncidencia(null)}
+        />
       )}
 
       {comentarioIncidencia && (
-        <div className="fixed inset-x-0 bottom-0 z-[2100] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[70vh]">
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="w-10 h-1 bg-gray-300 rounded-full" />
-          </div>
-
-          <div className="flex items-start justify-between px-4 py-2 border-b border-gray-100">
-            <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wide">Actualizar incidencia</p>
-              <p className="font-semibold text-gray-900">Comentario o resolución</p>
-            </div>
-            <button
-              onClick={() => {
-                setComentarioIncidencia(null)
-                setComentarioTexto('')
-                setComentarioError(null)
-              }}
-              className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Actualización</p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setComentarioEstado('CORTADA')}
-                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                    comentarioEstado === 'CORTADA'
-                      ? 'border-red-300 bg-red-50 text-red-700'
-                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <p className="text-xs font-semibold uppercase tracking-wide">Sigue cortada</p>
-                  <p className="text-xs mt-1">La incidencia continúa</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setComentarioEstado('TRANSITABLE')}
-                  className={`rounded-lg border px-3 py-2 text-left transition-colors ${
-                    comentarioEstado === 'TRANSITABLE'
-                      ? 'border-green-300 bg-green-50 text-green-700'
-                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <p className="text-xs font-semibold uppercase tracking-wide">Resuelta</p>
-                  <p className="text-xs mt-1">La calle ya es transitable</p>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Comentario</label>
-              <textarea
-                rows={3}
-                value={comentarioTexto}
-                onChange={(e) => setComentarioTexto(e.target.value)}
-                className="w-full rounded-lg border-gray-300 focus:border-blue-500 focus:ring-blue-500 text-sm bg-white"
-                placeholder="Ejemplo: Han retirado los escombros y ya pasan coches"
-              />
-            </div>
-
-            {comentarioError && (
-              <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                {comentarioError}
-              </p>
-            )}
-
-            <Button fullWidth loading={comentarioLoading} onClick={handleSubmitComentarioIncidencia} className="h-11">
-              Guardar actualización
-            </Button>
-          </div>
-        </div>
+        <ActualizarIncidenciaSheet
+          estado={comentarioEstado}
+          texto={comentarioTexto}
+          error={comentarioError}
+          loading={comentarioLoading}
+          onEstadoChange={setComentarioEstado}
+          onTextoChange={setComentarioTexto}
+          onSubmit={handleSubmitComentarioIncidencia}
+          onClose={() => {
+            setComentarioIncidencia(null)
+            setComentarioTexto('')
+            setComentarioError(null)
+          }}
+        />
       )}
 
       {/* Panel de reporte de calles */}
