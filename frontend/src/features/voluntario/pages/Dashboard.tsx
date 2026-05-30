@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { QRCodeSVG } from 'qrcode.react'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { apiClient } from '@/lib/api/client'
@@ -8,6 +7,7 @@ import type { PuestoEmergencia } from '@/types/puesto.types'
 import type { ItemInventario } from '@/types/inventario.types'
 import Map, { type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
 import QrScanner from '@/components/shared/QrScanner'
+import ReadableQrCode from '@/components/shared/ReadableQrCode'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useConnectivity } from '@/hooks/useConnectivity'
 import { useSyncStore } from '@/store/sync.store'
@@ -173,8 +173,6 @@ function createCodigoEntregaPayload(donacion: Donacion, entregaCodigo: string) {
     d: donacion.id,
     p: donacion.puesto.id,
     pr: donacion.producto.id,
-    n: donacion.producto.nombre,
-    c: donacion.producto.categoria,
     q: donacion.cantidad,
     u: donacion.unidad,
     g: Date.now(),
@@ -1958,19 +1956,10 @@ export default function VoluntarioDashboard() {
             </div>
             {codigoEntregaActividad && donacionActiva && (
               <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-cyan-100 bg-cyan-50 p-4 sm:flex-row">
-                <div className="rounded-lg border border-cyan-100 bg-white p-3 shadow-sm">
-                  <QRCodeSVG value={codigoEntregaActividad} size={240} level="M" includeMargin />
-                </div>
+                <ReadableQrCode value={codigoEntregaActividad} className="border-cyan-100" />
                 <div className="text-center sm:text-left">
                   <p className="text-sm font-semibold text-cyan-950">Codigo de entrega activo</p>
                   <p className="mt-1 text-sm text-cyan-900">Enseña este QR en el puesto para confirmar la recepcion.</p>
-                  <button
-                    type="button"
-                    onClick={() => void navigator.clipboard?.writeText(codigoEntregaActividad)}
-                    className="mt-2 rounded-lg border border-cyan-200 bg-white px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-50"
-                  >
-                    Copiar codigo
-                  </button>
                 </div>
               </div>
             )}
@@ -3456,7 +3445,7 @@ export default function VoluntarioDashboard() {
               <div className="space-y-4 max-h-[400px] overflow-y-auto pr-1">
                 {codigos.map(({ donacion, codigo }) => (
                   <div key={donacion.id} className="rounded-lg border border-cyan-100 bg-cyan-50/50 p-4 shadow-sm flex flex-col items-center gap-3">
-                    <QRCodeSVG value={codigo} size={220} level="M" includeMargin />
+                    <ReadableQrCode value={codigo} className="mx-auto border-cyan-100" />
                     <div className="text-center w-full">
                       <p className="text-sm font-bold text-cyan-950">
                         {donacion.cantidad} {donacion.unidad} de {donacion.producto.nombre}
