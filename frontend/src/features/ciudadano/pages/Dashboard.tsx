@@ -2234,7 +2234,6 @@ export default function CiudadanoDashboard() {
               incidencias={incidencias}
               selectedPuestoId={puestosOpcionActual[0]?.id ?? null}
               onPuestoSelect={() => undefined}
-              onUserLocated={setUserPosition}
               onReportPointSelect={() => undefined}
               onIncidenciaAction={() => undefined}
               onIncidenciaCommentsOpen={() => undefined}
