@@ -2438,13 +2438,6 @@ export default function CiudadanoDashboard() {
           <div className="overflow-y-auto flex-1 px-4 pb-6 pt-3 space-y-4">
             {isPickingLocation ? (
               <div className="space-y-3">
-                <div className="rounded-xl border border-red-100 bg-red-50 p-3">
-                  <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Seleccionar ubicación</p>
-                  <p className="text-sm text-red-700">
-                    Toca directamente sobre el mapa para colocar el punto exacto de la incidencia.
-                  </p>
-                </div>
-
                 {reportPosition && (
                   <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2">
                     <p className="text-sm font-semibold text-green-900">Punto marcado</p>
