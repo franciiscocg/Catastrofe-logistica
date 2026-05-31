@@ -1,8 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import {
+  deleteIncidenciaCoordinador,
+  deleteVoluntarioIncidenciaCoordinador,
   getMisAsignacionesIncidencia,
   getMiAsignacionIncidenciaActiva,
   getIncidencias,
+  getVoluntariosIncidenciaCoordinador,
+  patchIncidenciaCoordinador,
   patchIncidenciaEstado,
   postAsignacionIncidencia,
   postComentarioIncidencia,
@@ -48,4 +52,20 @@ export async function incidenciasRouter(app: FastifyInstance) {
   app.patch('/:id/estado', {
     preHandler: [requireAuth, requireRole('COORDINADOR')],
   }, patchIncidenciaEstado)
+
+  app.patch('/coordinador/:id', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, patchIncidenciaCoordinador)
+
+  app.delete('/:id', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, deleteIncidenciaCoordinador)
+
+  app.get('/coordinador/:id/voluntarios', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, getVoluntariosIncidenciaCoordinador)
+
+  app.delete('/coordinador/:id/voluntarios/:asignacionId', {
+    preHandler: [requireAuth, requireRole('COORDINADOR')],
+  }, deleteVoluntarioIncidenciaCoordinador)
 }

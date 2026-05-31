@@ -26,6 +26,15 @@ export const updateEstadoSchema = z.object({
   estado: estadoViaSchema,
 })
 
+export const updateIncidenciaSchema = z.object({
+  titulo: z.string().trim().min(3).max(120).nullable().optional(),
+  categoria: categoriaIncidenciaSchema.nullable().optional(),
+  descripcion: z.string().trim().max(500).nullable().optional(),
+  estado: estadoViaSchema.optional(),
+}).strict().refine((input) => Object.keys(input).length > 0, {
+  message: 'Debes indicar algun cambio',
+})
+
 export const createComentarioIncidenciaSchema = z.object({
   estado: estadoViaSchema,
   comentario: z.string().trim().min(1).max(500),
@@ -34,4 +43,5 @@ export const createComentarioIncidenciaSchema = z.object({
 export type CreateIncidenciaInput = z.infer<typeof createIncidenciaSchema>
 export type ListIncidenciasQuery = z.infer<typeof listIncidenciasQuerySchema>
 export type UpdateEstadoInput = z.infer<typeof updateEstadoSchema>
+export type UpdateIncidenciaInput = z.infer<typeof updateIncidenciaSchema>
 export type CreateComentarioIncidenciaInput = z.infer<typeof createComentarioIncidenciaSchema>
