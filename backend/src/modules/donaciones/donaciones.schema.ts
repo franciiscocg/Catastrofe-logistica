@@ -13,5 +13,10 @@ export const updateDonacionEstadoSchema = z.object({
   estado: z.enum(['PENDIENTE', 'EN_CAMINO', 'ENTREGADA', 'CANCELADA']),
 })
 
+export const updateDonacionCantidadSchema = z.object({
+  cantidad: z.number().int().positive(),
+})
+
 export type CreateDonacionInput = z.infer<typeof createDonacionSchema>
 export type UpdateDonacionEstadoInput = z.infer<typeof updateDonacionEstadoSchema>
+export type UpdateDonacionCantidadInput = z.infer<typeof updateDonacionCantidadSchema>

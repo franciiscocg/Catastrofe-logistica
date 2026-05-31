@@ -23,6 +23,6 @@ export const puestoApi = {
   ajustarCantidad: (itemId: string, delta: number) =>
     apiClient.patch(`/api/inventario/items/${itemId}/cantidad`, { delta }),
   eliminarItem: (itemId: string) => apiClient.delete(`/api/inventario/items/${itemId}`),
-  confirmarQr: (puestoId: PuestoId, codigo: string) =>
-    apiClient.post(`/api/inventario/puesto/${puestoId}/confirmar-qr`, { codigo }),
+  confirmarQr: (puestoId: PuestoId, codigo: string, cantidadOverride?: number) =>
+    apiClient.post(`/api/inventario/puesto/${puestoId}/confirmar-qr`, { codigo, cantidadOverride }),
 }

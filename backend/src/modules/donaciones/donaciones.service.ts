@@ -24,8 +24,8 @@ const puestoDonacionSelect = {
 } as const
 
 const DONACION_TRANSITIONS: Record<EstadoDonacion, EstadoDonacion[]> = {
-  PENDIENTE: ['EN_CAMINO', 'CANCELADA'],
-  EN_CAMINO: ['CANCELADA'],
+  PENDIENTE: ['EN_CAMINO', 'CANCELADA', 'ENTREGADA'],
+  EN_CAMINO: ['CANCELADA', 'ENTREGADA'],
   ENTREGADA: [],
   CANCELADA: [],
 }
@@ -33,9 +33,6 @@ const DONACION_TRANSITIONS: Record<EstadoDonacion, EstadoDonacion[]> = {
 function assertEstadoTransition(actual: EstadoDonacion, siguiente: EstadoDonacion) {
   if (actual === siguiente) return
   if (!DONACION_TRANSITIONS[actual].includes(siguiente)) {
-    if (siguiente === 'ENTREGADA') {
-      throw badRequest('La entrega debe confirmarse escaneando el QR en el puesto.')
-    }
     throw badRequest(`No se puede cambiar una donacion de ${actual} a ${siguiente}.`)
   }
 }
@@ -85,7 +82,7 @@ export async function listNecesidadesDonacion() {
           longitud: true,
           tipo: true,
           activo: true,
-                },
+        },
       },
     },
   })
@@ -209,7 +206,14 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
 
   const donacion = await prisma.donacion.findFirst({
     where: { id: donacionId, voluntarioId: voluntario.id },
-    select: { id: true, estado: true, puestoId: true },
+    select: {
+      id: true,
+      estado: true,
+      puestoId: true,
+      productoId: true,
+      cantidad: true,
+      unidad: true,
+    },
   })
 
   if (!donacion) throw notFound('Donacion no encontrada')
@@ -224,6 +228,93 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
         puesto: { select: puestoDonacionSelect },
       },
     })
+
+    if (estado === 'ENTREGADA') {
+      const necesidad = await tx.inventario.findUnique({
+        where: {
+          puestoId_productoId_tipo: {
+            puestoId: donacion.puestoId,
+            productoId: donacion.productoId,
+            tipo: 'NECESARIO',
+          },
+        },
+        include: { producto: true },
+      })
+
+      const cantidadCompensada = Math.min(necesidad?.cantidad ?? 0, donacion.cantidad)
+      const cantidadDisponible = Math.max(donacion.cantidad - cantidadCompensada, 0)
+
+      if (necesidad && cantidadCompensada > 0) {
+        const updatedNecesidad = await tx.inventario.update({
+          where: { id: necesidad.id },
+          data: { cantidad: Math.max(necesidad.cantidad - cantidadCompensada, 0) },
+          include: { producto: true },
+        })
+        await tx.auditLog.create({
+          data: {
+            usuarioId,
+            accion: 'INVENTARIO_COMPENSADO',
+            entidad: 'PUESTO_INVENTARIO',
+            entidadId: donacion.puestoId,
+            datos: {
+              itemId: updatedNecesidad.id,
+              producto: updatedNecesidad.producto,
+              tipo: updatedNecesidad.tipo,
+              cantidadAnterior: necesidad.cantidad,
+              cantidadNueva: updatedNecesidad.cantidad,
+              delta: updatedNecesidad.cantidad - necesidad.cantidad,
+              donacionId: donacion.id,
+            },
+          },
+        })
+      }
+
+      if (cantidadDisponible > 0) {
+        const existente = await tx.inventario.findUnique({
+          where: {
+            puestoId_productoId_tipo: {
+              puestoId: donacion.puestoId,
+              productoId: donacion.productoId,
+              tipo: 'DISPONIBLE',
+            },
+          },
+        })
+
+        const disponible = existente
+          ? await tx.inventario.update({
+              where: { id: existente.id },
+              data: { cantidad: existente.cantidad + cantidadDisponible },
+              include: { producto: true },
+            })
+          : await tx.inventario.create({
+              data: {
+                puestoId: donacion.puestoId,
+                productoId: donacion.productoId,
+                cantidad: cantidadDisponible,
+                tipo: 'DISPONIBLE',
+              },
+              include: { producto: true },
+            })
+
+        await tx.auditLog.create({
+          data: {
+            usuarioId,
+            accion: 'INVENTARIO_ACTUALIZADO',
+            entidad: 'PUESTO_INVENTARIO',
+            entidadId: donacion.puestoId,
+            datos: {
+              itemId: disponible.id,
+              producto: disponible.producto,
+              tipo: disponible.tipo,
+              cantidadAnterior: existente?.cantidad ?? 0,
+              cantidadNueva: disponible.cantidad,
+              delta: cantidadDisponible,
+              donacionId: donacion.id,
+            },
+          },
+        })
+      }
+    }
 
     await tx.auditLog.create({
       data: {
@@ -242,7 +333,13 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
     return result
   })
 
-  const tipoEvento = estado === 'EN_CAMINO' ? 'DONACION_EN_CAMINO' : 'DONACION_CANCELADA'
+  let tipoEvento: 'DONACION_EN_CAMINO' | 'DONACION_CANCELADA' | 'DONACION_ENTREGADA' = 'DONACION_CANCELADA'
+  if (estado === 'EN_CAMINO') {
+    tipoEvento = 'DONACION_EN_CAMINO'
+  } else if (estado === 'ENTREGADA') {
+    tipoEvento = 'DONACION_ENTREGADA'
+  }
+
   void appendChainEvent({
     tipo: tipoEvento,
     actorId: usuarioId,
@@ -276,8 +373,8 @@ export async function generarCodigoEntrega(usuarioId: string, donacionId: string
   })
 
   if (!donacion) throw notFound('Donacion no encontrada')
-  if (donacion.estado !== 'EN_CAMINO') {
-    throw badRequest('Solo puedes generar el codigo cuando la donacion esta en camino')
+  if (donacion.estado !== 'PENDIENTE' && donacion.estado !== 'EN_CAMINO') {
+    throw badRequest('Solo puedes generar el codigo cuando la donacion esta pendiente o en camino')
   }
 
   if (donacion.entregaCodigo) {
@@ -295,4 +392,64 @@ export async function generarCodigoEntrega(usuarioId: string, donacionId: string
       puesto: { select: puestoDonacionSelect },
     },
   })
+}
+
+export async function updateDonacionCantidad(usuarioId: string, donacionId: string, cantidad: number) {
+  if (cantidad <= 0) throw badRequest('La cantidad debe ser mayor que cero')
+  const voluntario = await getVoluntarioByUsuario(usuarioId)
+
+  const donacion = await prisma.donacion.findFirst({
+    where: { id: donacionId, voluntarioId: voluntario.id },
+    select: { id: true, estado: true, puestoId: true, cantidad: true },
+  })
+
+  if (!donacion) throw notFound('Donacion no encontrada')
+  if (donacion.estado !== 'PENDIENTE' && donacion.estado !== 'EN_CAMINO') {
+    throw badRequest('Solo se puede modificar la cantidad de donaciones pendientes o en camino')
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.donacion.update({
+      where: { id: donacionId },
+      data: { cantidad },
+      include: {
+        producto: true,
+        puesto: { select: puestoDonacionSelect },
+      },
+    })
+
+    await tx.auditLog.create({
+      data: {
+        usuarioId,
+        accion: 'DONACION_CANTIDAD_ACTUALIZADA',
+        entidad: 'DONACION',
+        entidadId: donacionId,
+        datos: {
+          cantidadAnterior: donacion.cantidad,
+          cantidadNueva: cantidad,
+          puestoId: donacion.puestoId,
+        },
+      },
+    })
+
+    return result
+  })
+
+  void appendChainEvent({
+    tipo: 'DONACION_ACTUALIZADA',
+    actorId: usuarioId,
+    actorRol: 'VOLUNTARIO',
+    entidad: 'donacion',
+    entidadId: donacionId,
+    payload: {
+      donacionId,
+      cantidadAnterior: donacion.cantidad,
+      cantidadNueva: cantidad,
+      producto: { id: updated.producto.id, nombre: updated.producto.nombre },
+      puestoId: donacion.puestoId,
+      puestoNombre: updated.puesto.nombre,
+    },
+  })
+
+  return updated
 }

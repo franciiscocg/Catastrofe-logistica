@@ -500,30 +500,36 @@ function InventarioRow({
     : item.estado === 'SOBRANTE'
       ? `Disponible ${cantidadLabel} ${unidad}`
       : 'Necesidad cubierta'
-  const borderClass = item.estado === 'FALTANTE'
-    ? 'border-red-200 bg-red-50/30'
+  const accentClass = item.estado === 'FALTANTE'
+    ? 'bg-red-500'
     : item.estado === 'CUBIERTO'
-      ? 'border-emerald-200 bg-emerald-50/30'
-      : 'border-gray-200'
+      ? 'bg-emerald-500'
+      : item.balance > 0 && item.balance <= 5
+        ? 'bg-amber-500'
+        : 'bg-slate-300'
+  const estadoClass = item.estado === 'FALTANTE'
+    ? 'text-red-700'
+    : item.estado === 'CUBIERTO'
+      ? 'text-emerald-700'
+      : 'text-slate-700'
   const deleteId = item.itemActivo.id
 
   return (
-    <article className={`rounded-lg border px-3 py-2 shadow-sm transition-colors hover:border-gray-300 ${borderClass}`}>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_1.7fr_auto] md:items-center">
+    <article className="relative overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-colors hover:border-slate-300">
+      <span className={`absolute inset-y-0 left-0 w-1 ${accentClass}`} />
+      <div className="grid gap-3 px-3 py-3 pl-4 md:grid-cols-[minmax(0,1.35fr)_1.45fr_auto] md:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[11px] font-bold ${
-            item.estado === 'FALTANTE' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
-          }`}>
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[11px] font-bold text-slate-700">
             {item.producto.categoria.slice(0, 2).toUpperCase()}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-gray-950">{item.producto.nombre}</p>
-            <p className="truncate text-xs text-gray-500">{item.producto.categoria}</p>
+            <p className="truncate text-sm font-semibold text-slate-950">{item.producto.nombre}</p>
+            <p className="truncate text-xs text-slate-500">{item.producto.categoria}</p>
           </div>
         </div>
 
         <div className="rounded-lg bg-slate-50 px-3 py-2">
-          <p className={`text-sm font-semibold ${item.estado === 'FALTANTE' ? 'text-red-700' : 'text-emerald-700'}`}>
+          <p className={`text-sm font-semibold ${estadoClass}`}>
             {estadoLabel}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
@@ -543,16 +549,18 @@ function InventarioRow({
             type="button"
             onClick={() => onUpdateBalance(item, -1)}
             disabled={item.estado === 'SIN_MOVIMIENTO' && !item.disponible && !item.necesario}
-            className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-30"
+            className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-30"
+            title="Registrar salida"
           >
-            Salida
+            -
           </button>
             <button
               type="button"
               onClick={() => onUpdateBalance(item, +1)}
-              className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+              className="inline-flex h-9 min-w-9 items-center justify-center rounded-md bg-emerald-600 px-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+              title="Registrar entrada"
             >
-              Entrada
+              +
             </button>
 
         {confirmDelete ? (
@@ -560,14 +568,14 @@ function InventarioRow({
             <button
               type="button"
               onClick={() => onDelete(deleteId)}
-              className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white"
+              className="rounded-md bg-red-600 px-2.5 py-2 text-xs font-semibold text-white"
             >
               Eliminar
             </button>
             <button
               type="button"
               onClick={() => setConfirmDelete(false)}
-              className="rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-600"
+              className="rounded-md bg-slate-100 px-2.5 py-2 text-xs font-medium text-slate-600"
             >
               Cancelar
             </button>
@@ -576,7 +584,7 @@ function InventarioRow({
           <button
             type="button"
             onClick={() => setConfirmDelete(true)}
-            className="flex-shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
+            className="flex-shrink-0 rounded-md px-2.5 py-2 text-xs font-medium text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
             title="Eliminar"
           >
             Eliminar
@@ -884,6 +892,99 @@ function WorkersSheet({
   )
 }
 
+function PrioridadOperativaPanel({
+  faltantes,
+  criticos,
+  solicitudesPendientes,
+  voluntariosActivos,
+  onShowNeeds,
+  onShowStock,
+  onShowWorkers,
+}: {
+  faltantes: InventarioAgrupado[]
+  criticos: InventarioAgrupado[]
+  solicitudesPendientes: number
+  voluntariosActivos: number
+  onShowNeeds: () => void
+  onShowStock: () => void
+  onShowWorkers: () => void
+}) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-100 px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prioridad ahora</p>
+        <h2 className="mt-0.5 text-sm font-semibold text-slate-950">Gestion operativa</h2>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-900">Necesidades abiertas</p>
+            <button type="button" onClick={onShowNeeds} className="text-xs font-semibold text-blue-700 hover:text-blue-900">
+              Ver
+            </button>
+          </div>
+          {faltantes.length === 0 ? (
+            <p className="rounded-lg bg-emerald-50 px-3 py-3 text-sm text-emerald-700">No hay faltantes activos.</p>
+          ) : (
+            <div className="space-y-2">
+              {faltantes.slice(0, 4).map((item) => (
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-950">{item.producto.nombre}</p>
+                    <p className="truncate text-xs text-slate-500">{item.producto.categoria}</p>
+                  </div>
+                  <span className="flex-shrink-0 text-sm font-semibold text-red-700">
+                    {formatCantidad(Math.abs(item.balance))} {item.producto.unidad}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-900">Stock bajo</p>
+            <button type="button" onClick={onShowStock} className="text-xs font-semibold text-blue-700 hover:text-blue-900">
+              Ver
+            </button>
+          </div>
+          {criticos.length === 0 ? (
+            <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">Sin productos en nivel critico.</p>
+          ) : (
+            <div className="space-y-2">
+              {criticos.slice(0, 3).map((item) => (
+                <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2">
+                  <p className="min-w-0 truncate text-sm font-semibold text-slate-950">{item.producto.nombre}</p>
+                  <span className="flex-shrink-0 text-sm font-semibold text-amber-700">
+                    {formatCantidad(item.balance)} {item.producto.unidad}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={onShowWorkers}
+          className="grid w-full grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left hover:bg-slate-100"
+        >
+          <div>
+            <p className="text-2xl font-semibold text-slate-950">{solicitudesPendientes}</p>
+            <p className="text-xs font-medium text-slate-500">Solicitudes</p>
+          </div>
+          <div>
+            <p className="text-2xl font-semibold text-emerald-700">{voluntariosActivos}</p>
+            <p className="text-xs font-medium text-slate-500">Voluntarios</p>
+          </div>
+        </button>
+      </div>
+    </section>
+  )
+}
+
 function SolicitudPuestoForm() {
   const qc = useQueryClient()
   const { position, request: requestLocation, loading: loadingLocation } = useGeolocation()
@@ -1087,6 +1188,7 @@ export default function PuestoDashboard() {
   const [showHistory, setShowHistory] = useState(false)
   const [showDeliveries, setShowDeliveries] = useState(false)
   const [qrResult, setQrResult] = useState<{ text: string; parsed: QrOperativo | null; ts: number } | null>(null)
+  const [qrCantidadOverride, setQrCantidadOverride] = useState<number | ''>('')
   const [qrConfirmando, setQrConfirmando] = useState(false)
   const [qrError, setQrError] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'DISPONIBLE' | 'NECESARIO'>('todos')
@@ -1161,8 +1263,32 @@ export default function PuestoDashboard() {
   const mutCantidad = useMutation({
     mutationFn: ({ id, delta }: { id: string; delta: number }) =>
       puestoApi.ajustarCantidad(id, delta),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['inventario', puesto?.id] })
+    onMutate: async ({ id, delta }) => {
+      const queryKey = ['inventario', puesto?.id]
+      await qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<{ inventario: ItemInventario[] }>(queryKey)
+
+      qc.setQueryData<{ inventario: ItemInventario[] }>(queryKey, (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          inventario: current.inventario.map((item) => (
+            item.id === id
+              ? { ...item, cantidad: Math.max(0, item.cantidad + delta) }
+              : item
+          )),
+        }
+      })
+
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        qc.setQueryData(['inventario', puesto?.id], context.previous)
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['inventario', puesto?.id], refetchType: 'inactive' })
       qc.invalidateQueries({ queryKey: ['inventario-historial', puesto?.id] })
     },
   })
@@ -1232,11 +1358,13 @@ export default function PuestoDashboard() {
     setQrConfirmando(true)
     setQrError('')
     try {
-      await puestoApi.confirmarQr(puesto.id, qrResult.text)
+      const overrideVal = qrCantidadOverride !== '' ? Number(qrCantidadOverride) : undefined
+      await puestoApi.confirmarQr(puesto.id, qrResult.text, overrideVal)
       await qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })
       await qc.invalidateQueries({ queryKey: ['inventario-historial', puesto.id] })
       await qc.invalidateQueries({ queryKey: ['mis-donaciones'] })
       setQrResult(null)
+      setQrCantidadOverride('')
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { error?: string; details?: Array<{ message?: string }> } } }).response?.data
       const detail = data?.details?.[0]?.message
@@ -1245,7 +1373,7 @@ export default function PuestoDashboard() {
     } finally {
       setQrConfirmando(false)
     }
-  }, [puesto?.id, qc, qrResult])
+  }, [puesto?.id, qc, qrResult, qrCantidadOverride])
 
   // Filtrado
   const inventarioAgrupado = agruparInventario(inventario)
@@ -1268,8 +1396,10 @@ export default function PuestoDashboard() {
     filtro === 'DISPONIBLE' ? 'Tenemos disponible'
     : filtro === 'NECESARIO' ? 'Necesitamos recibir'
     : 'Inventario operativo'
-  const criticos = inventarioAgrupado.filter((i) => i.balance > 0 && i.balance <= 5).length
-  const necesitamos = inventarioAgrupado.filter((i) => i.balance < 0).length
+  const criticosLista = inventarioAgrupado.filter((i) => i.balance > 0 && i.balance <= 5)
+  const faltantesLista = inventarioAgrupado.filter((i) => i.balance < 0)
+  const criticos = criticosLista.length
+  const necesitamos = faltantesLista.length
   const disponibles = inventarioAgrupado.filter((i) => i.balance > 0)
   const solicitudesPendientes = solicitudesParticipacionData?.filter((s) => s.estado === 'PENDIENTE').length ?? 0
   const voluntariosActivos = participantesData?.length ?? 0
@@ -1306,18 +1436,16 @@ export default function PuestoDashboard() {
   // ── UI principal ──────────────────────────────────────────────────────────
 
   return (
-    <div className="flex min-h-full flex-col bg-slate-100">
+    <div className="flex min-h-full flex-col bg-slate-50">
       <PuestoSummaryHeader
         nombre={puesto.nombre}
         direccion={puesto.direccion}
         activo={puesto.activo}
         stats={[
-          { label: 'Disponible neto', value: disponibles.length, helper: 'productos con sobrante', tone: 'text-gray-950' },
-          { label: 'Criticos', value: criticos, helper: 'requieren revision', tone: criticos > 0 ? 'text-red-600' : 'text-gray-950' },
-          { label: 'Faltan', value: necesitamos, helper: 'productos sin cubrir', tone: necesitamos > 0 ? 'text-amber-700' : 'text-gray-950' },
-          { label: 'Unid. netas', value: formatCantidad(unidadesDisponibles), helper: 'sobrante total', tone: 'text-gray-950' },
-          { label: 'Solicitudes', value: solicitudesPendientes, helper: 'voluntarios esperando', tone: solicitudesPendientes > 0 ? 'text-amber-700' : 'text-gray-950' },
-          { label: 'Voluntarios', value: voluntariosActivos, helper: 'activos ahora', tone: 'text-emerald-700' },
+          { label: 'Faltan', value: necesitamos, helper: 'productos abiertos', tone: necesitamos > 0 ? 'text-red-600' : 'text-slate-950' },
+          { label: 'Criticos', value: criticos, helper: 'stock bajo', tone: criticos > 0 ? 'text-amber-600' : 'text-slate-950' },
+          { label: 'Entregas', value: donacionesActivas.length, helper: 'en seguimiento', tone: donacionesActivas.length > 0 ? 'text-blue-700' : 'text-slate-950' },
+          { label: 'Voluntarios', value: voluntariosActivos, helper: solicitudesPendientes > 0 ? `${solicitudesPendientes} esperando` : 'activos ahora', tone: 'text-emerald-700' },
         ]}
       />
 
@@ -1332,16 +1460,27 @@ export default function PuestoDashboard() {
         onFiltroChange={setFiltro}
       />
 
-      <EntregasPanel
-        donaciones={donacionesActivas}
-        loading={loadingDonaciones}
-        visible={showDeliveries}
-        onToggle={() => setShowDeliveries((current) => !current)}
-      />
-
-      <section className="flex-1 min-h-0 overflow-y-auto px-4 py-3 sm:px-6">
+      <section className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-6">
+        <div className="mx-auto mb-4 grid max-w-7xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <PrioridadOperativaPanel
+            faltantes={faltantesLista}
+            criticos={criticosLista}
+            solicitudesPendientes={solicitudesPendientes}
+            voluntariosActivos={voluntariosActivos}
+            onShowNeeds={() => setFiltro('NECESARIO')}
+            onShowStock={() => setFiltro('DISPONIBLE')}
+            onShowWorkers={() => setShowWorkers(true)}
+          />
+          <EntregasPanel
+            donaciones={donacionesActivas}
+            loading={loadingDonaciones}
+            visible={showDeliveries}
+            onToggle={() => setShowDeliveries((current) => !current)}
+          />
+        </div>
+        <div className="mx-auto max-w-7xl">
         {(necesitamos > 0 || criticos > 0) && (
-          <div className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
             <p className="font-medium">
               {necesitamos} productos faltan tras compensar stock y necesidades
               {criticos > 0 ? ` - ${criticos} critico${criticos === 1 ? '' : 's'}` : ''}
@@ -1351,7 +1490,7 @@ export default function PuestoDashboard() {
                 <button
                   type="button"
                   onClick={() => setFiltro('NECESARIO')}
-                  className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200"
+                  className="rounded-md bg-slate-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-slate-200"
                 >
                   Ver necesidades
                 </button>
@@ -1360,7 +1499,7 @@ export default function PuestoDashboard() {
                 <button
                   type="button"
                   onClick={() => setFiltro('DISPONIBLE')}
-                  className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200"
+                  className="rounded-md bg-slate-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-slate-200"
                 >
                   Ver criticos
                 </button>
@@ -1370,10 +1509,11 @@ export default function PuestoDashboard() {
         )}
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-gray-950">{inventarioTitle}</h2>
-            <p className="text-xs text-gray-500 sm:text-sm">
+            <h2 className="text-base font-semibold text-slate-950">{inventarioTitle}</h2>
+            <p className="text-xs text-slate-500 sm:text-sm">
               {listaFiltrada.length} productos visibles
               {unidadesNecesarias > 0 ? ` - ${formatCantidad(unidadesNecesarias)} unidades solicitadas` : ''}
+              {unidadesDisponibles > 0 ? ` - ${formatCantidad(unidadesDisponibles)} unidades disponibles` : ''}
             </p>
           </div>
           {(mutCantidad.isPending || mutDelete.isPending) && (
@@ -1383,12 +1523,12 @@ export default function PuestoDashboard() {
 
         {loadingInv ? (
           <div className="flex justify-center rounded-lg border border-slate-200 bg-white py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-amber-600" />
+            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-blue-600" />
           </div>
         ) : listaFiltrada.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
-            <p className="text-sm font-semibold text-gray-950">No hay productos en esta vista</p>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="text-sm font-semibold text-slate-950">No hay productos en esta vista</p>
+            <p className="mt-1 text-sm text-slate-500">
               {filtro === 'todos'
                 ? 'Registra el primer producto para empezar a operar el inventario.'
                 : 'Cambia el filtro o registra un nuevo producto para esta categoría.'}
@@ -1397,7 +1537,7 @@ export default function PuestoDashboard() {
               <Button
                 size="sm"
                 onClick={() => setShowAddSheet(true)}
-                className="mt-4 bg-amber-600 hover:bg-amber-700"
+                className="mt-4 bg-blue-600 hover:bg-blue-700"
               >
                 Añadir producto
               </Button>
@@ -1415,6 +1555,7 @@ export default function PuestoDashboard() {
             ))}
           </div>
         )}
+        </div>
       </section>
 
       {/* Resultado del último QR escaneado */}
@@ -1431,7 +1572,7 @@ export default function PuestoDashboard() {
                     : 'Formato no reconocido'}
               </p>
             </div>
-            <button onClick={() => setQrResult(null)} className="flex-shrink-0 text-slate-400 hover:text-slate-700">x</button>
+             <button onClick={() => { setQrResult(null); setQrCantidadOverride(''); }} className="flex-shrink-0 text-slate-400 hover:text-slate-700">x</button>
           </div>
 
           {qrResult.parsed ? (
@@ -1448,9 +1589,23 @@ export default function PuestoDashboard() {
                       <span className="min-w-0 truncate font-medium">
                         {producto.categoria ? `${CATEGORIA_EMOJI[producto.categoria] ?? ''} ` : ''}{producto.nombre ?? producto.productoId}
                       </span>
-                      <span className="flex-shrink-0 font-semibold">
-                        {formatCantidad(producto.cantidad)} {producto.unidad}
-                      </span>
+                      {qrResult.parsed?.type === 'DONACION_ENTREGA' ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="any"
+                            value={qrCantidadOverride}
+                            onChange={(e) => setQrCantidadOverride(e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-20 rounded border border-gray-300 px-2 py-0.5 text-right font-semibold text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                          />
+                          <span className="text-xs font-semibold text-gray-600">{producto.unidad}</span>
+                        </div>
+                      ) : (
+                        <span className="flex-shrink-0 font-semibold">
+                          {formatCantidad(producto.cantidad)} {producto.unidad}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1459,7 +1614,7 @@ export default function PuestoDashboard() {
                 <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{qrError}</p>
               )}
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" onClick={() => setQrResult(null)}>Cancelar</Button>
+                <Button variant="secondary" onClick={() => { setQrResult(null); setQrCantidadOverride(''); }}>Cancelar</Button>
                 <Button loading={qrConfirmando} onClick={() => void handleConfirmarQr()}>
                   Confirmar
                 </Button>
@@ -1477,7 +1632,9 @@ export default function PuestoDashboard() {
       {showQr && (
         <QrScanner
           onResult={(text) => {
-            setQrResult({ text, parsed: parseQrOperativo(text), ts: Date.now() })
+            const parsed = parseQrOperativo(text)
+            setQrResult({ text, parsed, ts: Date.now() })
+            setQrCantidadOverride(parsed?.type === 'DONACION_ENTREGA' ? parsed.cantidad : '')
             setQrError('')
             setShowQr(false)
           }}

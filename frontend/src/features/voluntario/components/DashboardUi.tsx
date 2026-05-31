@@ -96,14 +96,11 @@ export function Notice({
   return <div className={`rounded-lg border px-4 py-3 text-sm shadow-sm ${classes[tone]}`}>{children}</div>
 }
 
-export function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
+export function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase text-slate-400">Modulo operativo</p>
-        <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
-      </div>
-      <p className="max-w-xl text-sm leading-5 text-slate-500 sm:text-right">{subtitle}</p>
+    <div className="flex flex-col gap-1">
+      <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
+      {subtitle && <p className="max-w-xl text-sm text-slate-500">{subtitle}</p>}
     </div>
   )
 }
@@ -125,7 +122,7 @@ export function RouteSafetyPanel({
 
   return (
     <div className="border-t border-slate-200 bg-slate-50 px-3 py-3">
-      <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-2 text-xs">
         <div className="rounded-md bg-slate-50 px-2 py-2">
           <p className="font-medium text-slate-500">Distancia</p>
           <p className="mt-1 font-semibold text-slate-800">{distanciaKm.toFixed(1)} km</p>
@@ -140,14 +137,6 @@ export function RouteSafetyPanel({
             {riesgo ? `${incidenciasCercanas} aviso${incidenciasCercanas === 1 ? '' : 's'} cerca` : 'Ruta sin avisos'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => { window.location.href = 'tel:112' }}
-          className="rounded-md bg-red-50 px-2 py-2 text-left transition-colors hover:bg-red-100"
-        >
-          <p className="font-medium text-red-700">Emergencia</p>
-          <p className="mt-1 font-semibold text-red-900">Llamar 112</p>
-        </button>
       </div>
       <p className="mt-2 text-xs text-slate-500">
         Destino: {destino}. Si la ruta cambia o detectas peligro, avisa al puesto al llegar.

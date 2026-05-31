@@ -155,6 +155,14 @@ export async function listInventario(puestoId: string) {
   })
 }
 
+export async function listAllInventario() {
+  return prisma.inventario.findMany({
+    where: { puesto: { activo: true } },
+    include: { producto: true },
+    orderBy: [{ tipo: 'asc' }, { producto: { nombre: 'asc' } }],
+  })
+}
+
 export async function listInventarioHistorial(puestoId: string, userId: string) {
   await assertPuestoResponsableAccess(puestoId, userId)
 
@@ -439,7 +447,18 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     if (!donacion) {
       throw appError('Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.', 409)
     }
-    if (donacion.cantidad !== qr.cantidad || donacion.unidad !== qr.unidad) {
+
+    const cantidadAConfirmar = input.cantidadOverride ?? qr.cantidad
+
+    if (donacion.cantidad !== cantidadAConfirmar) {
+      await tx.donacion.update({
+        where: { id: donacion.id },
+        data: { cantidad: cantidadAConfirmar },
+      })
+      donacion.cantidad = cantidadAConfirmar
+    }
+
+    if (donacion.cantidad !== cantidadAConfirmar || donacion.unidad !== qr.unidad) {
       throw appError('El contenido del QR no coincide con la donacion registrada', 400)
     }
 
