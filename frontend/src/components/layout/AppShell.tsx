@@ -56,6 +56,10 @@ function getFallbackRole(roles: string[] = []) {
   return priority.find((role) => normalized.includes(role)) ?? null
 }
 
+function getAvailableRoles(roles: string[] = []) {
+  return Array.from(new Set(roles.map((role) => API_ROLE_TO_ROLE[role] ?? role).filter(Boolean))) as Role[]
+}
+
 export default function AppShell() {
   const { accessTokenExpiresAt, clearRole, selectedRole, user } = useAuthStore()
   const [profileOpen, setProfileOpen] = useState(false)
@@ -74,9 +78,10 @@ export default function AppShell() {
   }
 
   const effectiveRole = selectedRole ?? getFallbackRole(user?.roles)
+  const availableRoles = getAvailableRoles(user?.roles)
   const roleLabel = effectiveRole ? ROLE_LABELS[effectiveRole as Role] : ''
   const accent = effectiveRole ? (ROLE_ACCENTS[effectiveRole] ?? DEFAULT_ACCENT) : DEFAULT_ACCENT
-  const canChangeRole = effectiveRole !== Role.COORDINADOR
+  const canChangeRole = availableRoles.length > 1
   const sessionExpiry = accessTokenExpiresAt
     ? new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date(accessTokenExpiresAt))
     : null
