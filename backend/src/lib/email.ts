@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import type { Transporter } from 'nodemailer'
+import { EMAIL_VERIFICATION_REQUIRED } from './security.js'
 
 type MailInput = {
   to: string
@@ -23,7 +24,7 @@ function getMailFrom() {
 }
 
 export function assertEmailConfigured() {
-  if (isProduction() && !process.env.SMTP_HOST) {
+  if (isProduction() && EMAIL_VERIFICATION_REQUIRED && !process.env.SMTP_HOST) {
     throw new Error('SMTP_HOST obligatorio en produccion para enviar emails')
   }
 }
@@ -32,7 +33,8 @@ function getTransporter() {
   const host = process.env.SMTP_HOST
   if (!host) {
     if (isProduction()) {
-      throw new Error('SMTP_HOST obligatorio en produccion para enviar emails')
+      console.info('[mail:disabled] SMTP_HOST no configurado; no se enviara email')
+      return null
     }
     return null
   }
