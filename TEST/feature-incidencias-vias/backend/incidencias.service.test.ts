@@ -21,6 +21,7 @@ import {
   createIncidencia,
   listIncidencias,
   updateIncidenciaEstado,
+  updateIncidenciaByCoordinator,
   createComentarioIncidencia,
 } from '../../../backend/src/modules/incidencias/incidencias.service.js'
 
@@ -125,14 +126,23 @@ describe('updateIncidenciaEstado', () => {
 
   it('actualiza el estado de una incidencia existente', async () => {
     mp.incidenciaVia.findUnique.mockResolvedValue({ id: 'inc-1' })
-    mp.incidenciaVia.update.mockResolvedValue({ id: 'inc-1', estado: 'TRANSITABLE' })
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 })
+    const update = vi.fn().mockResolvedValue({ id: 'inc-1', estado: 'TRANSITABLE' })
+    mp.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      incidenciaVia: { update },
+      asignacionIncidencia: { updateMany },
+    }))
 
     const result = await updateIncidenciaEstado('inc-1', { estado: 'TRANSITABLE' })
 
     expect(result.estado).toBe('TRANSITABLE')
-    expect(mp.incidenciaVia.update).toHaveBeenCalledWith(
+    expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'inc-1' }, data: { estado: 'TRANSITABLE' } }),
     )
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { incidenciaId: 'inc-1', estado: 'ACTIVA' },
+      data: expect.objectContaining({ estado: 'FINALIZADA', endedAt: expect.any(Date) }),
+    }))
   })
 
   it('lanza error 404 para incidencia inexistente', async () => {
@@ -141,6 +151,27 @@ describe('updateIncidenciaEstado', () => {
     await expect(
       updateIncidenciaEstado('no-existe', { estado: 'TRANSITABLE' }),
     ).rejects.toMatchObject({ statusCode: 404 })
+  })
+})
+
+describe('updateIncidenciaByCoordinator', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('finaliza voluntarios activos cuando el coordinador marca la incidencia como transitable', async () => {
+    mp.incidenciaVia.findUnique.mockResolvedValue({ id: 'inc-1', estado: 'CORTADA' })
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+    mp.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      incidenciaVia: { update: vi.fn().mockResolvedValue({ id: 'inc-1', estado: 'TRANSITABLE' }) },
+      asignacionIncidencia: { updateMany },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    }))
+
+    await updateIncidenciaByCoordinator('inc-1', { estado: 'TRANSITABLE' }, 'coord-1')
+
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { incidenciaId: 'inc-1', estado: 'ACTIVA' },
+      data: expect.objectContaining({ estado: 'FINALIZADA', endedAt: expect.any(Date) }),
+    }))
   })
 })
 
@@ -157,6 +188,7 @@ describe('createComentarioIncidencia', () => {
       const tx = {
         comentarioIncidenciaVia: { create: vi.fn().mockResolvedValue(comentarioCreado) },
         incidenciaVia: { update: vi.fn().mockResolvedValue(incidenciaActualizada) },
+        asignacionIncidencia: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       }
       return fn(tx)
     })
@@ -170,11 +202,16 @@ describe('createComentarioIncidencia', () => {
     const tx = {
       comentarioIncidenciaVia: { create: vi.fn().mockResolvedValue(comentarioCreado) },
       incidenciaVia: { update: vi.fn().mockResolvedValue(incidenciaActualizada) },
+      asignacionIncidencia: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     }
     await transaction(tx)
     const select = tx.comentarioIncidenciaVia.create.mock.calls[0][0].select
     expect(select).not.toHaveProperty('autorId')
     expect(select).not.toHaveProperty('autor')
+    expect(tx.asignacionIncidencia.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { incidenciaId: 'inc-1', estado: 'ACTIVA' },
+      data: expect.objectContaining({ estado: 'FINALIZADA', endedAt: expect.any(Date) }),
+    }))
   })
 
   it('lanza error 404 si la incidencia no existe', async () => {

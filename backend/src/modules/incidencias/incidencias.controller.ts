@@ -4,16 +4,21 @@ import {
   createIncidenciaSchema,
   listIncidenciasQuerySchema,
   updateEstadoSchema,
+  updateIncidenciaSchema,
 } from './incidencias.schema.js'
 import {
   createAsignacionIncidencia,
   createComentarioIncidencia,
   createIncidencia,
+  deleteIncidencia,
   finalizarAsignacionIncidencia,
   getAsignacionIncidenciaActiva,
   listAsignacionesIncidencia,
+  listVoluntariosIncidenciaByCoordinator,
+  removeVoluntarioIncidenciaByCoordinator,
   listIncidencias,
   updateIncidenciaEstado,
+  updateIncidenciaByCoordinator,
 } from './incidencias.service.js'
 import { emitRealtime } from '../../lib/realtime.js'
 
@@ -69,6 +74,44 @@ export async function patchIncidenciaEstado(request: FastifyRequest, reply: Fast
   const incidencia = await updateIncidenciaEstado(id, input)
   emitRealtime('incidencia:updated', { incidenciaId: incidencia.id })
   return reply.send({ incidencia })
+}
+
+export async function deleteIncidenciaCoordinador(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string }
+  const coordinadorId = getUsuarioId(request.user)
+  if (!coordinadorId) return reply.status(401).send({ error: 'No autenticado' })
+
+  await deleteIncidencia(id, coordinadorId)
+  emitRealtime('incidencia:updated', { incidenciaId: id })
+  return reply.status(204).send()
+}
+
+export async function patchIncidenciaCoordinador(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string }
+  const coordinadorId = getUsuarioId(request.user)
+  if (!coordinadorId) return reply.status(401).send({ error: 'No autenticado' })
+
+  const input = updateIncidenciaSchema.parse(request.body)
+  const incidencia = await updateIncidenciaByCoordinator(id, input, coordinadorId)
+  emitRealtime('incidencia:updated', { incidenciaId: incidencia.id })
+  return reply.send({ incidencia })
+}
+
+export async function getVoluntariosIncidenciaCoordinador(request: FastifyRequest, reply: FastifyReply) {
+  const { id } = request.params as { id: string }
+
+  const voluntarios = await listVoluntariosIncidenciaByCoordinator(id)
+  return reply.send({ voluntarios })
+}
+
+export async function deleteVoluntarioIncidenciaCoordinador(request: FastifyRequest, reply: FastifyReply) {
+  const { id, asignacionId } = request.params as { id: string; asignacionId: string }
+  const coordinadorId = getUsuarioId(request.user)
+  if (!coordinadorId) return reply.status(401).send({ error: 'No autenticado' })
+
+  await removeVoluntarioIncidenciaByCoordinator(id, asignacionId, coordinadorId)
+  emitRealtime('incidencia:updated', { incidenciaId: id })
+  return reply.status(204).send()
 }
 
 export async function postComentarioIncidencia(request: FastifyRequest, reply: FastifyReply) {

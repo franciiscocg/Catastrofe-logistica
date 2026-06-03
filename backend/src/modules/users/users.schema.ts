@@ -16,4 +16,13 @@ export const updateUserProfileSchema = z.object({
   message: 'No hay cambios para guardar',
 })
 
+export const updateManagedUserSchema = z.object({
+  roles: z.array(z.enum(['CIUDADANO', 'VOLUNTARIO', 'PUESTO_EMERGENCIA', 'COORDINADOR']))
+    .min(1, 'El usuario debe conservar al menos un rol')
+    .optional(),
+  activo: z.boolean().optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, {
+  message: 'No hay cambios para guardar',
+})
+
 export type UpdateUserProfileInput = z.infer<typeof updateUserProfileSchema>
