@@ -36,8 +36,9 @@ services:
       - key: APP_PUBLIC_URL
         sync: false
 
-  - type: static
+  - type: web
     name: catastrofe-logistica-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
