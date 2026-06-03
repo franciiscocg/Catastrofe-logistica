@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { QRCodeSVG } from 'qrcode.react'
 import { apiClient } from '@/lib/api/client'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import Map, { type IncidenciaMarker } from '@/components/shared/Map'
+import ReadableQrCode from '@/components/shared/ReadableQrCode'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { Notice, RouteSafetyPanel } from '@/features/voluntario/components/DashboardUi'
@@ -92,8 +92,6 @@ function createCodigoEntregaPayload(donacion: Donacion, entregaCodigo: string, c
     d: donacion.id,
     p: donacion.puesto.id,
     pr: donacion.producto.id,
-    n: donacion.producto.nombre,
-    c: donacion.producto.categoria,
     q: cantidadActualizada ?? donacion.cantidad,
     u: donacion.unidad,
     g: Date.now(),
@@ -1068,8 +1066,8 @@ export default function NuevoFlujoDonacion({
 
                             {donacion.estado !== 'ENTREGADA' && (
                               <>
-                                <div className="flex items-center justify-center p-2 border border-slate-100 rounded-lg bg-slate-50 shadow-inner">
-                                  <QRCodeSVG value={qrPayload} size={180} level="M" includeMargin />
+                                <div className="flex items-center justify-center rounded-lg border border-slate-100 bg-slate-50 p-2 shadow-inner">
+                                  <ReadableQrCode value={qrPayload} />
                                 </div>
 
                                 {/* Ajuste rápido de cantidad */}

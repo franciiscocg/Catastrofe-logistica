@@ -1,4 +1,5 @@
 import { clsx } from 'clsx'
+import { ChevronRight, HeartHandshake, Info, ShieldCheck, Store, UserRound } from 'lucide-react'
 import { Role } from '@/types/auth.types'
 
 export interface RoleCardConfig {
@@ -46,6 +47,12 @@ interface RoleCardProps {
 
 export default function RoleCard({ config, onSelect, onInfo }: RoleCardProps) {
   const c = colorMap[config.color]
+  const RoleIcon = {
+    [Role.CIUDADANO]: UserRound,
+    [Role.VOLUNTARIO]: HeartHandshake,
+    [Role.PUESTO]: Store,
+    [Role.COORDINADOR]: ShieldCheck,
+  }[config.role]
 
   return (
     <div
@@ -65,15 +72,14 @@ export default function RoleCard({ config, onSelect, onInfo }: RoleCardProps) {
         )}
         aria-label={`Acceder como ${config.title}`}
       >
-        {/* Role icon */}
         <div
           className={clsx(
-            'flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center text-4xl',
+            'flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center',
             c.icon,
           )}
           aria-hidden="true"
         >
-          {config.icon}
+          <RoleIcon className="h-7 w-7" />
         </div>
 
         {/* Role text */}
@@ -87,23 +93,12 @@ export default function RoleCard({ config, onSelect, onInfo }: RoleCardProps) {
           )}
         </div>
 
-        {/* Chevron */}
-        <svg
-          className={clsx('flex-shrink-0 w-7 h-7 transition-colors', c.arrow)}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2.5}
-          aria-hidden="true"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+        <ChevronRight className={clsx('flex-shrink-0 w-7 h-7 transition-colors', c.arrow)} aria-hidden="true" />
       </button>
 
       {/* Visual separator */}
       <div className="h-px bg-gray-100 mx-5" aria-hidden="true" />
-
-      {/* Info button — opens modal, separate from the main action */}
+      {/* Info button: opens modal, separate from the main action */}
       <button
         onClick={() => onInfo(config.role)}
         className={clsx(
@@ -115,7 +110,7 @@ export default function RoleCard({ config, onSelect, onInfo }: RoleCardProps) {
         )}
         aria-label={`Más información sobre el rol ${config.title}`}
       >
-        <span className="text-base" aria-hidden="true">ℹ️</span>
+        <Info className="h-4 w-4" aria-hidden="true" />
         <span>¿Qué hace este rol?</span>
       </button>
     </div>
