@@ -11,6 +11,31 @@ type FiltroIncidencias = 'todas' | 'cortadas' | 'transitables' | 'sin-voluntario
 type FiltroUsuarios = 'todos' | 'CIUDADANO' | 'VOLUNTARIO' | 'PUESTO_EMERGENCIA' | 'COORDINADOR'
 type FiltroPuestos = 'aprobados' | 'pendientes' | 'rechazados'
 
+interface SolicitudPuesto {
+  id: string
+  nombre: string
+  descripcion?: string | null
+  direccion: string
+  latitud: number
+  longitud: number
+  tipo: string
+  estado: SolicitudEstado
+  motivoRechazo?: string | null
+  createdAt: string
+  decidedAt?: string | null
+  usuario: {
+    nombre: string
+    apellidos: string
+    email: string
+    telefono?: string | null
+    dni?: string | null
+  }
+  coordinador?: {
+    nombre: string
+    apellidos: string
+  } | null
+}
+
 interface PuestoCoordinador {
   id: string
   nombre: string
@@ -205,6 +230,8 @@ export default function CoordinadorDashboard() {
   const [filtroPuestos, setFiltroPuestos] = useState<FiltroPuestos>('aprobados')
   const [rechazoParticipacionId, setRechazoParticipacionId] = useState<string | null>(null)
   const [motivoRechazoParticipacion, setMotivoRechazoParticipacion] = useState('')
+  const [rechazoSolicitudId, setRechazoSolicitudId] = useState<string | null>(null)
+  const [motivoRechazoSolicitud, setMotivoRechazoSolicitud] = useState('')
   const [editando, setEditando] = useState<PuestoCoordinador | null>(null)
   const [eliminando, setEliminando] = useState<PuestoCoordinador | null>(null)
   const [detalleId, setDetalleId] = useState<string | null>(null)
@@ -228,6 +255,17 @@ export default function CoordinadorDashboard() {
       apiClient
         .get<{ puestos: PuestoCoordinador[] }>('/api/puestos/coordinador')
         .then((r) => r.data.puestos),
+  })
+
+  const {
+    data: solicitudesPuesto = [],
+    isLoading: isLoadingSolicitudesPuesto,
+  } = useQuery({
+    queryKey: ['solicitudes-puesto-coordinador'],
+    queryFn: () =>
+      apiClient
+        .get<{ solicitudes: SolicitudPuesto[] }>('/api/puestos/solicitudes')
+        .then((r) => r.data.solicitudes),
   })
 
   const { data: incidencias = [], isLoading: isLoadingIncidencias } = useQuery({
@@ -369,6 +407,29 @@ export default function CoordinadorDashboard() {
     onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo rechazar la participacion')),
   })
 
+  const aceptarSolicitudPuesto = useMutation({
+    mutationFn: (id: string) => apiClient.post(`/api/puestos/solicitudes/${id}/aceptar`, {}),
+    onSuccess: () => {
+      setActionError('')
+      queryClient.invalidateQueries({ queryKey: ['solicitudes-puesto-coordinador'] })
+      invalidateGestion()
+    },
+    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo aceptar la solicitud de puesto')),
+  })
+
+  const rechazarSolicitudPuesto = useMutation({
+    mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
+      apiClient.post(`/api/puestos/solicitudes/${id}/rechazar`, { motivo }),
+    onSuccess: () => {
+      setActionError('')
+      setRechazoSolicitudId(null)
+      setMotivoRechazoSolicitud('')
+      queryClient.invalidateQueries({ queryKey: ['solicitudes-puesto-coordinador'] })
+      invalidateGestion()
+    },
+    onError: (err: unknown) => setActionError(parseApiError(err, 'No se pudo rechazar la solicitud de puesto')),
+  })
+
   const incidenciasFiltradas = useMemo(() => {
     const term = busquedaIncidencias.trim().toLowerCase()
     return incidencias.filter((incidencia) => {
@@ -416,9 +477,30 @@ export default function CoordinadorDashboard() {
     })
   }, [busquedaPuestos, filtroPuestos, puestos])
 
+  const solicitudesPuestoFiltradas = useMemo(() => {
+    const term = busquedaPuestos.trim().toLowerCase()
+    const estado: SolicitudEstado = filtroPuestos === 'pendientes'
+      ? 'PENDIENTE'
+      : filtroPuestos === 'rechazados'
+        ? 'RECHAZADA'
+        : 'ACEPTADA'
+
+    return solicitudesPuesto.filter((solicitud) => {
+      const coincideTexto = !term
+        || solicitud.nombre.toLowerCase().includes(term)
+        || solicitud.direccion.toLowerCase().includes(term)
+        || solicitud.tipo.toLowerCase().includes(term)
+        || formatTipoPuesto(solicitud.tipo).toLowerCase().includes(term)
+        || solicitud.usuario.email.toLowerCase().includes(term)
+        || `${solicitud.usuario.nombre} ${solicitud.usuario.apellidos}`.toLowerCase().includes(term)
+
+      return solicitud.estado === estado && coincideTexto
+    })
+  }, [busquedaPuestos, filtroPuestos, solicitudesPuesto])
+
   const puestosPendientes = useMemo(() => (
-    puestos.filter((puesto) => puesto.activo && puesto.estadoSolicitud === 'PENDIENTE')
-  ), [puestos])
+    solicitudesPuesto.filter((solicitud) => solicitud.estado === 'PENDIENTE')
+  ), [solicitudesPuesto])
 
   const puestosActivos = useMemo(() => (
     puestos.filter((puesto) => puesto.activo && puesto.estadoSolicitud === 'APROBADO')
@@ -442,7 +524,7 @@ export default function CoordinadorDashboard() {
     usuarios.filter((usuario) => usuario.activo && !usuario.emailVerified)
   ), [usuarios])
 
-  const loadingInicial = isLoadingPuestos || isLoadingIncidencias || isLoadingUsuarios
+  const loadingInicial = isLoadingPuestos || isLoadingSolicitudesPuesto || isLoadingIncidencias || isLoadingUsuarios
   const usuariosActivos = usuarios.filter((usuario) => usuario.activo).length
   const trabajoPendiente = puestosPendientes.length + puestosConNecesidades.length + usuariosSinVerificar.length
 
@@ -643,10 +725,82 @@ export default function CoordinadorDashboard() {
           </div>
 
           <div className="mt-4">
-            {isLoadingPuestos ? (
+            {(isLoadingPuestos || isLoadingSolicitudesPuesto) ? (
               <LoadingState />
             ) : isErrorPuestos ? (
               <EmptyState title="No se pudieron cargar los puestos" text="Revisa que el backend este actualizado." />
+            ) : filtroPuestos === 'pendientes' ? (
+              solicitudesPuestoFiltradas.length === 0 ? (
+                <EmptyState title="Sin solicitudes pendientes" text="No hay solicitudes de puesto pendientes que coincidan con la busqueda." />
+              ) : (
+                <div className="space-y-3">
+                  {solicitudesPuestoFiltradas.map((solicitud) => (
+                    <article key={solicitud.id} className="rounded-lg border border-amber-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="font-semibold text-gray-950">{solicitud.nombre}</h2>
+                            {estadoSolicitudBadge(solicitud.estado)}
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500">{solicitud.direccion}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={aceptarSolicitudPuesto.isPending}
+                            onClick={() => aceptarSolicitudPuesto.mutate(solicitud.id)}
+                          >
+                            Aceptar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              setActionError('')
+                              setRechazoSolicitudId(solicitud.id)
+                            }}
+                          >
+                            Rechazar
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                        <CardMetric label="Tipo" value={formatTipoPuesto(solicitud.tipo)} />
+                        <CardMetric label="Solicitante" value={`${solicitud.usuario.nombre} ${solicitud.usuario.apellidos}`} />
+                        <CardMetric label="Fecha" value={fechaSolicitud(solicitud.createdAt) ?? '-'} />
+                        <CardMetric label="Estado" value={solicitud.estado} />
+                      </div>
+
+                      <div className="mt-3 grid gap-1 text-xs text-gray-500">
+                        <p>Email: {solicitud.usuario.email}</p>
+                        {solicitud.usuario.telefono && <p>Telefono: {solicitud.usuario.telefono}</p>}
+                        <p>Ubicacion: {solicitud.latitud.toFixed(4)}, {solicitud.longitud.toFixed(4)}</p>
+                        {solicitud.descripcion && <p>{solicitud.descripcion}</p>}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )
+            ) : filtroPuestos === 'rechazados' && solicitudesPuestoFiltradas.length > 0 ? (
+              <div className="space-y-3">
+                {solicitudesPuestoFiltradas.map((solicitud) => (
+                  <article key={solicitud.id} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-semibold text-gray-950">{solicitud.nombre}</h2>
+                      {estadoSolicitudBadge(solicitud.estado)}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-500">{solicitud.direccion}</p>
+                    <div className="mt-3 grid gap-1 text-xs text-gray-500">
+                      <p>Solicitante: {solicitud.usuario.nombre} {solicitud.usuario.apellidos} - {solicitud.usuario.email}</p>
+                      {solicitud.motivoRechazo && <p>Motivo: {solicitud.motivoRechazo}</p>}
+                      <p>Revisada: {fechaSolicitud(solicitud.decidedAt)}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
             ) : puestosFiltrados.length === 0 ? (
               <EmptyState title="Sin puestos" text="No hay puestos que coincidan con la busqueda." />
             ) : (
@@ -980,6 +1134,36 @@ export default function CoordinadorDashboard() {
             />
             <ModalActions onCancel={() => setRechazoParticipacionId(null)}>
               <Button type="submit" variant="danger" loading={rechazarParticipacion.isPending}>Rechazar</Button>
+            </ModalActions>
+          </form>
+        </Modal>
+      )}
+
+      {rechazoSolicitudId && (
+        <Modal>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              rechazarSolicitudPuesto.mutate({
+                id: rechazoSolicitudId,
+                motivo: motivoRechazoSolicitud.trim(),
+              })
+            }}
+            className="space-y-3"
+          >
+            <ModalTitle title="Rechazar solicitud de puesto" text="Indica el motivo para que quede registrado en el historial." />
+            <textarea
+              value={motivoRechazoSolicitud}
+              onChange={(e) => setMotivoRechazoSolicitud(e.target.value)}
+              rows={3}
+              required
+              minLength={10}
+              maxLength={500}
+              placeholder="Falta informacion, ubicacion no operativa, capacidad insuficiente..."
+              className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <ModalActions onCancel={() => setRechazoSolicitudId(null)}>
+              <Button type="submit" variant="danger" loading={rechazarSolicitudPuesto.isPending}>Rechazar</Button>
             </ModalActions>
           </form>
         </Modal>
