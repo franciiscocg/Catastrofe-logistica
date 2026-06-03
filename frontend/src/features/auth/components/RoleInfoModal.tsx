@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
-import { Check, HeartHandshake, Lightbulb, Store, UserRound } from 'lucide-react'
+import { Check, HeartHandshake, Lightbulb, ShieldCheck, Store, UserRound } from 'lucide-react'
 
 export interface RoleInfoData {
   title: string
   icon: string
-  color: 'blue' | 'green' | 'amber'
+  color: 'blue' | 'green' | 'amber' | 'purple'
   what: string
   canDo: string[]
   whenToUse: string
@@ -45,6 +45,15 @@ const colorMap = {
     closeBtn: 'bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white',
     ring: 'focus-visible:ring-amber-700',
   },
+  purple: {
+    header: 'bg-purple-700',
+    checkBg: 'bg-purple-100',
+    checkText: 'text-purple-800',
+    callout: 'bg-purple-50 border-purple-100',
+    calloutText: 'text-purple-900',
+    closeBtn: 'bg-purple-700 hover:bg-purple-800 active:bg-purple-900 text-white',
+    ring: 'focus-visible:ring-purple-700',
+  },
 }
 
 export default function RoleInfoModal({ isOpen, onClose, info }: RoleInfoModalProps) {
@@ -70,7 +79,9 @@ export default function RoleInfoModal({ isOpen, onClose, info }: RoleInfoModalPr
     ? HeartHandshake
     : info.title.includes('Puesto')
       ? Store
-      : UserRound
+      : info.title.includes('Coordinador')
+        ? ShieldCheck
+        : UserRound
 
   return (
     <div

@@ -7,7 +7,7 @@ export interface RoleCardConfig {
   title: string
   subtitle: string
   icon: string
-  color: 'blue' | 'green' | 'amber'
+  color: 'blue' | 'green' | 'amber' | 'purple'
   requiresAuth: boolean
   badge?: { text: string; className: string }
 }
@@ -36,6 +36,14 @@ const colorMap = {
     arrow: 'text-amber-300',
     infoBtn: 'text-amber-700 hover:bg-amber-50',
     ring: 'focus-visible:ring-amber-700',
+  },
+  purple: {
+    border: 'border-purple-200 hover:border-purple-400',
+    icon: 'bg-purple-50 text-purple-700',
+    title: 'text-purple-800',
+    arrow: 'text-purple-300',
+    infoBtn: 'text-purple-700 hover:bg-purple-50',
+    ring: 'focus-visible:ring-purple-700',
   },
 }
 

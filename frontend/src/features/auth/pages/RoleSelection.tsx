@@ -77,6 +77,28 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
   },
 ]
 
+const COORDINATOR_ROLE: Omit<RoleConfig, 'badge'> = {
+  role: Role.COORDINADOR,
+  title: 'Coordinador',
+  subtitle: 'Coordino usuarios, puestos e incidencias',
+  icon: 'C',
+  color: 'purple',
+  requiresAuth: true,
+  info: {
+    title: 'Coordinador',
+    icon: 'C',
+    color: 'purple',
+    what: 'Eres responsable de supervisar la respuesta operativa, validar puestos y mantener coordinados los recursos disponibles.',
+    canDo: [
+      'Gestionar usuarios y roles',
+      'Aprobar o rechazar solicitudes de puestos',
+      'Supervisar incidencias y recursos',
+      'Revisar el estado general de la operativa',
+    ],
+    whenToUse: 'Usalo si tienes permisos de coordinacion y necesitas administrar la respuesta de emergencia.',
+  },
+}
+
 export default function RoleSelection() {
   const navigate = useNavigate()
   const { isAuthenticated, user, puestoId, selectRole } = useAuthStore()
@@ -93,7 +115,9 @@ export default function RoleSelection() {
   const hasPuesto = Boolean(puestoId)
   const isCoordinator = Boolean(user?.roles.includes('COORDINADOR'))
 
-  const roles: RoleConfig[] = ROLES_BASE.map((roleConfig) => {
+  const baseRoles = isCoordinator ? [...ROLES_BASE, COORDINATOR_ROLE] : ROLES_BASE
+
+  const roles: RoleConfig[] = baseRoles.map((roleConfig) => {
     if (roleConfig.role !== Role.PUESTO) return roleConfig
     return {
       ...roleConfig,
@@ -155,18 +179,6 @@ export default function RoleSelection() {
               </div>
             ))}
           </div>
-
-          {isCoordinator && (
-            <button
-              onClick={() => {
-                selectRole(Role.COORDINADOR)
-                navigate('/coordinador')
-              }}
-              className="mt-4 w-full rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-left text-sm font-semibold text-purple-800 hover:bg-purple-100"
-            >
-              Entrar como coordinador
-            </button>
-          )}
 
           {isAuthenticated && (
             <div className="mt-4 text-center">
