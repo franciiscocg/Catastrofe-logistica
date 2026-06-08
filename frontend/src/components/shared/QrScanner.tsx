@@ -1,185 +1,243 @@
-import { useEffect, useRef, useId, useState } from 'react'
-import { Html5Qrcode, Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode'
+import { useEffect, useId, useRef, useState } from 'react'
+import { Camera, CameraOff, Loader2, RotateCcw, X } from 'lucide-react'
+import { Html5Qrcode, Html5QrcodeSupportedFormats, type CameraDevice } from 'html5-qrcode'
 
 interface QrScannerProps {
   onResult: (result: string) => void
   onClose: () => void
 }
 
+type ScannerStatus = 'starting' | 'scanning' | 'blocked' | 'error'
+
+const QR_BOX_SIZE = 340
+const REAR_CAMERA_HINTS = ['back', 'rear', 'environment', 'trasera', 'posterior']
+
+function highResolutionConstraints(base: MediaTrackConstraints = {}): MediaTrackConstraints {
+  return {
+    ...base,
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 30 },
+  }
+}
+
+function getPreferredCamera(cameras: CameraDevice[]) {
+  const labelledRearCamera = cameras.find((camera) => {
+    const label = camera.label.toLocaleLowerCase()
+    return REAR_CAMERA_HINTS.some((hint) => label.includes(hint))
+  })
+
+  return labelledRearCamera ?? cameras.at(-1)
+}
+
+async function getCameraTargets(): Promise<MediaTrackConstraints[]> {
+  const targets: MediaTrackConstraints[] = []
+
+  try {
+    const cameras = await Html5Qrcode.getCameras()
+    const preferredCamera = getPreferredCamera(cameras)
+    if (preferredCamera) {
+      targets.push(highResolutionConstraints({ deviceId: { exact: preferredCamera.id } }))
+    }
+  } catch {
+    // Algunos navegadores solo enumeran dispositivos despues del permiso inicial.
+  }
+
+  targets.push(
+    highResolutionConstraints({ facingMode: { exact: 'environment' } }),
+    highResolutionConstraints({ facingMode: { ideal: 'environment' } }),
+    highResolutionConstraints(),
+  )
+
+  return targets
+}
+
 export default function QrScanner({ onResult, onClose }: QrScannerProps) {
   const uid = useId().replace(/:/g, '')
   const divId = `qr-reader-${uid}`
-  const fileReaderId = `qr-file-reader-${uid}`
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null)
-  const mountedRef = useRef(false)
-  const [fileError, setFileError] = useState('')
-  const [scanningFile, setScanningFile] = useState(false)
-  const [manualCode, setManualCode] = useState('')
-  const [manualError, setManualError] = useState('')
+  const scannerRef = useRef<Html5Qrcode | null>(null)
+  const startedRef = useRef(false)
+  const completedRef = useRef(false)
+  const [status, setStatus] = useState<ScannerStatus>('starting')
+  const [error, setError] = useState('')
+  const [cameraLabel, setCameraLabel] = useState('')
+  const [retryKey, setRetryKey] = useState(0)
   const showSecureWarning = typeof window !== 'undefined'
     && !window.isSecureContext
     && window.location.hostname !== 'localhost'
     && window.location.hostname !== '127.0.0.1'
 
   useEffect(() => {
-    // Evitar doble inicialización en React Strict Mode
-    if (mountedRef.current) return
-    mountedRef.current = true
+    let cancelled = false
+    completedRef.current = false
+    startedRef.current = false
+    setStatus('starting')
+    setError('')
+    setCameraLabel('')
 
-    scannerRef.current = new Html5QrcodeScanner(
-      divId,
+    const stopScanner = async () => {
+      const scanner = scannerRef.current
+      if (!scanner) return
+      try {
+        if (startedRef.current) await scanner.stop()
+      } catch {
+        // La camara puede estar ya detenida si el navegador revoca el stream.
+      }
+      try {
+        await scanner.clear()
+      } catch {
+        // clear falla si no llego a montarse el lector.
+      }
+      startedRef.current = false
+    }
+
+    const startScanner = async () => {
+      await stopScanner()
+      if (cancelled) return
+
+      const scanner = new Html5Qrcode(divId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        useBarCodeDetectorIfSupported: true,
+        verbose: false,
+      })
+      scannerRef.current = scanner
+
+      const targets = await getCameraTargets()
+      let lastError: unknown
+
+      for (const target of targets) {
+        try {
+          await scanner.start(
+            target,
+            {
+              fps: 15,
+              qrbox: (viewfinderWidth, viewfinderHeight) => {
+                const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
+                const size = Math.max(260, Math.min(QR_BOX_SIZE, Math.floor(minEdge * 0.82)))
+                return { width: size, height: size }
+              },
+              aspectRatio: 1,
+              disableFlip: false,
+            },
+            (decoded) => {
+              if (completedRef.current) return
+              completedRef.current = true
+              window.navigator.vibrate?.(80)
+              void stopScanner()
+              onResult(decoded)
+            },
+            () => {
+              // Los fallos por frame son normales mientras el QR entra en foco.
+            },
+          )
+          startedRef.current = true
+          if (!cancelled) {
+            const trackSettings = scanner.getRunningTrackSettings() as MediaTrackSettings & { label?: string }
+            setCameraLabel(trackSettings.label ?? '')
+            setStatus('scanning')
+          }
+          return
+        } catch (err) {
+          lastError = err
+          const message = err instanceof Error ? err.message : String(err)
+          const lower = message.toLowerCase()
+          const permissionBlocked = lower.includes('permission') || lower.includes('notallowed') || lower.includes('denied')
+          if (permissionBlocked) break
+        }
+      }
+
       {
-        fps: 10,
-        qrbox: { width: 240, height: 240 },
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-        showTorchButtonIfSupported: true,
-        showZoomSliderIfSupported: true,
-        rememberLastUsedCamera: true,
-      },
-      false,
-    )
+        if (cancelled) return
+        const message = lastError instanceof Error ? lastError.message : String(lastError)
+        const lower = message.toLowerCase()
+        const blocked = lower.includes('permission') || lower.includes('notallowed') || lower.includes('denied')
+        setStatus(blocked || showSecureWarning ? 'blocked' : 'error')
+        setError(
+          showSecureWarning
+            ? 'El navegador solo permite usar la camara en HTTPS o en localhost.'
+            : blocked
+              ? 'Permite el acceso a la camara para poder escanear el codigo.'
+              : 'No se pudo abrir una camara compatible. Comprueba permisos y que ninguna otra aplicacion la este usando.',
+        )
+      }
+    }
 
-    scannerRef.current.render(
-      (decoded) => {
-        // Parar el escáner al obtener un resultado y notificar al padre
-        scannerRef.current?.clear().catch(() => {})
-        onResult(decoded)
-      },
-      () => { /* errores de escaneo continuos — ignorar */ },
-    )
+    void startScanner()
 
     return () => {
-      scannerRef.current?.clear().catch(() => {})
+      cancelled = true
+      void stopScanner()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [retryKey])
 
-  const handleFileQr = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setScanningFile(true)
-    setFileError('')
-
-    const fileScanner = new Html5Qrcode(fileReaderId)
-    try {
-      const result = await fileScanner.scanFileV2(file, true)
-      fileScanner.clear()
-      scannerRef.current?.clear().catch(() => {})
-      onResult(result.decodedText)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : ''
-      setFileError(
-        message.toLowerCase().includes('image')
-          ? 'No he podido abrir esa imagen. En iPhone prueba a hacer captura del QR o una foto en JPG/PNG.'
-          : 'No he podido leer un QR en esa imagen. Prueba con mas luz, sin reflejos y acercando el codigo.',
-      )
-    } finally {
-      try {
-        fileScanner.clear()
-      } catch {
-        // No hay camara activa que limpiar cuando solo se lee un archivo.
-      }
-      setScanningFile(false)
-      event.target.value = ''
-    }
-  }
-
-  const handleManualSubmit = () => {
-    const code = manualCode.trim()
-    if (!code) {
-      setManualError('Pega primero el codigo del QR.')
-      return
-    }
-
-    scannerRef.current?.clear().catch(() => {})
-    setManualError('')
-    onResult(code)
-  }
+  const isLoading = status === 'starting'
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[3000] bg-white rounded-t-2xl shadow-2xl max-h-[90vh] flex flex-col">
-      {/* Handle */}
-      <div className="flex justify-center pt-3 pb-1">
-        <div className="w-10 h-1 bg-gray-300 rounded-full" />
-      </div>
-
-      {/* Cabecera */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-        <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Escáner</p>
-          <p className="font-semibold text-gray-900">Escanear código QR</p>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Área del escáner */}
-      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-3">
-        <p className="text-xs text-gray-500 text-center mb-3">
-          Apunta la cámara al código QR del voluntario
-        </p>
-
-        {/* html5-qrcode monta su UI aquí */}
-        {showSecureWarning && (
-          <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Si el navegador no abre la camara por estar en HTTP, usa el boton de foto de abajo.
-          </p>
-        )}
-
-        <div id={divId} className="w-full [&_#qr-reader__dashboard_section_csr_span]:text-sm [&_video]:rounded-xl" />
-        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3">
-          <p className="text-sm font-semibold text-gray-900">Alternativa para movil</p>
-          <p className="mt-1 text-xs text-gray-500">
-            Haz una foto del QR o sube una captura si la camara directa no aparece.
-          </p>
-          <div
-            id={fileReaderId}
-            className="mt-3 min-h-16 overflow-hidden rounded-lg border border-dashed border-gray-300 bg-white text-center text-xs text-gray-400 [&_img]:mx-auto [&_img]:max-h-56"
-          />
-          <label className="mt-3 flex w-full cursor-pointer items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            {scanningFile ? 'Leyendo QR...' : 'Hacer foto o subir QR'}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/*"
-              className="hidden"
-              disabled={scanningFile}
-              onChange={(event) => void handleFileQr(event)}
-            />
-          </label>
-          {fileError && (
-            <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{fileError}</p>
-          )}
-        </div>
-
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-sm font-semibold text-gray-900">Si no lo reconoce</p>
-          <p className="mt-1 text-xs text-gray-500">
-            Pega aqui el codigo del QR para probar la confirmacion sin depender de la camara.
-          </p>
-          <textarea
-            value={manualCode}
-            onChange={(event) => {
-              setManualCode(event.target.value)
-              setManualError('')
-            }}
-            rows={3}
-            className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder='{"t":"SC",...}'
-          />
-          {manualError && (
-            <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{manualError}</p>
-          )}
+    <div className="fixed inset-0 z-[3000] flex items-end bg-slate-950/60 sm:items-center sm:justify-center">
+      <div className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-w-md sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+              <Camera className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Escaner QR</p>
+              <p className="truncate text-sm font-semibold text-slate-950">
+                {status === 'scanning' ? 'Camara activa' : 'Camara lista para escanear'}
+              </p>
+            </div>
+          </div>
           <button
             type="button"
-            onClick={handleManualSubmit}
-            className="mt-3 flex w-full items-center justify-center rounded-lg border border-blue-600 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+            onClick={onClose}
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+            aria-label="Cerrar escaner"
           >
-            Leer codigo pegado
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 pt-4">
+          <div className="relative overflow-hidden rounded-xl bg-slate-950">
+            <div
+              id={divId}
+              className="min-h-[380px] w-full [&_video]:min-h-[380px] [&_video]:w-full [&_video]:object-cover"
+            />
+            {isLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 text-white">
+                <Loader2 className="h-7 w-7 animate-spin" aria-hidden />
+                <p className="text-sm font-medium">Abriendo camara...</p>
+              </div>
+            )}
+            {status === 'scanning' && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="h-[76%] w-[76%] max-w-[340px] rounded-2xl border-2 border-white/90 shadow-[0_0_0_999px_rgba(15,23,42,0.28)]" />
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3 text-center text-sm text-slate-600" aria-live="polite">
+            <p>Acerca el codigo al recuadro y manten el movil estable hasta que vibre o se cierre el lector.</p>
+            {cameraLabel && <p className="mt-1 text-xs text-slate-400">{cameraLabel}</p>}
+          </div>
+
+          {(status === 'blocked' || status === 'error') && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+              <div className="flex gap-2">
+                <CameraOff className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
+                <p>{error}</p>
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setRetryKey((current) => current + 1)}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden />
+            Reintentar camara
           </button>
         </div>
       </div>

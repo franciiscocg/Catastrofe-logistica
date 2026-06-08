@@ -23,12 +23,13 @@ import { sendAccountVerificationEmail, sendPasswordResetEmail } from '../../lib/
 
 const REFRESH_COOKIE_NAME = 'catlogistica_refresh'
 const REFRESH_COOKIE_PATH = '/api/auth'
+const COOKIE_SAME_SITE = (process.env.COOKIE_SAME_SITE ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax')) as 'lax' | 'strict' | 'none'
 
 function refreshCookieOptions() {
   return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax' as const,
+    sameSite: COOKIE_SAME_SITE,
     path: REFRESH_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
   }
@@ -74,13 +75,13 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
   const { user, verificationToken } = await registerUser(input)
 
-  await sendAccountVerificationEmail({
-    to: user.email,
-    nombre: user.nombre,
-    token: verificationToken,
-  })
-
   if (!user.emailVerified) {
+    await sendAccountVerificationEmail({
+      to: user.email,
+      nombre: user.nombre,
+      token: verificationToken,
+    })
+
     const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
     return reply.status(201).send({
       user,

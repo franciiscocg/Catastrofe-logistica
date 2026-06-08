@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs'
 import { RolUsuario } from '@prisma/client'
 import { createHash, randomBytes } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
-import { REFRESH_TOKEN_TTL_DAYS, RESET_TOKEN_TTL_MINUTES, VERIFY_TOKEN_TTL_HOURS } from '../../lib/security.js'
+import { EMAIL_VERIFICATION_REQUIRED, REFRESH_TOKEN_TTL_DAYS, RESET_TOKEN_TTL_MINUTES, VERIFY_TOKEN_TTL_HOURS } from '../../lib/security.js'
 import type { LoginInput, RegisterInput, ResendVerificationInput, RequestPasswordResetInput, ResetPasswordInput } from './auth.schema.js'
 
 function appError(message: string, statusCode: number) {
@@ -59,8 +59,8 @@ export async function loginUser({ identifier, password }: LoginInput) {
   if (!valid) throw appError('Credenciales incorrectas', 401)
 
   if (!user.activo) throw appError('Cuenta desactivada', 403)
-  if (process.env.NODE_ENV === 'production' && !user.emailVerified) {
-    throw appError('Verifica tu cuenta antes de iniciar sesión', 403)
+  if (EMAIL_VERIFICATION_REQUIRED && !user.emailVerified) {
+    throw appError('Verifica tu cuenta antes de iniciar sesion', 403)
   }
 
   if (user.roles.includes(RolUsuario.VOLUNTARIO)) {
@@ -135,8 +135,8 @@ export async function registerUser(input: RegisterInput) {
         dni: input.dni.toUpperCase(),
         roles,
         activo: true,
-        emailVerified: process.env.NODE_ENV !== 'production',
-        emailVerifiedAt: process.env.NODE_ENV !== 'production' ? new Date() : undefined,
+        emailVerified: !EMAIL_VERIFICATION_REQUIRED,
+        emailVerifiedAt: !EMAIL_VERIFICATION_REQUIRED ? new Date() : undefined,
       },
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true, emailVerified: true },
     })

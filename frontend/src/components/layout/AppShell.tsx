@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
+import { ChevronDown, Repeat2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { ROLE_LABELS, Role } from '@/types/auth.types'
 
@@ -55,6 +56,10 @@ function getFallbackRole(roles: string[] = []) {
   return priority.find((role) => normalized.includes(role)) ?? null
 }
 
+function getAvailableRoles(roles: string[] = []) {
+  return Array.from(new Set(roles.map((role) => API_ROLE_TO_ROLE[role] ?? role).filter(Boolean))) as Role[]
+}
+
 export default function AppShell() {
   const { accessTokenExpiresAt, clearRole, selectedRole, user } = useAuthStore()
   const [profileOpen, setProfileOpen] = useState(false)
@@ -73,8 +78,10 @@ export default function AppShell() {
   }
 
   const effectiveRole = selectedRole ?? getFallbackRole(user?.roles)
+  const availableRoles = getAvailableRoles(user?.roles)
   const roleLabel = effectiveRole ? ROLE_LABELS[effectiveRole as Role] : ''
   const accent = effectiveRole ? (ROLE_ACCENTS[effectiveRole] ?? DEFAULT_ACCENT) : DEFAULT_ACCENT
+  const canChangeRole = availableRoles.length > 1
   const sessionExpiry = accessTokenExpiresAt
     ? new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date(accessTokenExpiresAt))
     : null
@@ -121,35 +128,36 @@ export default function AppShell() {
             </p>
           </div>
 
-          <div ref={profileMenuRef} className="relative flex flex-shrink-0 items-center">
-            <button
-              type="button"
-              onClick={() => setProfileOpen((open) => !open)}
-              aria-expanded={profileOpen}
-              aria-label="Abrir perfil operativo"
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
-              <span className="grid h-8 w-8 place-items-center rounded-md bg-slate-950 text-xs font-semibold text-white">
-                {initials}
-              </span>
-              <span className="hidden min-w-0 sm:block">
-                <span className="block max-w-36 truncate text-xs font-semibold text-slate-900">{user?.nombre ?? 'Perfil'}</span>
-                <span className="block max-w-36 truncate text-[11px] text-slate-500">{user?.telefono ? 'Contacto listo' : 'Completar perfil'}</span>
-              </span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className={`h-4 w-4 flex-shrink-0 text-slate-500 transition-transform ${profileOpen ? 'rotate-180' : ''}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {canChangeRole && (
+              <button
+                type="button"
+                onClick={handleChangeRole}
+                className={`inline-flex min-h-10 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${accent.button}`}
               >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-            </button>
+                <Repeat2 className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Cambiar rol</span>
+                <span className="sm:hidden">Rol</span>
+              </button>
+            )}
+
+            <div ref={profileMenuRef} className="relative flex items-center">
+              <button
+                type="button"
+                onClick={() => setProfileOpen((open) => !open)}
+                aria-expanded={profileOpen}
+                aria-label="Abrir perfil operativo"
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <span className="grid h-8 w-8 place-items-center rounded-md bg-slate-950 text-xs font-semibold text-white">
+                  {initials}
+                </span>
+                <span className="hidden min-w-0 sm:block">
+                  <span className="block max-w-36 truncate text-xs font-semibold text-slate-900">{user?.nombre ?? 'Perfil'}</span>
+                  <span className="block max-w-36 truncate text-[11px] text-slate-500">{user?.telefono ? 'Contacto listo' : 'Completar perfil'}</span>
+                </span>
+                <ChevronDown className={`h-4 w-4 flex-shrink-0 text-slate-500 transition-transform ${profileOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+              </button>
 
             {profileOpen && (
               <div className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
@@ -201,34 +209,20 @@ export default function AppShell() {
                       <path d="m12 5 7 7-7 7" />
                     </svg>
                   </button>
-                  {selectedRole !== 'coordinador' && (
+                  {canChangeRole && (
                     <button
                       type="button"
                       onClick={handleChangeRole}
                       className={`flex w-full items-center justify-between rounded-md border px-2 py-2 text-left text-sm font-semibold transition-colors ${accent.button}`}
                     >
                       Cambiar rol
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M17 2l4 4-4 4" />
-                        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                        <path d="M7 22l-4-4 4-4" />
-                        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                      </svg>
+                      <Repeat2 className="h-4 w-4" aria-hidden="true" />
                     </button>
                   )}
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </header>
