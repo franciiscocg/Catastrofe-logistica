@@ -10,7 +10,6 @@ export default function VerifyAccount() {
   const [identifier, setIdentifier] = useState('')
   const [message, setMessage] = useState('')
   const [resendMessage, setResendMessage] = useState('')
-  const [devToken, setDevToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
@@ -33,11 +32,9 @@ export default function VerifyAccount() {
     event.preventDefault()
     setResending(true)
     setResendMessage('')
-    setDevToken('')
     try {
-      const { data } = await apiClient.post<{ sent: boolean; verificationToken?: string }>('/api/auth/verify-account/resend', { identifier })
+      await apiClient.post<{ sent: boolean }>('/api/auth/verify-account/resend', { identifier })
       setResendMessage('Si la cuenta existe y está pendiente de verificar, enviaremos un nuevo enlace.')
-      if (data.verificationToken) setDevToken(data.verificationToken)
     } catch (err) {
       setResendMessage(getApiErrorMessage(err, 'No se pudo reenviar el enlace de verificación.'))
     } finally {
@@ -63,7 +60,6 @@ export default function VerifyAccount() {
             <p className="mt-1 text-sm text-gray-500">Usa tu email o DNI si el enlace ha caducado.</p>
           </div>
           {resendMessage && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">{resendMessage}</p>}
-          {devToken && <p className="break-all rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">Token desarrollo: {devToken}</p>}
           <input required value={identifier} onChange={(event) => setIdentifier(event.target.value)} className="w-full rounded-lg border-gray-300 text-sm" placeholder="tu@email.com o 12345678A" />
           <Button type="submit" variant="secondary" fullWidth loading={resending}>Reenviar verificación</Button>
         </form>
