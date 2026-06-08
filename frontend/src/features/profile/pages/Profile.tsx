@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { ArrowLeft } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
-import type { User } from '@/types/auth.types'
+import { ROLE_ROUTES, type User } from '@/types/auth.types'
 
 interface VehiculoPerfil {
   disponible: boolean
@@ -65,7 +67,8 @@ function StatusRow({ label, ready, value }: { label: string; ready: boolean; val
 }
 
 export default function Profile() {
-  const { user, updateUser } = useAuthStore()
+  const navigate = useNavigate()
+  const { selectedRole, user, updateUser } = useAuthStore()
   const [personal, setPersonal] = useState({
     nombre: user?.nombre ?? '',
     apellidos: user?.apellidos ?? '',
@@ -190,6 +193,9 @@ export default function Profile() {
   const hasVehicleData = !hasVehicle || Boolean(voluntario.tipoVehiculo.trim() && voluntario.matricula.trim())
   const completion = [true, hasPhone, hasVehicleData].filter(Boolean).length
   const readinessLabel = completion === 3 ? 'Perfil listo' : 'Completar datos'
+  const handleExitProfile = () => {
+    navigate(selectedRole ? ROLE_ROUTES[selectedRole] : '/')
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-4 sm:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -203,7 +209,17 @@ export default function Profile() {
                 Informacion minima para identificarte, contactar contigo y asignarte tareas durante una emergencia.
               </p>
             </div>
-            <Badge variant={completion === 3 ? 'success' : 'warning'}>{readinessLabel}</Badge>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExitProfile}
+                className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Volver
+              </button>
+              <Badge variant={completion === 3 ? 'success' : 'warning'}>{readinessLabel}</Badge>
+            </div>
           </div>
         </div>
 
