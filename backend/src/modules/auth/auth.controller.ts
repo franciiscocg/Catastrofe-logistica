@@ -82,11 +82,9 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       token: verificationToken,
     })
 
-    const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
     return reply.status(201).send({
       user,
       requiresEmailVerification: true,
-      ...devVerification,
     })
   }
 
@@ -94,8 +92,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
   const tokenPayload = await signAccessToken(reply, user)
   setRefreshCookie(reply, refreshToken)
 
-  const devVerification = process.env.NODE_ENV === 'production' ? {} : { verificationToken }
-  return reply.status(201).send({ user, ...tokenPayload, ...devVerification })
+  return reply.status(201).send({ user, ...tokenPayload })
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
@@ -135,8 +132,7 @@ export async function resendVerification(request: FastifyRequest, reply: Fastify
     })
   }
 
-  const devVerification = process.env.NODE_ENV === 'production' || !result.verificationToken ? {} : { verificationToken: result.verificationToken }
-  return reply.send({ sent: true, ...devVerification })
+  return reply.send({ sent: true })
 }
 
 export async function requestReset(request: FastifyRequest, reply: FastifyReply) {
@@ -151,8 +147,7 @@ export async function requestReset(request: FastifyRequest, reply: FastifyReply)
     })
   }
 
-  const devReset = process.env.NODE_ENV === 'production' || !result.resetToken ? {} : { resetToken: result.resetToken }
-  return reply.send({ sent: true, ...devReset })
+  return reply.send({ sent: true })
 }
 
 export async function reset(request: FastifyRequest, reply: FastifyReply) {

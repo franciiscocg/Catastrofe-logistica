@@ -36,6 +36,12 @@ FRONTEND_URL=https://catastrofe-logistica-frontend.onrender.com
 APP_PUBLIC_URL=https://catastrofe-logistica-frontend.onrender.com
 EMAIL_VERIFICATION_REQUIRED=false
 COOKIE_SAME_SITE=none
+MAIL_FROM="Catastrofe Logistica <tu-correo@tu-dominio.com>"
+SMTP_HOST=smtp.tu-proveedor.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=tu_usuario_smtp
+SMTP_PASS=tu_password_smtp
 ```
 
 `JWT_SECRET` puede generarse con:
@@ -64,6 +70,26 @@ VITE_API_URL=https://catastrofe-logistica-backend.onrender.com
 8. Copia la URL publica del frontend.
 9. Pega `FRONTEND_URL` y `APP_PUBLIC_URL` en backend.
 10. Redeploy backend.
+
+## 6. Recuperacion de contrasena por email
+
+La recuperacion de contrasena necesita SMTP configurado en el backend. Si `SMTP_HOST`
+esta vacio, el backend no envia correo real y solo escribe el enlace en la consola
+cuando se ejecuta en desarrollo.
+
+Ejemplo con Gmail:
+
+```text
+MAIL_FROM="Catastrofe Logistica <tu-email@gmail.com>"
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=tu-email@gmail.com
+SMTP_PASS=tu_contrasena_de_aplicacion
+```
+
+En Gmail no sirve la contrasena normal de la cuenta: hay que crear una contrasena
+de aplicacion desde la configuracion de seguridad de Google.
 
 ## Notas
 

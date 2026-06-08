@@ -114,7 +114,7 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <header className="safe-top border-b border-slate-200 bg-white">
+      <header className="safe-top relative z-[1000] border-b border-slate-200 bg-white">
         <div className={`flex min-h-[64px] items-center justify-between gap-3 border-l-4 px-4 py-2.5 ${accent.border}`}>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">

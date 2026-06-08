@@ -7,7 +7,6 @@ import { getApiErrorMessage } from '@/utils/errors'
 export default function RequestPasswordReset() {
   const [identifier, setIdentifier] = useState('')
   const [message, setMessage] = useState('')
-  const [devToken, setDevToken] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -15,12 +14,10 @@ export default function RequestPasswordReset() {
     event.preventDefault()
     setLoading(true)
     setMessage('')
-    setDevToken('')
     setError('')
     try {
-      const { data } = await apiClient.post<{ sent: boolean; resetToken?: string }>('/api/auth/password-reset/request', { identifier })
+      await apiClient.post<{ sent: boolean }>('/api/auth/password-reset/request', { identifier })
       setMessage('Si existe una cuenta con esos datos, enviaremos instrucciones de recuperación.')
-      if (data.resetToken) setDevToken(data.resetToken)
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se pudieron enviar las instrucciones.'))
     } finally {
@@ -37,7 +34,6 @@ export default function RequestPasswordReset() {
         </div>
         {message && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">{message}</p>}
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        {devToken && <p className="break-all rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">Token desarrollo: {devToken}</p>}
         <input
           required
           value={identifier}
