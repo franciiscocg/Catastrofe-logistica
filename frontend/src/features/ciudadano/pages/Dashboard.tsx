@@ -582,6 +582,14 @@ export default function CiudadanoDashboard() {
     await calcularRutaPuesto(puesto)
   }
 
+  const handleComoLlegarPuesto = async (id: string) => {
+    const puesto = puestos.find((p) => p.id === id)
+    if (!puesto) return
+
+    setSelectedId(id)
+    await calcularRutaPuesto(puesto)
+  }
+
   const handleCancelarRuta = () => {
     setRoute(null)
     setRouteInfo(null)
@@ -847,10 +855,18 @@ export default function CiudadanoDashboard() {
     estado: EstadoVia,
     comentario = '',
   ) => {
+    setHistorialComentariosIncidencia(null)
     setComentarioIncidencia(incidencia)
     setComentarioEstado(estado)
     setComentarioTexto(comentario)
     setComentarioError(null)
+  }
+
+  const abrirHistorialComentariosIncidencia = (incidencia: IncidenciaMarker) => {
+    setComentarioIncidencia(null)
+    setComentarioTexto('')
+    setComentarioError(null)
+    setHistorialComentariosIncidencia(incidencia)
   }
 
   const handleIncidenciaAction = (incidencia: IncidenciaMarker, action: IncidenciaAction) => {
@@ -1092,14 +1108,6 @@ export default function CiudadanoDashboard() {
         </div>
       )}
 
-      {feedbackMessage && (
-        <div className="px-4 pt-2 flex-shrink-0">
-          <div className="bg-green-50 border border-green-200 text-green-800 text-sm rounded-lg px-3 py-2">
-            {feedbackMessage}
-          </div>
-        </div>
-      )}
-
       {vista === 'inicio' && (
         <CiudadanoInicio
           onVerMapa={() => {
@@ -1126,6 +1134,7 @@ export default function CiudadanoDashboard() {
           selectedPuestoId={selectedId}
           onPuestoSelect={handleSelectPuesto}
           onVerInventarioPuesto={(id) => { setSelectedId(id); setVista('inventario') }}
+          onComoLlegarPuesto={(id) => { void handleComoLlegarPuesto(id) }}
           onUserLocated={setUserPosition}
           onReportPointSelect={(pos) => {
             setReportPosition(pos)
@@ -1133,12 +1142,20 @@ export default function CiudadanoDashboard() {
             setReportSuccess(null)
           }}
           onIncidenciaAction={handleIncidenciaAction}
-          onIncidenciaCommentsOpen={setHistorialComentariosIncidencia}
+          onIncidenciaCommentsOpen={abrirHistorialComentariosIncidencia}
           route={route}
           focusUserPositionKey={focusUserPositionKey}
           markerVariant="neutral"
           className="h-full w-full"
         />
+
+        {feedbackMessage && (
+          <div className="pointer-events-none absolute left-4 right-4 top-16 z-[1400] flex justify-center">
+            <div className="max-w-sm rounded-xl border border-green-200 bg-white px-4 py-3 text-sm font-medium text-green-800 shadow-xl">
+              {feedbackMessage}
+            </div>
+          </div>
+        )}
 
         <button
           type="button"
@@ -1165,7 +1182,7 @@ export default function CiudadanoDashboard() {
         <button
           onClick={handleLocalizarme}
           disabled={geoLoading}
-          className="absolute top-3 right-12 z-[1000] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
+          className="absolute top-3 right-12 z-[700] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
         >
           {geoLoading ? '🔄 Localizando…' : '📍 Localizarme'}
         </button>
@@ -1399,7 +1416,7 @@ export default function CiudadanoDashboard() {
               type="button"
               onClick={handleLocalizarme}
               disabled={geoLoading}
-              className="absolute top-2 right-2 z-[1000] bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
+              className="absolute top-2 right-2 z-[700] bg-white border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-md hover:bg-gray-50 transition-colors disabled:opacity-60"
             >
               {geoLoading ? '🔄' : '📍'} Localizarme
             </button>
