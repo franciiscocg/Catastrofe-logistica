@@ -10,6 +10,14 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - APP_PUBLIC_URL=${APP_PUBLIC_URL:-http://localhost:5173}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
+      - MAIL_FROM=${MAIL_FROM:-Catastrofe Logistica <no-reply@example.com>}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
