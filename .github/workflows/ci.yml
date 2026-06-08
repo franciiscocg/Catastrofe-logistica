@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Cancela ejecuciones previas de la misma rama/PR si llega un push nuevo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Tests unitarios (backend + frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Los tests de backend mockean Prisma (no necesitan BD ni Redis). El test
+      # de realtime importa socket.io-client desde frontend/node_modules, por eso
+      # instalamos las dependencias de ambos paquetes en el mismo job.
+      - name: Instalar dependencias backend
+        working-directory: backend
+        run: npm ci
+
+      - name: Instalar dependencias frontend
+        working-directory: frontend
+        run: npm ci
+
+      # Genera el cliente de Prisma (solo necesita el schema, no una BD viva).
+      - name: Generar cliente Prisma
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Tests backend
+        working-directory: backend
+        run: npm test
+
+      - name: Tests frontend
+        working-directory: frontend
+        run: npm test
+
+# Nota: los E2E (Playwright) necesitan el stack completo levantado (frontend en
+# :5173 + backend + BD) y no encajan en este job de unitarios. Se ejecutan en
+# local con `npm run test:e2e` desde frontend/ tras levantar docker-compose.

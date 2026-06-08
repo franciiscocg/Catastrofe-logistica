@@ -321,25 +321,31 @@ describe('coordinador', () => {
     mockApiPost.mockResolvedValue({ data: {} })
   })
 
+  // Las solicitudes se gestionan en la pestana "Puestos" > "Solicitudes pendientes".
+  async function abrirSolicitudesPendientes() {
+    fireEvent.click(await screen.findByRole('button', { name: /^Puestos$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /Solicitudes pendientes/i }))
+  }
+
   it('puede aprobar una solicitud de puesto pendiente', async () => {
     renderWithQuery(<CoordinadorDashboard />)
 
-    fireEvent.click(screen.getByRole('button', { name: /^Solicitudes$/i }))
+    await abrirSolicitudesPendientes()
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Aceptar/i }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes/solicitud-1/aceptar')
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes/solicitud-1/aceptar', {})
     })
   })
 
   it('puede rechazar una solicitud indicando motivo', async () => {
     renderWithQuery(<CoordinadorDashboard />)
 
-    fireEvent.click(screen.getByRole('button', { name: /^Solicitudes$/i }))
+    await abrirSolicitudesPendientes()
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
-    fireEvent.change(screen.getByPlaceholderText(/Faltan datos de ubicacion/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Falta informacion/i), {
       target: { value: 'Falta documentacion' },
     })
     const rechazarButtons = screen.getAllByRole('button', { name: /^Rechazar$/i })

@@ -5,6 +5,7 @@ node_modules/
 
 # Build
 dist/
+dev-dist/
 build/
 .output/
 
@@ -67,6 +68,10 @@ backend/prisma/migrations/*
 
 # Coverage
 coverage/
+
+# Resultados de tests (artefactos de Playwright)
+test-results/
+playwright-report/
 
 # Tmp
 *.tmp

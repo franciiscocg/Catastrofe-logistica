@@ -202,10 +202,13 @@ describe('createComentarioIncidencia', () => {
     const comentarioCreado = { id: 'com-1', incidenciaId: INCIDENCIA_ID, estado: 'TRANSITABLE', comentario: 'La calle ya es transitable', autor: null }
     const incidenciaActualizada = { id: INCIDENCIA_ID, estado: 'TRANSITABLE' }
 
+    const asignacionUpdateMany = vi.fn().mockResolvedValue({ count: 1 })
     mp.$transaction.mockImplementation(async (fn: (tx: typeof mp) => Promise<unknown>) => {
       const tx = {
         comentarioIncidenciaVia: { create: vi.fn().mockResolvedValue(comentarioCreado) },
         incidenciaVia: { update: vi.fn().mockResolvedValue(incidenciaActualizada) },
+        // Al pasar a TRANSITABLE el servicio finaliza las asignaciones activas.
+        asignacionIncidencia: { updateMany: asignacionUpdateMany },
       }
       return fn(tx)
     })
@@ -217,6 +220,13 @@ describe('createComentarioIncidencia', () => {
 
     expect(result.comentario.estado).toBe('TRANSITABLE')
     expect(result.incidencia.estado).toBe('TRANSITABLE')
+    // La calle vuelve a ser transitable -> las asignaciones activas se finalizan.
+    expect(asignacionUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { incidenciaId: INCIDENCIA_ID, estado: 'ACTIVA' },
+        data: expect.objectContaining({ estado: 'FINALIZADA' }),
+      }),
+    )
   })
 
   it('puede reportar que la calle sigue CORTADA con comentario obligatorio', async () => {

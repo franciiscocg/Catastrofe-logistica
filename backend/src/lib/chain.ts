@@ -51,6 +51,14 @@ function computeEventHash(
 
 // ── Core: escribir evento en la cadena ───────────────────────────────────────
 
+// LIMITACIÓN CONOCIDA — cadena global serializable.
+// La cadena es única: cada evento lee el último `sequence` y escribe dentro de
+// una transacción Serializable. Esto da un orden total y verificable, pero
+// serializa TODA la escritura de eventos: bajo concurrencia alta las
+// transacciones compiten por el final de la cadena, generando reintentos
+// (absorbidos por `encolar` + `procesarColaPendiente`) y reduciendo throughput.
+// Es el principal cuello de botella de escritura del sistema. Línea futura:
+// particionar la cadena (p. ej. una por puesto) para escrituras concurrentes.
 async function writeToChain(input: ChainEventInput) {
   return prisma.$transaction(
     async (tx) => {
@@ -126,6 +134,12 @@ export async function appendChainEvent(input: ChainEventInput): Promise<void> {
 
 // ── TSA async ─────────────────────────────────────────────────────────────────
 
+// El sellado de tiempo es OPCIONAL y best-effort: se ejecuta sin await desde
+// appendChainEvent para no bloquear el registro del evento. Si el TSA está
+// caído, cambia de formato o agota el timeout, el fallo se ignora. La
+// integridad de la cadena NO depende del TSA — la garantiza el hash-chain por
+// sí solo; el sello solo añade prueba independiente de CUÁNDO existió el hash.
+// TSA configurable vía TSA_URL (por defecto freetsa.org). Ver tsa.ts.
 async function stampEventAsync(eventId: string, hashPropio: string) {
   try {
     const { token, timestamp } = await timestampHash(hashPropio)

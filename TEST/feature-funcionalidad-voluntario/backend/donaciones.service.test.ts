@@ -333,16 +333,16 @@ describe('generarCodigoEntrega', () => {
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si la donacion no esta EN_CAMINO', async () => {
+  it('lanza 400 si la donacion ya fue entregada o cancelada', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
-      id: DONACION_ID, estado: 'PENDIENTE', entregaCodigo: null,
+      id: DONACION_ID, estado: 'ENTREGADA', entregaCodigo: null,
       producto: productoBase, puesto: puestoBase,
     })
 
     await expect(generarCodigoEntrega(USUARIO_ID, DONACION_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Solo puedes generar el codigo cuando la donacion esta en camino',
+      message: 'Solo puedes generar el codigo cuando la donacion esta pendiente o en camino',
     })
   })
 

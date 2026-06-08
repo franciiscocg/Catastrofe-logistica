@@ -351,20 +351,24 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     mockApiPost.mockResolvedValue({ data: {} })
   })
 
+  // Las solicitudes de puesto se gestionan dentro de la pestana "Puestos",
+  // bajo el filtro "Solicitudes pendientes" (antes habia una pestana propia).
   async function abrirSolicitudes() {
     renderWithQuery(<CoordinadorDashboard />)
-    fireEvent.click(await screen.findByRole('button', { name: /^Solicitudes$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Puestos$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /Solicitudes pendientes/i }))
   }
 
   it('muestra las solicitudes pendientes con los datos del solicitante', async () => {
     await abrirSolicitudes()
 
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
-    // El email aparece como parte de "Solicitante: Maria Garcia - maria@example.com"
+    // El email del solicitante se muestra ("Email: maria@example.com")
     expect(screen.getByText(/maria@example\.com/)).toBeInTheDocument()
     // La direccion de la solicitud tambien se muestra
     expect(screen.getByText('Calle Mayor 12')).toBeInTheDocument()
-    expect(screen.getByText(/Solicitada:/)).toBeInTheDocument()
+    // El solicitante aparece en la ficha de la solicitud
+    expect(screen.getByText('Maria Garcia')).toBeInTheDocument()
   })
 
   it('puede aceptar una solicitud pendiente', async () => {
@@ -374,7 +378,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aceptar/i }))
 
     await waitFor(() => {
-      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes/solicitud-1/aceptar')
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes/solicitud-1/aceptar', {})
     })
   })
 
@@ -383,7 +387,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
 
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
-    fireEvent.change(screen.getByPlaceholderText(/Faltan datos/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Falta informacion/i), {
       target: { value: 'Falta documentacion del responsable' },
     })
     const rechazarBtns = screen.getAllByRole('button', { name: /^Rechazar$/i })
@@ -402,7 +406,9 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     expect(await screen.findByText('Pendiente')).toBeInTheDocument()
   })
 
-  it('muestra solicitudes ya aceptadas con su badge correspondiente', async () => {
+  it('no lista como pendientes las solicitudes ya aceptadas', async () => {
+    // Una solicitud ACEPTADA ya no aparece en el filtro de pendientes (pasa a ser
+    // un puesto aprobado), por lo que el filtro muestra el estado vacio.
     mockApiGet.mockImplementation((url: string) => {
       if (url === '/api/puestos/solicitudes') {
         return Promise.resolve({
@@ -423,9 +429,8 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
     })
     await abrirSolicitudes()
 
-    expect(await screen.findByText('Aceptada')).toBeInTheDocument()
-    expect(screen.getByText(/Resuelta:/)).toHaveTextContent('Laura Ruiz')
-    // Las solicitudes aceptadas no muestran botones de accion
+    expect(await screen.findByText(/Sin solicitudes pendientes/i)).toBeInTheDocument()
+    expect(screen.queryByText('CEIP La Paz')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Aceptar/i })).not.toBeInTheDocument()
   })
 })

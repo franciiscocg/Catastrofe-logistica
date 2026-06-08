@@ -241,18 +241,30 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     expect(mp.inventario.create).toHaveBeenCalledOnce()
   })
 
-  it('rechaza (400) si la cantidad del QR no coincide con la donacion registrada', async () => {
+  it('reconcilia la cantidad cuando el QR difiere y marca la donacion ENTREGADA', async () => {
+    // La cantidad del QR/override ahora gana: la donacion se actualiza para
+    // cuadrar con lo entregado en lugar de rechazarse. (El 400 por desajuste
+    // queda solo para la unidad — cubierto por el test siguiente.)
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue(donacionEnCamino()) // donacion tiene cantidad 5
-
-    const codigoCantidadErronea = codigoDECompacto({ q: 4 }) // QR dice 4
-
-    await expect(
-      confirmarQrInventario(PUESTO_ID, { codigo: codigoCantidadErronea }, USER_ID),
-    ).rejects.toMatchObject({
-      statusCode: 400,
-      message: 'El contenido del QR no coincide con la donacion registrada',
+    mp.inventario.findUnique
+      .mockResolvedValueOnce(null) // sin necesidad
+      .mockResolvedValueOnce(null) // sin disponible previo
+    mp.inventario.create.mockResolvedValue({
+      id: 'disp-1', tipo: 'DISPONIBLE', cantidad: 4, producto: PRODUCTO,
     })
+    mp.donacion.update.mockResolvedValue({ ...donacionEnCamino(), cantidad: 4, estado: 'ENTREGADA' })
+
+    const result = await confirmarQrInventario(PUESTO_ID, { codigo: codigoDECompacto({ q: 4 }) }, USER_ID)
+
+    expect(result.tipo).toBe('DONACION_ENTREGA')
+    // La donacion se reconcilia a la cantidad del QR (4) antes de entregarse.
+    expect(mp.donacion.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: DONACION_ID }, data: { cantidad: 4 } }),
+    )
+    expect(mp.inventario.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ cantidad: 4, tipo: 'DISPONIBLE' }) }),
+    )
   })
 
   it('rechaza (400) si la unidad del QR no coincide con la donacion registrada', async () => {
@@ -347,11 +359,11 @@ describe('generarCodigoEntrega', () => {
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })
 
-  it('rechaza (400) si la donacion no esta EN_CAMINO', async () => {
+  it('rechaza (400) si la donacion ya fue entregada o cancelada', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID,
-      estado: 'PENDIENTE',
+      estado: 'ENTREGADA',
       entregaCodigo: null,
       producto: PRODUCTO,
       puesto: PUESTO_DATA,
@@ -359,7 +371,7 @@ describe('generarCodigoEntrega', () => {
 
     await expect(generarCodigoEntrega(USER_ID, DONACION_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Solo puedes generar el codigo cuando la donacion esta en camino',
+      message: 'Solo puedes generar el codigo cuando la donacion esta pendiente o en camino',
     })
   })
 

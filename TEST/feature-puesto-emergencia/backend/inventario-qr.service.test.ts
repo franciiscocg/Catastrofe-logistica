@@ -245,7 +245,18 @@ describe('confirmarQrInventario', () => {
       cantidad: 0,
     })
     mp.inventario.create.mockResolvedValue({ ...ITEM_DISPONIBLE, id: 'disp-1', cantidad: 3 })
-    mp.donacion.update.mockResolvedValue({ id: 'don-1', estado: 'ENTREGADA' })
+    // El update final incluye { producto, puesto } y el servicio los usa al
+    // registrar el evento en la cadena (don.producto.nombre, don.puesto.nombre).
+    mp.donacion.update.mockResolvedValue({
+      id: 'don-1',
+      estado: 'ENTREGADA',
+      productoId: PRODUCTO.id,
+      cantidad: 5,
+      unidad: 'litros',
+      entregaCodigo: 'DEL-1',
+      producto: PRODUCTO,
+      puesto: { nombre: 'Puesto Centro' },
+    })
 
     const codigo = JSON.stringify({
       t: 'DE',
@@ -307,14 +318,16 @@ describe('confirmarQrInventario', () => {
       producto: PRODUCTO,
     })
 
+    // La cantidad ahora se auto-reconcilia (gana la del QR/override), asi que el
+    // 400 "no coincide" solo salta por desajuste de unidad.
     const codigo = JSON.stringify({
       t: 'DE',
       p: PUESTO_ID,
       pr: PRODUCTO.id,
       d: 'don-1',
       e: 'DEL-1',
-      q: 4,
-      u: 'litros',
+      q: 5,
+      u: 'kilos',
     })
 
     await expect(confirmarQrInventario(PUESTO_ID, { codigo }, USER_ID))

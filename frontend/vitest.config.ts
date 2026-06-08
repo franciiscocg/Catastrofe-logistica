@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
+// Config unificada: corre los tests unitarios de frontend de TODAS las features.
+// Los tests viven en TEST/<feature>/frontend/ (*.test.ts / *.test.tsx).
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const TEST_DIR = resolve(__dirname, '../TEST/feature-puesto-emergencia').replace(/\\/g, '/')
+const TEST_ROOT = resolve(__dirname, '..', 'TEST').replace(/\\/g, '/')
 
 export default defineConfig({
   plugins: [react()],
@@ -14,10 +16,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: [`${TEST_DIR}/frontend/**/*.test.{ts,tsx}`],
-    setupFiles: [resolve(__dirname, 'vitest.feature-incidencias-vias.setup.ts')],
+    include: [`${TEST_ROOT}/**/frontend/**/*.test.{ts,tsx}`],
+    setupFiles: [resolve(__dirname, 'vitest.setup.ts')],
   },
   resolve: {
+    // Los tests viven fuera de frontend/ (en ../TEST), así que las imports bare
+    // no encuentran frontend/node_modules por sí solas: hay que aliasarlas.
     alias: {
       '@': resolve(__dirname, 'src'),
       '@testing-library/react': resolve(__dirname, 'node_modules/@testing-library/react'),
@@ -25,6 +29,8 @@ export default defineConfig({
       '@testing-library/jest-dom': resolve(__dirname, 'node_modules/@testing-library/jest-dom'),
       '@tanstack/react-query': resolve(__dirname, 'node_modules/@tanstack/react-query'),
       'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),
+      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
+      react: resolve(__dirname, 'node_modules/react'),
     },
   },
 })

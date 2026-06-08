@@ -145,12 +145,13 @@ describe('PuestoDashboard', () => {
 
     expect(await screen.findByText('CEIP La Paz')).toBeInTheDocument()
     await screen.findByText('Agua embotellada')
-    expect(screen.getByText('Activo')).toBeInTheDocument()
 
-    expect(within(screen.getByText('Disponible neto').closest('div') as HTMLElement).getByText('2')).toBeInTheDocument()
-    expect(within(screen.getByText('Criticos').closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
-    const faltanStat = screen.getAllByText('Faltan').find((node) => node.tagName.toLowerCase() === 'p') as HTMLElement
-    expect(within(faltanStat.closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
+    // La cabecera resume el estado del puesto y las metricas del inventario.
+    const header = screen.getByText('Puesto de emergencia').closest('section') as HTMLElement
+    expect(within(header).getByText('Operativo')).toBeInTheDocument()
+    // 1 producto falta (Botas) y 1 esta critico por stock bajo (Mantas).
+    expect(within(within(header).getByText('Faltan').closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
+    expect(within(within(header).getByText('Criticos').closest('div') as HTMLElement).getByText('1')).toBeInTheDocument()
   })
 
   it('filtra la lista para mostrar solo productos necesarios', async () => {
@@ -159,16 +160,22 @@ describe('PuestoDashboard', () => {
     expect(await screen.findByText('Agua embotellada')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Faltan', { selector: 'button' }))
 
-    expect(screen.getByText('Botas de agua')).toBeInTheDocument()
+    // Botas (faltante) sigue visible; Agua (disponible) desaparece de la vista.
+    // "Botas de agua" puede aparecer tambien en el panel de prioridad operativa.
+    expect(screen.getAllByText('Botas de agua').length).toBeGreaterThan(0)
     expect(screen.queryByText('Agua embotellada')).not.toBeInTheDocument()
   })
 
   it('actualiza cantidades desde los controles de inventario', async () => {
     renderDashboard()
 
-    await screen.findByText('Mantas')
-    const card = screen.getByText('Mantas').closest('article') as HTMLElement
-    fireEvent.click(within(card).getByText('Entrada'))
+    await screen.findAllByText('Mantas')
+    // "Mantas" puede aparecer en el panel de prioridad y en la tarjeta; nos
+    // quedamos con la tarjeta (article) del inventario.
+    const card = screen.getAllByText('Mantas')
+      .map((node) => node.closest('article'))
+      .find((el): el is HTMLElement => el !== null) as HTMLElement
+    fireEvent.click(within(card).getByTitle('Registrar entrada'))
 
     await waitFor(() => {
       expect(mockApiPatch).toHaveBeenCalledWith('/api/inventario/items/item-mantas/cantidad', { delta: 1 })
@@ -179,8 +186,10 @@ describe('PuestoDashboard', () => {
     renderDashboard()
 
     await screen.findByText('Radios')
-    const card = screen.getByText('Radios').closest('article') as HTMLElement
-    fireEvent.click(within(card).getByText('Salida'))
+    const card = screen.getAllByText('Radios')
+      .map((node) => node.closest('article'))
+      .find((el): el is HTMLElement => el !== null) as HTMLElement
+    fireEvent.click(within(card).getByTitle('Registrar salida'))
 
     await waitFor(() => {
       expect(mockApiPost).toHaveBeenCalledWith('/api/inventario/puesto/puesto-1/items', expect.objectContaining({
@@ -197,7 +206,7 @@ describe('PuestoDashboard', () => {
     renderDashboard()
 
     await screen.findByText('CEIP La Paz')
-    fireEvent.click(screen.getByRole('button', { name: /Anadir producto|A.adir producto/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Nuevo producto/i }))
     fireEvent.click(screen.getByText(/Medicamentos b.sicos/))
     fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: /A.adir al inventario/ }))
@@ -220,7 +229,7 @@ describe('PuestoDashboard', () => {
     renderDashboard()
 
     await screen.findByText('CEIP La Paz')
-    fireEvent.click(screen.getByText('Mas acciones'))
+    // El boton "Voluntarios" de la barra de acciones abre el panel de voluntarios.
     fireEvent.click(screen.getAllByText('Voluntarios').find((node) => node.tagName.toLowerCase() === 'button') as HTMLElement)
 
     expect(await screen.findByText('Ana Lopez')).toBeInTheDocument()

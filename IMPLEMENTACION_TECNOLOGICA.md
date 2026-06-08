@@ -497,6 +497,29 @@ Cloudflare en plan gratuito puede ponerse delante del servidor para:
 
 ---
 
+## Trazabilidad: Cadena de Custodia y Sellado de Tiempo
+
+Para dar valor probatorio a la trazabilidad de donaciones y movimientos de inventario, el sistema implementa una **cadena de custodia tipo hash-chain** (`backend/src/lib/chain.ts`), opcionalmente reforzada con **sellado de tiempo RFC 3161** contra una autoridad externa (`backend/src/lib/tsa.ts`).
+
+### Cómo funciona
+
+- Cada evento relevante (`DONACION_CREADA`, `INVENTARIO_SALIDA`, etc.) se registra como un `ChainEvent` con un número de secuencia, su `payload` y el hash SHA-256 del evento anterior (`hashPrevio` → `hashPropio`).
+- Cualquier manipulación posterior de un evento rompe la cadena a partir de ese punto, lo cual es detectable con `verifyChain()`, que recalcula y compara todos los hashes.
+- Si la escritura del evento falla, no se descarta: se encola en `PendingChainEvent` y se reintenta con backoff exponencial (10 s → 30 min, hasta 5 intentos).
+
+### El TSA es opcional (best-effort)
+
+- El sellado de tiempo (`stampEventAsync`) se ejecuta de forma asíncrona y **nunca bloquea** el registro del evento. Si el TSA (`freetsa.org` por defecto, configurable vía `TSA_URL`) está caído, cambia su formato de respuesta o tarda más de 10 s, el fallo se ignora silenciosamente.
+- **La integridad de la trazabilidad NO depende del TSA**: la garantiza el hash-chain por sí solo. El sello de tiempo solo añade una prueba independiente de *cuándo* existió un hash. Por tanto, la app funciona con normalidad aunque el TSA no esté disponible, y el despliegue no requiere contratar ningún servicio de sellado.
+
+### Limitación conocida: cadena global serializable
+
+La cadena es **única y global**: cada evento lee el último `sequence` y escribe dentro de una transacción con `isolationLevel: 'Serializable'`. Esto garantiza un orden total y verificable, pero **serializa toda la escritura de eventos**: bajo concurrencia alta (muchas donaciones o movimientos de inventario simultáneos) las transacciones compiten por el mismo punto final de la cadena, generando reintentos y reduciendo el throughput.
+
+Para el alcance de un MVP/TFM es una decisión asumible —la cola de reintentos absorbe la contención sin perder eventos—, pero es el principal cuello de botella de escritura del sistema. **Línea de trabajo futura:** particionar la cadena (p. ej. una cadena por puesto de emergencia o por tipo de entidad) para permitir escrituras concurrentes manteniendo la verificabilidad dentro de cada partición.
+
+---
+
 ## Roadmap de Implementación
 
 ### Fase 1: MVP (3-4 meses)
