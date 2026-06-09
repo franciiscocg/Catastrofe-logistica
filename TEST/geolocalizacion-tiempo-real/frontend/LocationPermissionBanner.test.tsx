@@ -61,7 +61,7 @@ describe('LocationPermissionBanner — visibilidad', () => {
   it('se renderiza cuando hay error, no hay posición y no está cargando', () => {
     setup({ error: 'La ubicacion esta bloqueada en el navegador', permissionState: 'denied' })
     render(<LocationPermissionBanner />)
-    expect(screen.getByRole('button', { name: 'Activar ubicacion' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
   })
 })
 
@@ -106,11 +106,11 @@ describe('LocationPermissionBanner — mensajes de estado', () => {
 describe('LocationPermissionBanner — interacción', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('el botón "Activar ubicacion" llama a request() al ser pulsado', () => {
+  it('el botón "Reintentar" llama a request() al ser pulsado', () => {
     const mockRequest = vi.fn()
     setup({ error: 'err', permissionState: 'denied', request: mockRequest })
     render(<LocationPermissionBanner />)
-    fireEvent.click(screen.getByRole('button', { name: 'Activar ubicacion' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     expect(mockRequest).toHaveBeenCalledOnce()
   })
 
@@ -130,7 +130,7 @@ describe('LocationPermissionBanner — persistencia visual', () => {
   it('el banner tiene clase "fixed" para quedar anclado mientras la ubicación esté bloqueada', () => {
     setup({ error: 'err', permissionState: 'denied' })
     render(<LocationPermissionBanner />)
-    const btn = screen.getByRole('button', { name: 'Activar ubicacion' })
+    const btn = screen.getByRole('button', { name: 'Reintentar' })
     // closest('[class]') devuelve el botón mismo (que tiene clases propias).
     // Usamos [class*="fixed"] para subir hasta el div ancestro que contiene "fixed".
     const banner = btn.closest('[class*="fixed"]')
@@ -141,7 +141,7 @@ describe('LocationPermissionBanner — persistencia visual', () => {
   it('el banner tiene z-index elevado para mostrarse por encima del mapa', () => {
     setup({ error: 'err', permissionState: 'denied' })
     render(<LocationPermissionBanner />)
-    const btn = screen.getByRole('button', { name: 'Activar ubicacion' })
+    const btn = screen.getByRole('button', { name: 'Reintentar' })
     // z-[3000] garantiza que el banner supera el z-index del mapa (z-1000)
     const banner = btn.closest('[class*="z-[3000]"]')
     expect(banner).not.toBeNull()
