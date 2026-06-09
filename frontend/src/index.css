@@ -36,6 +36,18 @@
   max-width: 100%;
 }
 
+/* iOS hace zoom automatico al enfocar un campo cuyo texto mide < 16px y se queda
+   ampliado al salir. Forzamos 16px en los controles de formulario en dispositivos
+   tactiles para evitarlo, sin alterar el diseno en escritorio. Va sin @layer para
+   ganar en especificidad a las utilidades de Tailwind (p. ej. text-sm). */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 @keyframes pulse-report {
   0% {
     transform: scale(1);
