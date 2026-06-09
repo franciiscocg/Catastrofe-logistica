@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MessageSquareText, Navigation, PackageOpen, PencilLine } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -63,6 +64,7 @@ interface MapProps {
   selectedPuestoId?: string | null
   onPuestoSelect?: (id: string) => void
   onVerInventarioPuesto?: (id: string) => void
+  onComoLlegarPuesto?: (id: string) => void
   onUserLocated?: (pos: [number, number]) => void
   onReportPointSelect?: (pos: [number, number]) => void
   onIncidenciaAction?: (incidencia: IncidenciaMarker, action: IncidenciaAction) => void
@@ -192,36 +194,6 @@ function FocusUserPosition({
   return null
 }
 
-function LocateButton({ onLocated }: { onLocated: (pos: [number, number]) => void }) {
-  const map = useMap()
-
-  useMapEvents({
-    locationfound(e) {
-      onLocated([e.latlng.lat, e.latlng.lng])
-    },
-  })
-
-  return (
-    <div className="leaflet-bottom leaflet-right" style={{ marginBottom: 24, marginRight: 10 }}>
-      <div className="leaflet-control">
-        <button
-          onClick={() => map.locate({ setView: true, maxZoom: 15, enableHighAccuracy: true })}
-          title="Mi ubicación"
-          style={{
-            width: 40, height: 40, background: 'white',
-            border: '2px solid rgba(0,0,0,0.2)', borderRadius: 8,
-            cursor: 'pointer', fontSize: 18, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-          }}
-        >
-          📍
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function ReportPointSelector({
   enabled,
   onSelect,
@@ -262,7 +234,7 @@ export default function Map({
   selectedPuestoId,
   onPuestoSelect,
   onVerInventarioPuesto,
-  onUserLocated,
+  onComoLlegarPuesto,
   onReportPointSelect,
   onIncidenciaAction,
   onIncidenciaCommentsOpen,
@@ -349,6 +321,30 @@ export default function Map({
                 <p style={{ fontWeight: 700, marginBottom: 6, color: '#111827' }}>
                   {inc.estado === 'CORTADA' ? 'Calle cortada' : 'Incidencia resuelta'}
                 </p>
+                {!inc.pendingSync && (
+                  <div className="mb-2 grid grid-cols-2 gap-1.5">
+                    {onIncidenciaAction && (
+                      <button
+                        type="button"
+                        onClick={() => onIncidenciaAction(inc, 'comentar')}
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100"
+                      >
+                        <PencilLine className="h-3.5 w-3.5" aria-hidden="true" />
+                        Estado
+                      </button>
+                    )}
+                    {onIncidenciaCommentsOpen && (
+                      <button
+                        type="button"
+                        onClick={() => onIncidenciaCommentsOpen(inc)}
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                      >
+                        <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" />
+                        Comentarios
+                      </button>
+                    )}
+                  </div>
+                )}
                 {inc.pendingSync && (
                   <p style={{ fontSize: 12, color: '#92400e', marginBottom: 6 }}>Pendiente de sincronizar</p>
                 )}
@@ -391,24 +387,6 @@ export default function Map({
                     <p style={{ fontSize: 11, color: '#6b7280' }}>
                       {inc.comentarios[0].estado === 'CORTADA' ? 'Sigue cortada' : 'Resuelta'} · {new Date(inc.comentarios[0].createdAt).toLocaleString('es-ES')}
                     </p>
-                    {(inc._count?.comentarios ?? inc.comentarios.length) > 1 && onIncidenciaCommentsOpen && (
-                      <button
-                        type="button"
-                        onClick={() => onIncidenciaCommentsOpen(inc)}
-                        style={{
-                          marginTop: 6,
-                          border: '0',
-                          background: 'transparent',
-                          color: '#2563eb',
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          padding: 0,
-                        }}
-                      >
-                        Ver todos
-                      </button>
-                    )}
                   </div>
                 )}
                 <p style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
@@ -418,27 +396,6 @@ export default function Map({
                   <p style={{ fontSize: 12, color: '#9ca3af' }}>
                     {new Date(inc.createdAt).toLocaleString('es-ES')}
                   </p>
-                )}
-                {!inc.pendingSync && onIncidenciaAction && (
-                  <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => onIncidenciaAction(inc, 'comentar')}
-                      style={{
-                        border: '1px solid #d1d5db',
-                        borderRadius: 8,
-                        background: '#ffffff',
-                        color: '#374151',
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        padding: '7px 8px',
-                        textAlign: 'center',
-                      }}
-                    >
-                      Actualizar / comentar
-                    </button>
-                  </div>
                 )}
               </div>
             </Popup>
@@ -454,38 +411,41 @@ export default function Map({
             interactive={!selectingReportPoint}
             eventHandlers={{ click: () => !selectingReportPoint && onPuestoSelect?.(p.id) }}
           >
-            <Popup>
-              <div style={{ minWidth: 170 }}>
-                <p style={{ fontWeight: 700, marginBottom: 2, color: '#111827' }}>{p.nombre}</p>
-                <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{p.direccion}</p>
+            <Popup maxWidth={240} minWidth={200} autoPanPadding={[18, 18]}>
+              <div className="w-[200px]">
+                <p className="truncate text-sm font-bold text-slate-950">{p.nombre}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{p.direccion}</p>
                 {p.distanciaKm !== undefined && (
-                  <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>{p.distanciaKm.toFixed(1)} km</p>
+                  <p className="mt-2 text-xs font-medium text-slate-500">{p.distanciaKm.toFixed(1)} km</p>
                 )}
                 {p.necesidades > 0 && (
-                  <p style={{ fontSize: 12, color: '#ef4444', fontWeight: 600, marginBottom: 8 }}>
-                    ⚠️ {p.necesidades} necesidad{p.necesidades > 1 ? 'es' : ''} urgente{p.necesidades > 1 ? 's' : ''}
+                  <p className="mt-2 rounded-md bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-700">
+                    {p.necesidades} necesidad{p.necesidades > 1 ? 'es' : ''} urgente{p.necesidades > 1 ? 's' : ''}
                   </p>
                 )}
-                {onVerInventarioPuesto && (
-                  <button
-                    type="button"
-                    onClick={() => onVerInventarioPuesto(p.id)}
-                    style={{
-                      width: '100%',
-                      marginTop: 4,
-                      padding: '7px 10px',
-                      border: '1px solid #3b82f6',
-                      borderRadius: 8,
-                      background: '#eff6ff',
-                      color: '#1d4ed8',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      textAlign: 'center',
-                    }}
-                  >
-                    📦 Ver inventario
-                  </button>
+                {(onComoLlegarPuesto || onVerInventarioPuesto) && (
+                  <div className="mt-3 grid grid-cols-2 gap-1.5">
+                    {onComoLlegarPuesto && (
+                      <button
+                        type="button"
+                        onClick={() => onComoLlegarPuesto(p.id)}
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100"
+                      >
+                        <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
+                        Ruta
+                      </button>
+                    )}
+                    {onVerInventarioPuesto && (
+                      <button
+                        type="button"
+                        onClick={() => onVerInventarioPuesto(p.id)}
+                        className="inline-flex items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                      >
+                        <PackageOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                        Inventario
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </Popup>
@@ -496,8 +456,6 @@ export default function Map({
           enabled={selectingReportPoint}
           onSelect={(pos) => onReportPointSelect?.(pos)}
         />
-
-        {onUserLocated && <LocateButton onLocated={onUserLocated} />}
 
       </MapContainer>
     </div>
