@@ -2,24 +2,34 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 
 function detectBrowser() {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const vendor = typeof navigator !== 'undefined' ? navigator.vendor || '' : ''
+  const platform = typeof navigator !== 'undefined' ? navigator.platform || '' : ''
+  const maxTouchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints || 0 : 0
+
+  // En iOS/iPadOS TODOS los navegadores (Chrome, Firefox, la web-view de apps como
+  // Google, etc.) usan WebKit, por lo que comparten el modelo de permisos de Safari.
+  // El iPad moderno se presenta como "MacIntel" con pantalla tactil.
   const isIOS =
-    /iP(hone|ad|od)/.test(ua) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  // Safari real: contiene "Safari" pero no es Chrome/Edge/Firefox ni sus variantes iOS.
-  const isSafari = /^((?!chrome|android|crios|fxios|edg|opr).)*safari/i.test(ua)
-  return { isSafari, isIOS }
+    /iP(hone|ad|od)/.test(ua) || (platform === 'MacIntel' && maxTouchPoints > 1)
+
+  // Cualquier marca no-WebKit en el UA descarta que sea Safari de escritorio.
+  const isOtherBrand =
+    /\b(CriOS|Chrome|Chromium|Edg|EdgiOS|OPR|OPiOS|FxiOS|Firefox|SamsungBrowser|YaBrowser|UCBrowser|GSA)\b/i.test(ua)
+  const isMacSafari = !isIOS && !isOtherBrand && /Safari/i.test(ua) && vendor.includes('Apple')
+
+  return { isIOS, isMacSafari }
 }
 
 function deniedInstructions(): string {
-  const { isSafari, isIOS } = detectBrowser()
+  const { isIOS, isMacSafari } = detectBrowser()
 
-  if (isSafari && isIOS) {
-    return 'Safari no vuelve a preguntar una vez bloqueada. Toca "aA" en la barra de direcciones > Ajustes del sitio web > Ubicacion > Permitir, o activala en Ajustes > Apps > Safari. Luego recarga la pagina.'
+  if (isIOS) {
+    return 'En iPhone/iPad el permiso no se vuelve a pedir desde la web. Toca "aA" o el icono de la barra de direcciones > Ajustes del sitio web > Ubicacion > Permitir, o activala en los Ajustes del sistema para este navegador. Luego recarga la pagina.'
   }
-  if (isSafari) {
+  if (isMacSafari) {
     return 'Safari no vuelve a preguntar una vez bloqueada. Ve a Safari > Ajustes > Sitios web > Ubicacion, permite este sitio y recarga la pagina.'
   }
-  return 'Activa el permiso de ubicacion desde el icono de permisos del navegador y pulsa de nuevo para reintentar.'
+  return 'Pulsa el icono de permisos del navegador junto a la direccion, permite la ubicacion y recarga la pagina.'
 }
 
 export default function LocationPermissionBanner() {
