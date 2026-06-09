@@ -47,9 +47,22 @@ async function getCameraTargets(): Promise<MediaTrackConstraints[]> {
     highResolutionConstraints({ facingMode: { exact: 'environment' } }),
     highResolutionConstraints({ facingMode: { ideal: 'environment' } }),
     highResolutionConstraints(),
+    // Ultimo recurso sin pistas de resolucion: deja que el navegador elija la camara.
+    // Brave y algunos Android fallan con constraints especificas pero abren con esto.
+    { facingMode: { ideal: 'environment' } },
+    {},
   )
 
   return targets
+}
+
+async function detectBrave(): Promise<boolean> {
+  const brave = (navigator as Navigator & { brave?: { isBrave: () => Promise<boolean> } }).brave
+  try {
+    return brave ? await brave.isBrave() : false
+  } catch {
+    return false
+  }
 }
 
 export default function QrScanner({ onResult, onClose }: QrScannerProps) {
@@ -60,6 +73,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
   const completedRef = useRef(false)
   const [status, setStatus] = useState<ScannerStatus>('starting')
   const [error, setError] = useState('')
+  const [errorDetail, setErrorDetail] = useState('')
   const [cameraLabel, setCameraLabel] = useState('')
   const [retryKey, setRetryKey] = useState(0)
   const showSecureWarning = typeof window !== 'undefined'
@@ -73,6 +87,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
     startedRef.current = false
     setStatus('starting')
     setError('')
+    setErrorDetail('')
     setCameraLabel('')
 
     const stopScanner = async () => {
@@ -94,6 +109,8 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
     const startScanner = async () => {
       await stopScanner()
       if (cancelled) return
+
+      const brave = await detectBrave()
 
       const scanner = new Html5Qrcode(divId, {
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
@@ -149,6 +166,8 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
       {
         if (cancelled) return
         const message = lastError instanceof Error ? lastError.message : String(lastError)
+        const name = lastError instanceof Error ? lastError.name : ''
+        setErrorDetail(`${name}: ${message}`.replace(/^:\s*/, ''))
         const lower = message.toLowerCase()
         const blocked = lower.includes('permission') || lower.includes('notallowed') || lower.includes('denied')
         setStatus(blocked || showSecureWarning ? 'blocked' : 'error')
@@ -157,7 +176,9 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
             ? 'El navegador solo permite usar la camara en HTTPS o en localhost.'
             : blocked
               ? 'Permite el acceso a la camara para poder escanear el codigo.'
-              : 'No se pudo abrir una camara compatible. Comprueba permisos y que ninguna otra aplicacion la este usando.',
+              : brave
+                ? 'Brave esta bloqueando la camara con sus escudos. Pulsa el icono del leon en la barra de direcciones, baja los Brave Shields para este sitio (o desactiva el bloqueo de huella digital) y reintenta.'
+                : 'No se pudo abrir una camara compatible. Comprueba permisos y que ninguna otra aplicacion la este usando.',
         )
       }
     }
@@ -226,7 +247,12 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
               <div className="flex gap-2">
                 <CameraOff className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
-                <p>{error}</p>
+                <div className="min-w-0">
+                  <p>{error}</p>
+                  {errorDetail && (
+                    <p className="mt-1 break-words font-mono text-xs text-amber-700/80">{errorDetail}</p>
+                  )}
+                </div>
               </div>
             </div>
           )}
