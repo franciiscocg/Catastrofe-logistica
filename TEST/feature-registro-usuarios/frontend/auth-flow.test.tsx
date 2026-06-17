@@ -74,7 +74,7 @@ import RoleSelection from '../../../frontend/src/features/auth/pages/RoleSelecti
 import CoordinadorDashboard from '../../../frontend/src/features/coordinador/pages/Dashboard'
 
 function renderWithRouter(ui: React.ReactElement) {
-  return render(<MemoryRouter>{ui}</MemoryRouter>)
+  return render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{ui}</MemoryRouter>)
 }
 
 function renderWithQuery(ui: React.ReactElement) {
@@ -82,7 +82,7 @@ function renderWithQuery(ui: React.ReactElement) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <QueryClientProvider client={client}>{ui}</QueryClientProvider>
     </MemoryRouter>,
   )

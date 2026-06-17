@@ -18,6 +18,10 @@ vi.mock('../../../backend/src/lib/prisma.js', () => {
     },
     qrConsumption: { create: vi.fn() },
     auditLog: { create: vi.fn(), findFirst: vi.fn() },
+    // Modelos de la cadena de custodia: el servicio registra eventos vía
+    // appendChainEvent. Mockearlos evita el ruido "[chain] No se pudo encolar…".
+    chainEvent: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn() },
+    pendingChainEvent: { create: vi.fn() },
     $transaction: vi.fn((callback) => callback(prisma)),
   }
   return { prisma }

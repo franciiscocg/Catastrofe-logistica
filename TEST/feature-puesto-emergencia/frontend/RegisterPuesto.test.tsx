@@ -65,7 +65,7 @@ function renderRegister() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <RegisterPuesto />
       </MemoryRouter>
     </QueryClientProvider>,

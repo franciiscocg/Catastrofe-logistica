@@ -254,7 +254,7 @@ export default function CoordinadorDashboard() {
     queryFn: () =>
       apiClient
         .get<{ puestos: PuestoCoordinador[] }>('/api/puestos/coordinador')
-        .then((r) => r.data.puestos),
+        .then((r) => r.data.puestos ?? []),
   })
 
   const {
@@ -265,19 +265,19 @@ export default function CoordinadorDashboard() {
     queryFn: () =>
       apiClient
         .get<{ solicitudes: SolicitudPuesto[] }>('/api/puestos/solicitudes')
-        .then((r) => r.data.solicitudes),
+        .then((r) => r.data.solicitudes ?? []),
   })
 
   const { data: incidencias = [], isLoading: isLoadingIncidencias } = useQuery({
     queryKey: ['incidencias-coordinador'],
     queryFn: () =>
-      apiClient.get<{ incidencias: Incidencia[] }>('/api/incidencias').then((r) => r.data.incidencias),
+      apiClient.get<{ incidencias: Incidencia[] }>('/api/incidencias').then((r) => r.data.incidencias ?? []),
   })
 
   const { data: usuarios = [], isLoading: isLoadingUsuarios } = useQuery({
     queryKey: ['usuarios-coordinador'],
     queryFn: () =>
-      apiClient.get<{ usuarios: UsuarioGestion[] }>('/api/users/coordinador').then((r) => r.data.usuarios),
+      apiClient.get<{ usuarios: UsuarioGestion[] }>('/api/users/coordinador').then((r) => r.data.usuarios ?? []),
   })
 
   const {
@@ -324,7 +324,7 @@ export default function CoordinadorDashboard() {
     queryFn: () =>
       apiClient
         .get<{ voluntarios: VoluntarioIncidencia[] }>(`/api/incidencias/coordinador/${voluntariosIncidenciaId}/voluntarios`)
-        .then((r) => r.data.voluntarios),
+        .then((r) => r.data.voluntarios ?? []),
   })
 
   const gestionarUsuario = useMutation({

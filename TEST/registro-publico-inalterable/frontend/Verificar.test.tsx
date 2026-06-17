@@ -14,7 +14,7 @@ import Verificar from '../../../frontend/src/features/public/pages/Verificar'
 function renderPage(path = '/verificar') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <QueryClientProvider client={client}>
         <Routes>
           <Route path="/verificar" element={<Verificar />} />
