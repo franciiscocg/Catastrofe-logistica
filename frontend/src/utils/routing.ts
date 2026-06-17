@@ -1,15 +1,21 @@
-import { haversineKm } from './haversine'
+import {
+  ROUTE_BLOCK_RADIUS_KM,
+  blockedIncidenciasNearRoute,
+  countBlockedIncidenciasNearRoute,
+  pointToSegmentDistanceKm,
+  type IncidenciaRutaInput,
+  type ModoTransporte,
+} from './geo'
 
-export const ROUTE_BLOCK_RADIUS_KM = 0.025
-
-export interface IncidenciaRutaInput {
-  latitud: number
-  longitud: number
-  estado: 'CORTADA' | 'TRANSITABLE'
-  pendingSync?: boolean
+// Re-exportamos las primitivas geometricas para no romper a los consumidores
+// (y los tests) que las importan desde '@/utils/routing'.
+export {
+  ROUTE_BLOCK_RADIUS_KM,
+  blockedIncidenciasNearRoute,
+  countBlockedIncidenciasNearRoute,
+  pointToSegmentDistanceKm,
 }
-
-export type ModoTransporte = 'driving' | 'foot'
+export type { IncidenciaRutaInput, ModoTransporte }
 
 type RouteCandidate = {
   points: [number, number][]
@@ -23,54 +29,56 @@ type SafeRouteCandidate = RouteCandidate & {
   incidenciasEvitadas: number
 }
 
-export function pointToSegmentDistanceKm(
-  point: [number, number],
-  a: [number, number],
-  b: [number, number],
-): number {
-  const latScale = 111
-  const lngScale = 111 * Math.cos((point[0] * Math.PI) / 180)
-  const px = point[1] * lngScale
-  const py = point[0] * latScale
-  const ax = a[1] * lngScale
-  const ay = a[0] * latScale
-  const bx = b[1] * lngScale
-  const by = b[0] * latScale
-  const dx = bx - ax
-  const dy = by - ay
+// ─────────────────────────────────────────────────────────────────────────────
+// Enrutador local (grafo OSM) inyectable.
+//
+// La app puede registrar un enrutador basado en un grafo de calles local (ver
+// osmGraphStore.ts). routing.ts NO depende estaticamente de IndexedDB ni del
+// grafo: si hay un enrutador local registrado se intenta primero (funciona sin
+// red); si no cubre los puntos o no esta disponible, se cae a OSRM. Asi el
+// benchmark y los tests, que no registran nada, siguen usando solo OSRM.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (dx === 0 && dy === 0) return haversineKm(point[0], point[1], a[0], a[1])
-
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+export interface RutaLocalResult {
+  points: [number, number][]
+  distanciaKm: number
+  duracionMin: number
+  incidenciasCercanas: number
+  legs?: { steps: unknown[] }[]
 }
 
-export function countBlockedIncidenciasNearRoute(
-  points: [number, number][],
+export interface LocalRouter {
+  // Devuelve null si el grafo local no cubre los waypoints (→ usar OSRM).
+  route(
+    waypoints: [number, number][],
+    incidencias: IncidenciaRutaInput[],
+    modo: ModoTransporte,
+    opts?: { conPasos?: boolean },
+  ): RutaLocalResult | null
+}
+
+let localRouter: LocalRouter | null = null
+
+export function registerLocalRouter(router: LocalRouter | null): void {
+  localRouter = router
+}
+
+export function hasLocalRouter(): boolean {
+  return localRouter !== null
+}
+
+function tryLocalRoute(
+  waypoints: [number, number][],
   incidencias: IncidenciaRutaInput[],
-): number {
-  const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
-  return cortadas.filter((inc) => {
-    const point: [number, number] = [inc.latitud, inc.longitud]
-    for (let i = 0; i < points.length - 1; i += 1) {
-      if (pointToSegmentDistanceKm(point, points[i], points[i + 1]) <= ROUTE_BLOCK_RADIUS_KM) return true
-    }
-    return false
-  }).length
-}
-
-export function blockedIncidenciasNearRoute<T extends IncidenciaRutaInput>(
-  points: [number, number][],
-  incidencias: T[],
-): T[] {
-  const cortadas = incidencias.filter((inc) => inc.estado === 'CORTADA' && !inc.pendingSync)
-  return cortadas.filter((inc) => {
-    const point: [number, number] = [inc.latitud, inc.longitud]
-    for (let i = 0; i < points.length - 1; i += 1) {
-      if (pointToSegmentDistanceKm(point, points[i], points[i + 1]) <= ROUTE_BLOCK_RADIUS_KM) return true
-    }
-    return false
-  })
+  modo: ModoTransporte,
+  opts?: { conPasos?: boolean },
+): RutaLocalResult | null {
+  if (!localRouter) return null
+  try {
+    return localRouter.route(waypoints, incidencias, modo, opts)
+  } catch {
+    return null // ante cualquier fallo del grafo local, caemos a OSRM
+  }
 }
 
 // router.project-osrm.org only has the driving profile. For foot we use
@@ -237,6 +245,17 @@ export async function fetchRutaMultiParada(
 ): Promise<{ points: [number, number][]; distanciaKm: number; duracionMin: number; incidenciasCercanas: number }> {
   if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos para calcular la ruta')
 
+  // Primero el grafo local (offline); si no cubre la zona, caemos a OSRM.
+  const local = tryLocalRoute(waypoints, incidencias, modo)
+  if (local) {
+    return {
+      points: local.points,
+      distanciaKm: local.distanciaKm,
+      duracionMin: local.duracionMin,
+      incidenciasCercanas: local.incidenciasCercanas,
+    }
+  }
+
   const safeLegs: SafeRouteCandidate[] = []
   for (let i = 0; i < waypoints.length - 1; i += 1) {
     safeLegs.push(await findSafeRoute(waypoints[i], waypoints[i + 1], incidencias, modo, signal))
@@ -265,6 +284,18 @@ export async function fetchRutaConPasos(
   legs: { steps: unknown[] }[]
 }> {
   if (waypoints.length < 2) throw new Error('Se necesitan al menos 2 puntos')
+
+  // Grafo local con pasos sintetizados (offline); fallback a OSRM si no cubre.
+  const local = tryLocalRoute(waypoints, incidencias, modo, { conPasos: true })
+  if (local && local.legs) {
+    return {
+      points: local.points,
+      distanciaKm: local.distanciaKm,
+      duracionMin: local.duracionMin,
+      legs: local.legs,
+    }
+  }
+
   const safeLegs = await buildSafeWaypointPath(waypoints, incidencias, modo, signal)
   const stepLegs: { steps: unknown[] }[] = []
 
@@ -294,6 +325,17 @@ export async function fetchRutaEvitandoIncidencias(
   incidencias: IncidenciaRutaInput[],
   signal?: AbortSignal,
   modo: ModoTransporte = 'driving',
-) {
+): Promise<SafeRouteCandidate> {
+  const local = tryLocalRoute([desde, hasta], incidencias, modo)
+  if (local) {
+    return {
+      points: local.points,
+      distanciaKm: local.distanciaKm,
+      duracionMin: local.duracionMin,
+      incidenciasCercanas: local.incidenciasCercanas,
+      waypointSet: [desde, hasta],
+      incidenciasEvitadas: 0,
+    }
+  }
   return findSafeRoute(desde, hasta, incidencias, modo, signal)
 }
