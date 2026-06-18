@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { ChevronDown, Repeat2 } from 'lucide-react'
+import LocationPermissionBanner from '@/components/layout/LocationPermissionBanner'
 import { useAuthStore } from '@/store/auth.store'
 import { ROLE_LABELS, Role } from '@/types/auth.types'
 
@@ -230,6 +231,7 @@ export default function AppShell() {
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
         <Outlet />
       </main>
+      <LocationPermissionBanner />
     </div>
   )
 }
