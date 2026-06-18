@@ -34,6 +34,8 @@ const GEOLOCATION_ERROR_INSECURE =
   'Safari en iPhone solo permite ubicacion en HTTPS. Abre la app desde una URL https o localhost.'
 const GEOLOCATION_ERROR_PROMPT =
   'Pulsa Activar ubicacion para permitir el acceso desde Safari.'
+const GEOLOCATION_ERROR_DENIED =
+  'Safari no ha entregado la ubicacion. Comprueba Ajustes > Privacidad y seguridad > Localizacion > Safari Websites y vuelve a intentarlo.'
 const HIGH_ACCURACY_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
   timeout: 12000,
@@ -126,7 +128,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({
       ...prev,
       error: err.code === err.PERMISSION_DENIED
-        ? 'La ubicacion esta bloqueada en el navegador'
+        ? (isIOSWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicacion esta bloqueada en el navegador')
         : err.message,
       loading: false,
       permissionState: err.code === err.PERMISSION_DENIED ? 'denied' : prev.permissionState,
@@ -232,10 +234,14 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isSecureGeolocationOrigin()) return
 
+    if (isIOSWebKit()) {
+      return
+    }
+
     if (!navigator.permissions?.query) {
       setState((prev) => ({
         ...prev,
-        permissionState: prev.permissionState ?? (isIOSWebKit() ? 'prompt' : 'unsupported'),
+        permissionState: prev.permissionState ?? 'unsupported',
       }))
       return
     }
@@ -267,7 +273,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
         if (!cancelled) {
           setState((prev) => ({
             ...prev,
-            permissionState: prev.permissionState ?? (isIOSWebKit() ? 'prompt' : 'unsupported'),
+            permissionState: prev.permissionState ?? 'unsupported',
           }))
         }
       })
@@ -308,7 +314,7 @@ function useStandaloneGeolocation(watch = false): GeolocationContextValue {
     setState((prev) => ({
       ...prev,
       error: err.code === err.PERMISSION_DENIED
-        ? 'La ubicacion esta bloqueada en el navegador'
+        ? (isIOSWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicacion esta bloqueada en el navegador')
         : err.message,
       loading: false,
       permissionState: err.code === err.PERMISSION_DENIED ? 'denied' : prev.permissionState,
