@@ -50,7 +50,7 @@ export function sanitizeUser(user: {
 export async function loginUser({ identifier, password }: LoginInput) {
   const isEmail = emailRegex.test(identifier)
   const user = isEmail
-    ? await prisma.usuario.findUnique({ where: { email: identifier } })
+    ? await prisma.usuario.findUnique({ where: { email: identifier.toLowerCase() } })
     : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
 
   if (!user) throw appError('Credenciales incorrectas', 401)
@@ -115,7 +115,8 @@ export async function revokeRefreshToken(refreshToken?: string) {
 }
 
 export async function registerUser(input: RegisterInput) {
-  const exists = await prisma.usuario.findUnique({ where: { email: input.email } })
+  const normalizedEmail = input.email.toLowerCase()
+  const exists = await prisma.usuario.findUnique({ where: { email: normalizedEmail } })
   if (exists) throw badRequest('Este email ya esta registrado')
 
   const dniExists = await prisma.usuario.findUnique({ where: { dni: input.dni.toUpperCase() } })
@@ -127,7 +128,7 @@ export async function registerUser(input: RegisterInput) {
   const result = await prisma.$transaction(async (tx) => {
     const created = await tx.usuario.create({
       data: {
-        email: input.email,
+        email: normalizedEmail,
         password: hashed,
         nombre: input.nombre,
         apellidos: input.apellidos,
@@ -177,7 +178,7 @@ export async function verifyAccount(token: string) {
 export async function requestAccountVerification({ identifier }: ResendVerificationInput) {
   const isEmail = emailRegex.test(identifier)
   const user = isEmail
-    ? await prisma.usuario.findUnique({ where: { email: identifier } })
+    ? await prisma.usuario.findUnique({ where: { email: identifier.toLowerCase() } })
     : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
 
   if (!user || user.emailVerified) return { sent: true }
@@ -204,7 +205,7 @@ export async function requestAccountVerification({ identifier }: ResendVerificat
 export async function requestPasswordReset({ identifier }: RequestPasswordResetInput) {
   const isEmail = emailRegex.test(identifier)
   const user = isEmail
-    ? await prisma.usuario.findUnique({ where: { email: identifier } })
+    ? await prisma.usuario.findUnique({ where: { email: identifier.toLowerCase() } })
     : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
 
   if (!user) return { sent: true }
