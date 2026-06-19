@@ -15,7 +15,9 @@ services:
       - key: COOKIE_SAME_SITE
         value: none
       - key: EMAIL_VERIFICATION_REQUIRED
-        value: "false"
+        value: "true"
+      - key: EMAIL_PROVIDER
+        value: resend
       - key: JWT_EXPIRES_IN
         value: 15m
       - key: JWT_EXPIRES_SECONDS
@@ -42,15 +44,7 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_SECURE
-        value: "false"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
+      - key: RESEND_API_KEY
         sync: false
 
   - type: web

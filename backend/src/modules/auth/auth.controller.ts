@@ -76,15 +76,22 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
   const { user, verificationToken } = await registerUser(input)
 
   if (!user.emailVerified) {
-    await sendAccountVerificationEmail({
-      to: user.email,
-      nombre: user.nombre,
-      token: verificationToken,
-    })
+    let verificationEmailSent = true
+    try {
+      await sendAccountVerificationEmail({
+        to: user.email,
+        nombre: user.nombre,
+        token: verificationToken,
+      })
+    } catch (error) {
+      verificationEmailSent = false
+      request.log.error({ err: error, userId: user.id }, 'No se pudo enviar el email de verificacion')
+    }
 
     return reply.status(201).send({
       user,
       requiresEmailVerification: true,
+      verificationEmailSent,
     })
   }
 

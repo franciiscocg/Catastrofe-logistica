@@ -26,19 +26,16 @@ En `catastrofe-logistica-backend`, configura:
 ```text
 FRONTEND_URL=https://catastrofe-logistica-frontend.onrender.com
 APP_PUBLIC_URL=https://catastrofe-logistica-frontend.onrender.com
-EMAIL_VERIFICATION_REQUIRED=false
+EMAIL_VERIFICATION_REQUIRED=true
+EMAIL_PROVIDER=resend
 COOKIE_SAME_SITE=none
-MAIL_FROM="Catastrofe Logistica <tu-correo@tu-dominio.com>"
-SMTP_HOST=smtp.tu-proveedor.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=tu_usuario_smtp
-SMTP_PASS=tu_password_smtp
+MAIL_FROM="Catastrofe Logistica <no-reply@tu-dominio-verificado.com>"
+RESEND_API_KEY=re_tu_api_key
 ```
 
 `JWT_SECRET`, `DATABASE_URL` y `DIRECT_URL` se generan desde el Blueprint.
-`MAIL_FROM`, `SMTP_HOST`, `SMTP_USER` y `SMTP_PASS` solo son necesarios si quieres
-enviar correos reales.
+`RESEND_API_KEY` debe guardarse como secreto en Render. `MAIL_FROM` tiene que usar
+un dominio verificado en Resend. No es necesario crear un buzon `no-reply` real.
 
 ## 3. Variables del frontend en Render
 
@@ -79,25 +76,28 @@ FATAL: (ENOTFOUND) tenant/user ... not found
 Cuando esta bien conectado a Render Postgres, el host del datasource ya no debe
 ser `*.supabase.com`.
 
-## 5. Recuperacion de contrasena por email
+## 5. Confirmacion y recuperacion por email con Resend
 
-La recuperacion de contrasena necesita SMTP configurado en el backend. Si `SMTP_HOST`
-esta vacio, el backend no envia correo real y solo escribe el enlace en la consola
-cuando se ejecuta en desarrollo.
+1. Crea una cuenta en Resend y verifica un dominio desde `Domains`.
+2. Copia en el DNS los registros SPF y DKIM que muestre Resend.
+3. Crea una API key con permiso de envio.
+4. Configura en Render `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` y `MAIL_FROM`.
+5. Mantén `APP_PUBLIC_URL` apuntando al frontend desplegado y vuelve a desplegar el backend.
 
-Ejemplo con Gmail:
+El backend usa el SMTP de Resend internamente. La API key nunca se expone al frontend.
+Los enlaces de verificacion caducan segun `VERIFY_TOKEN_TTL_HOURS` y los de recuperacion
+segun `RESET_TOKEN_TTL_MINUTES`.
+
+Para usar otro proveedor SMTP en desarrollo o en otro despliegue, deja
+`EMAIL_PROVIDER` vacio y configura:
 
 ```text
-MAIL_FROM="Catastrofe Logistica <tu-email@gmail.com>"
-SMTP_HOST=smtp.gmail.com
+SMTP_HOST=smtp.tu-proveedor.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=tu-email@gmail.com
-SMTP_PASS=tu_contrasena_de_aplicacion
+SMTP_USER=tu_usuario
+SMTP_PASS=tu_password
 ```
-
-En Gmail no sirve la contrasena normal de la cuenta: hay que crear una contrasena
-de aplicacion desde la configuracion de seguridad de Google.
 
 ## Notas
 
@@ -105,4 +105,4 @@ de aplicacion desde la configuracion de seguridad de Google.
 - Render Postgres Free tiene 1 GB, solo permite una base gratuita activa por workspace
   y caduca a los 30 dias. Render da un periodo de gracia de 14 dias para actualizarla
   antes de borrar los datos.
-- Con `EMAIL_VERIFICATION_REQUIRED=false`, los usuarios nuevos quedan verificados automaticamente para facilitar la demo sin SMTP.
+- Con `EMAIL_VERIFICATION_REQUIRED=true`, un usuario nuevo no puede iniciar sesion hasta confirmar el enlace recibido.

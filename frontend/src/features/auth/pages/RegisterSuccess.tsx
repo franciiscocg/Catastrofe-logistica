@@ -12,6 +12,7 @@ export default function RegisterSuccess() {
   const [params] = useSearchParams()
   const role = params.get('role')
   const verification = params.get('verification')
+  const emailSent = params.get('emailSent') !== 'false'
 
   const messages: Record<string, SuccessMessage> = {
     puesto: {
@@ -37,8 +38,15 @@ export default function RegisterSuccess() {
     linkText: 'Ir al login',
     linkTo: '/auth/login',
   }
+  const verificationDeliveryFailedMessage: SuccessMessage = {
+    icon: '!',
+    title: 'Cuenta creada',
+    body: 'No hemos podido enviar el email de verificación. Ve a verificar cuenta y solicita un nuevo enlace.',
+    linkText: 'Reenviar verificación',
+    linkTo: '/auth/verify-account',
+  }
   const msg = verification === 'pending'
-    ? verificationMessage
+    ? (emailSent ? verificationMessage : verificationDeliveryFailedMessage)
     : (role ? messages[role] : undefined) ?? fallbackMessage
 
   return (

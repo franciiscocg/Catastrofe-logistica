@@ -11,6 +11,14 @@ type MailInput = {
 
 let transporter: Transporter | null = null
 
+type MailTransportConfig = {
+  host: string
+  port: number
+  secure: boolean
+  user?: string
+  pass?: string
+}
+
 function isProduction() {
   return process.env.NODE_ENV === 'production'
 }
@@ -24,32 +32,63 @@ function getMailFrom() {
 }
 
 export function assertEmailConfigured() {
-  if (isProduction() && EMAIL_VERIFICATION_REQUIRED && !process.env.SMTP_HOST) {
+  if (!isProduction() || !EMAIL_VERIFICATION_REQUIRED) return
+
+  const provider = process.env.EMAIL_PROVIDER?.toLowerCase()
+  if (provider === 'resend' && !process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY obligatorio en produccion cuando EMAIL_PROVIDER=resend')
+  }
+  if (provider !== 'resend' && !process.env.SMTP_HOST) {
     throw new Error('SMTP_HOST obligatorio en produccion para enviar emails')
+  }
+  if (!process.env.MAIL_FROM) {
+    throw new Error('MAIL_FROM obligatorio en produccion para enviar emails')
+  }
+  if (!process.env.APP_PUBLIC_URL && !process.env.FRONTEND_URL) {
+    throw new Error('APP_PUBLIC_URL o FRONTEND_URL obligatorio para generar enlaces de email')
+  }
+}
+
+function getTransportConfig(): MailTransportConfig | null {
+  if (process.env.EMAIL_PROVIDER?.toLowerCase() === 'resend') {
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey) return null
+    return {
+      host: 'smtp.resend.com',
+      port: 465,
+      secure: true,
+      user: 'resend',
+      pass: apiKey,
+    }
+  }
+
+  const host = process.env.SMTP_HOST
+  if (!host) return null
+
+  const port = Number(process.env.SMTP_PORT ?? 587)
+  return {
+    host,
+    port,
+    secure: process.env.SMTP_SECURE === 'true' || port === 465,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   }
 }
 
 function getTransporter() {
-  const host = process.env.SMTP_HOST
-  if (!host) {
-    if (isProduction()) {
-      console.info('[mail:disabled] SMTP_HOST no configurado; no se enviara email')
-      return null
-    }
+  const config = getTransportConfig()
+  if (!config) {
+    if (isProduction()) console.info('[mail:disabled] Transporte de email no configurado')
     return null
   }
 
   if (transporter) return transporter
 
-  const port = Number(process.env.SMTP_PORT ?? 587)
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-
   transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: process.env.SMTP_SECURE === 'true' || port === 465,
-    auth: user && pass ? { user, pass } : undefined,
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.user && config.pass ? { user: config.user, pass: config.pass } : undefined,
   })
 
   return transporter
@@ -64,7 +103,7 @@ async function sendMail(input: MailInput) {
     return { sent: false, preview: input.text }
   }
 
-  await mailer.sendMail({
+  const result = await mailer.sendMail({
     from: getMailFrom(),
     to: input.to,
     subject: input.subject,
@@ -72,7 +111,7 @@ async function sendMail(input: MailInput) {
     html: input.html,
   })
 
-  return { sent: true }
+  return { sent: true, messageId: result.messageId }
 }
 
 function escapeHtml(value: string) {

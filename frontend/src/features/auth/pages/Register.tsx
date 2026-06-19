@@ -85,7 +85,8 @@ export default function Register() {
       })
 
       if (data.requiresEmailVerification || !data.accessToken) {
-        navigate(`/auth/registro-exitoso?verification=pending${roleParam ? `&role=${roleParam}` : ''}`)
+        const delivery = data.verificationEmailSent === false ? '&emailSent=false' : ''
+        navigate(`/auth/registro-exitoso?verification=pending${delivery}${roleParam ? `&role=${roleParam}` : ''}`)
         return
       }
 
