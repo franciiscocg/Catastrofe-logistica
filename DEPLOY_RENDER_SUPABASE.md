@@ -60,6 +60,25 @@ VITE_API_URL=https://catastrofe-logistica-backend.onrender.com
 8. Pega `FRONTEND_URL` y `APP_PUBLIC_URL` en backend.
 9. Redeploy backend.
 
+Si ya existian los servicios antes de anadir `catastrofe-logistica-db` al
+`render.yaml`, no basta con pulsar "Redeploy" en el backend: eso solo despliega
+el codigo. En Render debes entrar en el Blueprint y pulsar "Sync" / "Apply" para
+que cree la base y reescriba `DATABASE_URL` y `DIRECT_URL` desde `fromDatabase`.
+
+Si el backend sigue mostrando una URL antigua, borra en el servicio backend las
+variables manuales `DATABASE_URL` y `DIRECT_URL` que apunten a Supabase y vuelve
+a sincronizar el Blueprint.
+
+Ejemplo del error de una variable antigua de Supabase:
+
+```text
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-...pooler.supabase.com:5432"
+FATAL: (ENOTFOUND) tenant/user ... not found
+```
+
+Cuando esta bien conectado a Render Postgres, el host del datasource ya no debe
+ser `*.supabase.com`.
+
 ## 5. Recuperacion de contrasena por email
 
 La recuperacion de contrasena necesita SMTP configurado en el backend. Si `SMTP_HOST`
