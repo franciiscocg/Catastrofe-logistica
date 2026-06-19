@@ -3,7 +3,6 @@ services:
     name: catastrofe-logistica-backend
     runtime: node
     plan: free
-    region: frankfurt
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:render
@@ -57,7 +56,6 @@ services:
   - type: web
     name: catastrofe-logistica-frontend
     runtime: static
-    region: frankfurt
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
@@ -73,5 +71,5 @@ databases:
   - name: catastrofe-logistica-db
     databaseName: catastrofe_logistica
     user: catastrofe_logistica
-    region: frankfurt
+    region: oregon
     plan: free
