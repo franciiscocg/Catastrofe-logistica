@@ -3,9 +3,11 @@ services:
     name: catastrofe-logistica-backend
     runtime: node
     plan: free
+    region: frankfurt
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:render
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
@@ -26,11 +28,15 @@ services:
       - key: VERIFY_TOKEN_TTL_HOURS
         value: "24"
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
       - key: DIRECT_URL
-        sync: false
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
       - key: JWT_SECRET
-        sync: false
+        generateValue: true
       - key: FRONTEND_URL
         sync: false
       - key: APP_PUBLIC_URL
@@ -51,6 +57,7 @@ services:
   - type: web
     name: catastrofe-logistica-frontend
     runtime: static
+    region: frankfurt
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
@@ -61,3 +68,10 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+
+databases:
+  - name: catastrofe-logistica-db
+    databaseName: catastrofe_logistica
+    user: catastrofe_logistica
+    region: frankfurt
+    plan: free
