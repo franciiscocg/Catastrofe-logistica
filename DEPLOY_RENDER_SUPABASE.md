@@ -84,7 +84,7 @@ ser `*.supabase.com`.
 4. Configura en Render `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` y `MAIL_FROM`.
 5. Mantén `APP_PUBLIC_URL` apuntando al frontend desplegado y vuelve a desplegar el backend.
 
-El backend usa el SMTP de Resend internamente. La API key nunca se expone al frontend.
+El backend usa la API HTTPS de Resend. La API key nunca se expone al frontend.
 Los enlaces de verificacion caducan segun `VERIFY_TOKEN_TTL_HOURS` y los de recuperacion
 segun `RESET_TOKEN_TTL_MINUTES`.
 

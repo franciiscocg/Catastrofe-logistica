@@ -50,18 +50,6 @@ export function assertEmailConfigured() {
 }
 
 function getTransportConfig(): MailTransportConfig | null {
-  if (process.env.EMAIL_PROVIDER?.toLowerCase() === 'resend') {
-    const apiKey = process.env.RESEND_API_KEY
-    if (!apiKey) return null
-    return {
-      host: 'smtp.resend.com',
-      port: 465,
-      secure: true,
-      user: 'resend',
-      pass: apiKey,
-    }
-  }
-
   const host = process.env.SMTP_HOST
   if (!host) return null
 
@@ -95,6 +83,35 @@ function getTransporter() {
 }
 
 async function sendMail(input: MailInput) {
+  if (process.env.EMAIL_PROVIDER?.toLowerCase() === 'resend') {
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey) throw new Error('RESEND_API_KEY no configurado')
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: getMailFrom(),
+        to: [input.to],
+        subject: input.subject,
+        text: input.text,
+        html: input.html,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    })
+
+    if (!response.ok) {
+      const detail = await response.text()
+      throw new Error(`Resend rechazo el email (${response.status}): ${detail.slice(0, 300)}`)
+    }
+
+    const result = await response.json() as { id?: string }
+    return { sent: true, messageId: result.id }
+  }
+
   const mailer = getTransporter()
   if (!mailer) {
     console.info(`[mail:dev] ${input.subject}`)
