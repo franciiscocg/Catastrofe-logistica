@@ -20,6 +20,7 @@ export const verifyAccountSchema = z.object({
 
 export const resendVerificationSchema = z.object({
   identifier: z.string().min(1, 'Introduce tu email o DNI'),
+  password: z.string().min(8, 'Mínimo 8 caracteres').optional(),
 })
 
 export const requestPasswordResetSchema = z.object({

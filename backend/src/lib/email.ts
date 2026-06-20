@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer'
 import type { Transporter } from 'nodemailer'
 import { EMAIL_VERIFICATION_REQUIRED } from './security.js'
+import { isFirebaseAuthEnabled } from './firebase-auth.js'
 
 type MailInput = {
   to: string
@@ -32,6 +33,7 @@ function getMailFrom() {
 }
 
 export function assertEmailConfigured() {
+  if (isFirebaseAuthEnabled()) return
   if (!isProduction() || !EMAIL_VERIFICATION_REQUIRED) return
 
   const provider = process.env.EMAIL_PROVIDER?.toLowerCase()

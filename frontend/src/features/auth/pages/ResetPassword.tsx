@@ -11,6 +11,7 @@ export default function ResetPassword() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const firebaseAuth = import.meta.env.VITE_AUTH_PROVIDER === 'firebase'
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -31,7 +32,11 @@ export default function ResetPassword() {
       <form onSubmit={submit} className="mx-auto w-full max-w-sm space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold text-gray-900">Nueva contraseña</h1>
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        {!token ? (
+        {firebaseAuth ? (
+          <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Firebase gestiona el cambio de contraseña directamente desde el enlace recibido. Si el enlace ha caducado, solicita uno nuevo.
+          </p>
+        ) : !token ? (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Este enlace de recuperación no es válido. Solicita uno nuevo para continuar.
           </p>

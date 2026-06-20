@@ -16,9 +16,11 @@ import { errorHandler } from './middleware/error.middleware.js'
 import { registerIdempotency } from './middleware/idempotency.middleware.js'
 import { getJwtSecret } from './lib/security.js'
 import { assertEmailConfigured } from './lib/email.js'
+import { assertFirebaseAuthConfigured } from './lib/firebase-auth.js'
 
 export async function buildApp() {
   assertEmailConfigured()
+  assertFirebaseAuthConfigured()
 
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',

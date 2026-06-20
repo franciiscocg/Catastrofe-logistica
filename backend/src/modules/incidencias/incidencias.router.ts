@@ -13,14 +13,19 @@ import {
   postFinalizarAsignacionIncidencia,
   postIncidencia,
 } from './incidencias.controller.js'
-import { requireAuth } from '../../middleware/auth.middleware.js'
+import { requireAuth, resolveFirebaseAppUser } from '../../middleware/auth.middleware.js'
 import { requireRole } from '../../middleware/rbac.middleware.js'
+import { isFirebaseAuthEnabled } from '../../lib/firebase-auth.js'
 
 async function optionalAuth(request: FastifyRequest, _reply: FastifyReply) {
   if (!request.headers.authorization) return
 
   try {
-    await request.jwtVerify()
+    if (isFirebaseAuthEnabled()) {
+      request.user = await resolveFirebaseAppUser(request.headers.authorization.replace(/^Bearer\s+/i, ''))
+    } else {
+      await request.jwtVerify()
+    }
   } catch {
     // Si el token no es válido, se trata como petición anónima.
   }

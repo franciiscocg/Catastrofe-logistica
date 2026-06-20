@@ -21,6 +21,27 @@ backend.
 
 ## 2. Variables del backend en Render
 
+### Opción gratuita recomendada: Firebase Authentication
+
+Para que Firebase envíe los correos de verificación y recuperación sin dominio
+propio, configura en el backend:
+
+```text
+AUTH_PROVIDER=firebase
+FIREBASE_API_KEY=clave-web-del-proyecto
+FIREBASE_PROJECT_ID=id-del-proyecto
+FRONTEND_URL=https://catastrofe-logistica-frontend.onrender.com
+APP_PUBLIC_URL=https://catastrofe-logistica-frontend.onrender.com
+```
+
+En Firebase Authentication activa el proveedor **Email/Password** y añade el
+dominio del frontend a **Authorized domains**. En el frontend configura
+`VITE_AUTH_PROVIDER=firebase`.
+
+Mientras `AUTH_PROVIDER=firebase`, las variables de Resend no se utilizan. Las
+cuentas existentes se migran automáticamente a Firebase cuando inician sesión
+o solicitan una recuperación; PostgreSQL continúa almacenando perfiles y roles.
+
 En `catastrofe-logistica-backend`, configura:
 
 ```text

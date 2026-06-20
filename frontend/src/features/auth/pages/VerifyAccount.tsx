@@ -8,6 +8,7 @@ export default function VerifyAccount() {
   const [params] = useSearchParams()
   const [token, setToken] = useState(params.get('token') ?? '')
   const [identifier, setIdentifier] = useState('')
+  const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [resendMessage, setResendMessage] = useState('')
   const [error, setError] = useState('')
@@ -33,7 +34,7 @@ export default function VerifyAccount() {
     setResending(true)
     setResendMessage('')
     try {
-      await apiClient.post<{ sent: boolean }>('/api/auth/verify-account/resend', { identifier })
+      await apiClient.post<{ sent: boolean }>('/api/auth/verify-account/resend', { identifier, password })
       setResendMessage('Si la cuenta existe y está pendiente de verificar, enviaremos un nuevo enlace.')
     } catch (err) {
       setResendMessage(getApiErrorMessage(err, 'No se pudo reenviar el enlace de verificación.'))
@@ -61,6 +62,7 @@ export default function VerifyAccount() {
           </div>
           {resendMessage && <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">{resendMessage}</p>}
           <input required value={identifier} onChange={(event) => setIdentifier(event.target.value)} className="w-full rounded-lg border-gray-300 text-sm" placeholder="tu@email.com o 12345678A" />
+          <input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border-gray-300 text-sm" placeholder="Contraseña" autoComplete="current-password" />
           <Button type="submit" variant="secondary" fullWidth loading={resending}>Reenviar verificación</Button>
         </form>
       </div>

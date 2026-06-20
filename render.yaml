@@ -16,6 +16,12 @@ services:
         value: none
       - key: EMAIL_VERIFICATION_REQUIRED
         value: "true"
+      - key: AUTH_PROVIDER
+        value: firebase
+      - key: FIREBASE_API_KEY
+        value: AIzaSyBs9VE4jRaf017I179kazTIn7d5Q5u63rA
+      - key: FIREBASE_PROJECT_ID
+        value: catastrofe-logistica-tfm-8317
       - key: EMAIL_PROVIDER
         value: resend
       - key: JWT_EXPIRES_IN
@@ -60,6 +66,8 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+      - key: VITE_AUTH_PROVIDER
+        value: firebase
 
 databases:
   - name: catastrofe-logistica-db

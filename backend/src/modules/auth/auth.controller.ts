@@ -8,6 +8,11 @@ import {
   verifyAccountSchema,
 } from './auth.schema.js'
 import {
+  loginFirebaseUser,
+  refreshFirebaseUser,
+  registerFirebaseUser,
+  requestFirebasePasswordReset,
+  resendFirebaseVerification,
   issueRefreshToken,
   loginUser,
   requestAccountVerification,
@@ -20,6 +25,7 @@ import {
 } from './auth.service.js'
 import { ACCESS_TOKEN_EXPIRES_IN, ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS } from '../../lib/security.js'
 import { sendAccountVerificationEmail, sendPasswordResetEmail } from '../../lib/email.js'
+import { isFirebaseAuthEnabled } from '../../lib/firebase-auth.js'
 
 const REFRESH_COOKIE_NAME = 'catlogistica_refresh'
 const REFRESH_COOKIE_PATH = '/api/auth'
@@ -64,6 +70,12 @@ async function signAccessToken(reply: FastifyReply, user: { id: string; email: s
 
 export async function login(request: FastifyRequest, reply: FastifyReply) {
   const input = loginSchema.parse(request.body)
+  if (isFirebaseAuthEnabled()) {
+    const { user, session } = await loginFirebaseUser(input)
+    setRefreshCookie(reply, session.refreshToken)
+    return reply.send({ user, accessToken: session.accessToken, accessTokenExpiresAt: session.accessTokenExpiresAt })
+  }
+
   const user = await loginUser(input)
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
@@ -73,6 +85,15 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
+  if (isFirebaseAuthEnabled()) {
+    const { user, verificationEmailSent } = await registerFirebaseUser(input)
+    return reply.status(201).send({
+      user,
+      requiresEmailVerification: true,
+      verificationEmailSent,
+    })
+  }
+
   const { user, verificationToken } = await registerUser(input)
 
   if (!user.emailVerified) {
@@ -104,6 +125,17 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
   const currentRefreshToken = readRefreshCookie(request, reply)
+  if (isFirebaseAuthEnabled()) {
+    try {
+      const { user, session } = await refreshFirebaseUser(currentRefreshToken)
+      setRefreshCookie(reply, session.refreshToken)
+      return reply.send({ user, accessToken: session.accessToken, accessTokenExpiresAt: session.accessTokenExpiresAt })
+    } catch (error) {
+      clearRefreshCookie(reply)
+      throw error
+    }
+  }
+
   try {
     const { user, refreshToken } = await rotateRefreshToken(currentRefreshToken)
     const tokenPayload = await signAccessToken(reply, user)
@@ -116,12 +148,15 @@ export async function refresh(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function logout(request: FastifyRequest, reply: FastifyReply) {
-  await revokeRefreshToken(request.cookies[REFRESH_COOKIE_NAME])
+  if (!isFirebaseAuthEnabled()) await revokeRefreshToken(request.cookies[REFRESH_COOKIE_NAME])
   clearRefreshCookie(reply)
   return reply.status(204).send()
 }
 
 export async function verify(request: FastifyRequest, reply: FastifyReply) {
+  if (isFirebaseAuthEnabled()) {
+    return reply.status(410).send({ error: 'La verificación se completa directamente desde el enlace de Firebase.' })
+  }
   const input = verifyAccountSchema.parse(request.body)
   const user = await verifyAccount(input.token)
   return reply.send({ user })
@@ -129,6 +164,12 @@ export async function verify(request: FastifyRequest, reply: FastifyReply) {
 
 export async function resendVerification(request: FastifyRequest, reply: FastifyReply) {
   const input = resendVerificationSchema.parse(request.body)
+  if (isFirebaseAuthEnabled()) {
+    if (!input.password) throw Object.assign(new Error('Introduce tu contraseña para reenviar la verificación'), { statusCode: 400 })
+    await resendFirebaseVerification(input.identifier, input.password)
+    return reply.send({ sent: true })
+  }
+
   const result = await requestAccountVerification(input)
 
   if (result.verificationToken && result.user) {
@@ -144,6 +185,11 @@ export async function resendVerification(request: FastifyRequest, reply: Fastify
 
 export async function requestReset(request: FastifyRequest, reply: FastifyReply) {
   const input = requestPasswordResetSchema.parse(request.body)
+  if (isFirebaseAuthEnabled()) {
+    await requestFirebasePasswordReset(input.identifier)
+    return reply.send({ sent: true })
+  }
+
   const result = await requestPasswordReset(input)
 
   if (result.resetToken && result.user) {
@@ -158,6 +204,9 @@ export async function requestReset(request: FastifyRequest, reply: FastifyReply)
 }
 
 export async function reset(request: FastifyRequest, reply: FastifyReply) {
+  if (isFirebaseAuthEnabled()) {
+    return reply.status(410).send({ error: 'La contraseña se cambia directamente desde el enlace de Firebase.' })
+  }
   const input = resetPasswordSchema.parse(request.body)
   return reply.send(await resetPassword(input))
 }

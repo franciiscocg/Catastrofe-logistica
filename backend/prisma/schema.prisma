@@ -65,6 +65,7 @@ enum EstadoSolicitudParticipacionPuesto {
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
+  firebaseUid String?    @unique
   password  String
   nombre    String
   apellidos String

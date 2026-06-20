@@ -3,6 +3,17 @@ import { RolUsuario } from '@prisma/client'
 import { createHash, randomBytes } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
 import { EMAIL_VERIFICATION_REQUIRED, REFRESH_TOKEN_TTL_DAYS, RESET_TOKEN_TTL_MINUTES, VERIFY_TOKEN_TTL_HOURS } from '../../lib/security.js'
+import {
+  firebaseLookupAccount,
+  firebaseDeleteCurrentUser,
+  firebaseRefreshSession,
+  firebaseSessionPayload,
+  firebaseSignIn,
+  firebaseSignUp,
+  sendFirebasePasswordResetEmail,
+  sendFirebaseVerificationEmail,
+  verifyFirebaseIdToken,
+} from '../../lib/firebase-auth.js'
 import type { LoginInput, RegisterInput, ResendVerificationInput, RequestPasswordResetInput, ResetPasswordInput } from './auth.schema.js'
 
 function appError(message: string, statusCode: number) {
@@ -242,4 +253,190 @@ export async function resetPassword({ token, password }: ResetPasswordInput) {
   ])
 
   return { ok: true }
+}
+
+async function findUserByIdentifier(identifier: string) {
+  const normalized = identifier.trim()
+  return emailRegex.test(normalized)
+    ? prisma.usuario.findUnique({ where: { email: normalized.toLowerCase() } })
+    : prisma.usuario.findUnique({ where: { dni: normalized.toUpperCase() } })
+}
+
+function getFirebaseCode(error: unknown) {
+  if (!error || typeof error !== 'object' || !('firebaseCode' in error)) return undefined
+  return (error as { firebaseCode?: string }).firebaseCode
+}
+
+async function ensureFirebaseIdentityForLegacyUser(user: {
+  id: string
+  email: string
+  password: string
+  firebaseUid: string | null
+}, password: string) {
+  try {
+    const session = await firebaseSignIn(user.email, password)
+    if (user.firebaseUid !== session.localId) {
+      await prisma.usuario.update({ where: { id: user.id }, data: { firebaseUid: session.localId } })
+    }
+    return session
+  } catch (error) {
+    const firebaseCode = getFirebaseCode(error)
+    if (user.firebaseUid || (firebaseCode !== 'EMAIL_NOT_FOUND' && firebaseCode !== 'INVALID_LOGIN_CREDENTIALS')) {
+      throw error
+    }
+  }
+
+  const validLegacyPassword = await bcrypt.compare(password, user.password)
+  if (!validLegacyPassword) throw appError('Credenciales incorrectas', 401)
+
+  const session = await firebaseSignUp(user.email, password)
+  await prisma.usuario.update({ where: { id: user.id }, data: { firebaseUid: session.localId } })
+  return session
+}
+
+export async function registerFirebaseUser(input: RegisterInput) {
+  const email = input.email.trim().toLowerCase()
+  const exists = await prisma.usuario.findUnique({ where: { email } })
+  if (exists) throw badRequest('Este correo electrónico ya está registrado')
+
+  const dni = input.dni.trim().toUpperCase()
+  const dniExists = await prisma.usuario.findUnique({ where: { dni } })
+  if (dniExists) throw badRequest('Este DNI/NIE ya está registrado')
+
+  const firebaseSession = await firebaseSignUp(email, input.password)
+  const hashed = await bcrypt.hash(input.password, 12)
+  const roles = [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
+
+  let user
+  try {
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.usuario.create({
+        data: {
+          email,
+          firebaseUid: firebaseSession.localId,
+          password: hashed,
+          nombre: input.nombre,
+          apellidos: input.apellidos,
+          telefono: input.telefono,
+          dni,
+          roles,
+          activo: true,
+          emailVerified: false,
+        },
+      })
+      await tx.voluntario.create({ data: { usuarioId: created.id } })
+      return created
+    })
+  } catch (error) {
+    await firebaseDeleteCurrentUser(firebaseSession.idToken).catch(() => undefined)
+    throw error
+  }
+
+  let verificationEmailSent = true
+  try {
+    await sendFirebaseVerificationEmail(firebaseSession.idToken)
+  } catch {
+    verificationEmailSent = false
+  }
+
+  return {
+    user: sanitizeUser(user),
+    verificationEmailSent,
+  }
+}
+
+export async function loginFirebaseUser({ identifier, password }: LoginInput) {
+  const user = await findUserByIdentifier(identifier)
+  if (!user) throw appError('Credenciales incorrectas', 401)
+  if (!user.activo) throw appError('Cuenta desactivada', 403)
+
+  const identity = await ensureFirebaseIdentityForLegacyUser(user, password)
+  const firebaseAccount = await firebaseLookupAccount(identity.idToken)
+  const emailVerified = user.emailVerified || firebaseAccount.emailVerified === true
+
+  if (!emailVerified) {
+    await sendFirebaseVerificationEmail(identity.idToken).catch(() => undefined)
+    throw appError('Verifica tu cuenta antes de iniciar sesión. Te hemos enviado un nuevo enlace.', 403)
+  }
+
+  const updatedUser = firebaseAccount.emailVerified && !user.emailVerified
+    ? await prisma.usuario.update({
+      where: { id: user.id },
+      data: { emailVerified: true, emailVerifiedAt: new Date(), firebaseUid: firebaseAccount.localId },
+    })
+    : user
+
+  if (updatedUser.roles.includes(RolUsuario.VOLUNTARIO)) {
+    await prisma.voluntario.upsert({
+      where: { usuarioId: updatedUser.id },
+      update: {},
+      create: { usuarioId: updatedUser.id },
+    })
+  }
+
+  return {
+    user: sanitizeUser(updatedUser),
+    session: firebaseSessionPayload(identity),
+  }
+}
+
+export async function refreshFirebaseUser(refreshToken: string) {
+  const refreshed = await firebaseRefreshSession(refreshToken)
+  const claims = await verifyFirebaseIdToken(refreshed.id_token)
+  const user = await prisma.usuario.findFirst({
+    where: {
+      OR: [
+        { firebaseUid: claims.uid },
+        ...(claims.email ? [{ email: claims.email.toLowerCase() }] : []),
+      ],
+    },
+  })
+  if (!user || !user.activo) throw appError('Sesión expirada', 401)
+
+  if (!user.firebaseUid || (claims.emailVerified && !user.emailVerified)) {
+    await prisma.usuario.update({
+      where: { id: user.id },
+      data: {
+        firebaseUid: claims.uid,
+        ...(claims.emailVerified && !user.emailVerified
+          ? { emailVerified: true, emailVerifiedAt: new Date() }
+          : {}),
+      },
+    })
+  }
+
+  return {
+    user: sanitizeUser({ ...user, emailVerified: user.emailVerified || claims.emailVerified }),
+    session: firebaseSessionPayload({
+      idToken: refreshed.id_token,
+      refreshToken: refreshed.refresh_token,
+      expiresIn: refreshed.expires_in,
+    }),
+  }
+}
+
+export async function resendFirebaseVerification(identifier: string, password: string) {
+  const user = await findUserByIdentifier(identifier)
+  if (!user || user.emailVerified) return { sent: true }
+  const identity = await ensureFirebaseIdentityForLegacyUser(user, password)
+  await sendFirebaseVerificationEmail(identity.idToken)
+  return { sent: true }
+}
+
+export async function requestFirebasePasswordReset(identifier: string) {
+  const user = await findUserByIdentifier(identifier)
+  if (!user) return { sent: true }
+
+  if (!user.firebaseUid) {
+    try {
+      const temporaryPassword = `${randomBytes(32).toString('base64url')}aA1!`
+      const identity = await firebaseSignUp(user.email, temporaryPassword)
+      await prisma.usuario.update({ where: { id: user.id }, data: { firebaseUid: identity.localId } })
+    } catch (error) {
+      if (getFirebaseCode(error) !== 'EMAIL_EXISTS') throw error
+    }
+  }
+
+  await sendFirebasePasswordResetEmail(user.email)
+  return { sent: true }
 }
