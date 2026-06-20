@@ -112,17 +112,22 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
 
       const brave = await detectBrave()
 
-      const scanner = new Html5Qrcode(divId, {
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        useBarCodeDetectorIfSupported: true,
-        verbose: false,
-      })
-      scannerRef.current = scanner
-
       const targets = await getCameraTargets()
       let lastError: unknown
 
       for (const target of targets) {
+        if (cancelled) return
+
+        // Una instancia nueva por intento: en iOS/WebKit, si un start() falla
+        // (p.ej. OverconstrainedError con facingMode exact), la maquina de estados
+        // interna de html5-qrcode queda bloqueada y el siguiente start() lanza
+        // "Cannot transition to a new state, already under transition".
+        const scanner = new Html5Qrcode(divId, {
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          useBarCodeDetectorIfSupported: true,
+          verbose: false,
+        })
+
         try {
           await scanner.start(
             target,
@@ -147,15 +152,25 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
               // Los fallos por frame son normales mientras el QR entra en foco.
             },
           )
+          scannerRef.current = scanner
           startedRef.current = true
-          if (!cancelled) {
-            const trackSettings = scanner.getRunningTrackSettings() as MediaTrackSettings & { label?: string }
-            setCameraLabel(trackSettings.label ?? '')
-            setStatus('scanning')
+          if (cancelled) {
+            await stopScanner()
+            return
           }
+          const trackSettings = scanner.getRunningTrackSettings() as MediaTrackSettings & { label?: string }
+          setCameraLabel(trackSettings.label ?? '')
+          setStatus('scanning')
           return
         } catch (err) {
           lastError = err
+          // Limpia la instancia fallida para liberar el <video> y el estado interno
+          // antes del siguiente intento.
+          try {
+            await scanner.clear()
+          } catch {
+            // clear falla si no llego a montarse; no es critico.
+          }
           const message = err instanceof Error ? err.message : String(err)
           const lower = message.toLowerCase()
           const permissionBlocked = lower.includes('permission') || lower.includes('notallowed') || lower.includes('denied')
