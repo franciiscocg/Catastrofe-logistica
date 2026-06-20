@@ -15,10 +15,10 @@ const vehiculoSchema = z.object({
 }).strict().superRefine((vehiculo, ctx) => {
   if (!vehiculo.disponible) return
   if (!vehiculo.tipo) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tipo'], message: 'Indica el tipo de vehiculo disponible' })
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tipo'], message: 'Indica el tipo de vehículo disponible' })
   }
   if (!vehiculo.matricula) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['matricula'], message: 'Indica la matricula o identificador del vehiculo' })
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['matricula'], message: 'Indica la matrícula o identificador del vehículo' })
   }
 }).transform((vehiculo) => ({
   disponible: vehiculo.disponible,

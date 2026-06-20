@@ -107,7 +107,7 @@ async function abrirBusqueda(page: Page) {
   await page.getByRole('button', { name: /Buscar producto Encuentra/i }).click()
 }
 
-test.describe('Panel de busqueda de productos', () => {
+test.describe('Panel de búsqueda de productos', () => {
   test.beforeEach(async ({ page }) => {
     await prepararCiudadano(page)
     await abrirBusqueda(page)
@@ -116,11 +116,11 @@ test.describe('Panel de busqueda de productos', () => {
   test('abre el selector de productos', async ({ page }) => {
     await expect(page.getByText('Recursos disponibles')).toBeVisible()
     await expect(page.getByText('Buscar productos')).toBeVisible()
-    await expect(page.getByPlaceholder('Buscar producto o categoria...')).toBeVisible()
+    await expect(page.getByPlaceholder('Buscar producto o categoría...')).toBeVisible()
   })
 
   test('permite buscar y anadir productos a la lista', async ({ page }) => {
-    const input = page.getByPlaceholder('Buscar producto o categoria...')
+    const input = page.getByPlaceholder('Buscar producto o categoría...')
     await input.click()
     await input.fill('agua')
     await page.getByRole('button', { name: /Agua embotellada/i }).first().click()

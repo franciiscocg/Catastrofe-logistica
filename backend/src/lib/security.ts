@@ -9,7 +9,7 @@ function envFlag(name: string, fallback: boolean) {
 export function getJwtSecret() {
   const secret = process.env.JWT_SECRET
   if (process.env.NODE_ENV === 'production' && (!secret || secret === DEV_JWT_SECRET || secret.length < 32)) {
-    throw new Error('JWT_SECRET seguro obligatorio en produccion')
+    throw new Error('JWT_SECRET seguro obligatorio en producción')
   }
   return secret ?? DEV_JWT_SECRET
 }

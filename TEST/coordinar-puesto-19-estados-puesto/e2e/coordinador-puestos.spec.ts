@@ -58,7 +58,7 @@ test.describe('Coordinador — Dashboard', () => {
     expect(count).toBeGreaterThanOrEqual(0)
   })
 
-  test('el dashboard muestra contenido de coordinacion o pantalla de acceso', async ({ page }) => {
+  test('el dashboard muestra contenido de coordinación o pantalla de acceso', async ({ page }) => {
     await page.waitForTimeout(500)
     const count = await page.getByText(/coordinad|panel de control|gesti[oó]n|puestos|login|iniciar sesi[oó]n/i).count()
     expect(count).toBeGreaterThanOrEqual(0)
@@ -144,7 +144,7 @@ test.describe('Coordinador — Vista detalle de puesto', () => {
     expect(count).toBeGreaterThanOrEqual(0)
   })
 
-  test('el detalle puede mostrar solicitudes de participacion', async ({ page }) => {
+  test('el detalle puede mostrar solicitudes de participación', async ({ page }) => {
     await page.waitForTimeout(500)
     const count = await page.getByText(/solicitud de participaci[oó]n|quiere unirse|solicitud pendiente/i).count()
     expect(count).toBeGreaterThanOrEqual(0)
@@ -159,13 +159,13 @@ test.describe('Coordinador — Vista detalle de puesto', () => {
 
 // ── Coordinador — Gestion de solicitudes de participacion ─────────────────────
 
-test.describe('Coordinador — Solicitudes de participacion de voluntarios', () => {
+test.describe('Coordinador — Solicitudes de participación de voluntarios', () => {
   test.beforeEach(async ({ page }) => {
     await injectCoordAuth(page)
     await gotoCoordinador(page)
   })
 
-  test('el coordinador puede ver solicitudes de participacion de voluntarios', async ({ page }) => {
+  test('el coordinador puede ver solicitudes de participación de voluntarios', async ({ page }) => {
     await page.waitForTimeout(800)
     const count = await page.getByText(/solicitud|participaci[oó]n|voluntario.*solicita|aceptar|rechazar/i).count()
     expect(count).toBeGreaterThanOrEqual(0)
@@ -181,7 +181,7 @@ test.describe('Coordinador — Solicitudes de participacion de voluntarios', () 
 // ── Acceso sin autenticacion ──────────────────────────────────────────────────
 
 test.describe('Control de acceso al panel coordinador', () => {
-  test('sin sesion el acceso a coordinador redirige al login', async ({ page }) => {
+  test('sin sesión el acceso a coordinador redirige al login', async ({ page }) => {
     await page.goto('/coordinador')
     await page.waitForLoadState('networkidle')
     await expect(page).not.toHaveURL(/\/coordinador$/)

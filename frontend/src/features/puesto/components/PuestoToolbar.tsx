@@ -44,7 +44,7 @@ export default function PuestoToolbar({
             type="search"
             value={inventarioSearch}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Buscar por producto o categoria"
+            placeholder="Buscar por producto o categoría"
             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 lg:w-72"
           />
           <div className="grid grid-cols-3 rounded-lg border border-slate-200 bg-slate-100 p-1">

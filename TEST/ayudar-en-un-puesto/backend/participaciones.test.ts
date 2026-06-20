@@ -51,7 +51,7 @@ vi.mock('../../../backend/src/middleware/auth.middleware.js', () => ({
 vi.mock('../../../backend/src/middleware/rbac.middleware.js', () => ({
   requireRole: vi.fn((...roles: string[]) => async (_request, reply) => {
     if (!roles.some((role) => mockAuthUser.roles.includes(role))) {
-      reply.status(403).send({ error: 'No tienes permiso para esta accion' })
+      reply.status(403).send({ error: 'No tienes permiso para está accion' })
     }
   }),
 }))
@@ -139,7 +139,7 @@ async function buildTestApp() {
 
 // ── POST /:id/participaciones ─────────────────────────────────────────────────
 
-describe('POST /:id/participaciones — solicitud de participacion del voluntario', () => {
+describe('POST /:id/participaciones — solicitud de participación del voluntario', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthUser.id = VOL_USER_ID
@@ -147,7 +147,7 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     mockAuthUser.roles = ['VOLUNTARIO']
   })
 
-  it('crea la solicitud de participacion cuando todo es valido', async () => {
+  it('crea la solicitud de participación cuando todo es válido', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.puestoEmergencia.findFirst.mockResolvedValue({ id: PUESTO_ID, capacidadTrabajo: 6, nombre: 'Puesto Valencia Norte' })
@@ -191,7 +191,7 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     await app.close()
   })
 
-  it('bloquea con 400 si el voluntario tiene una donacion activa', async () => {
+  it('bloquea con 400 si el voluntario tiene una donación activa', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.puestoEmergencia.findFirst.mockResolvedValue({ id: PUESTO_ID, capacidadTrabajo: 6, nombre: 'Puesto Valencia Norte' })
@@ -200,12 +200,12 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     const response = await app.inject({ method: 'POST', url: `/api/puestos/${PUESTO_ID}/participaciones` })
 
     expect(response.statusCode).toBe(400)
-    expect(response.json().message).toMatch(/donacion activa/i)
+    expect(response.json().message).toMatch(/donación activa/i)
     expect(mp.solicitudParticipacionPuesto.create).not.toHaveBeenCalled()
     await app.close()
   })
 
-  it('bloquea con 400 si el voluntario ya esta asignado activamente a otro puesto', async () => {
+  it('bloquea con 400 si el voluntario ya está asignado activamente a otro puesto', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.puestoEmergencia.findFirst.mockResolvedValue({ id: PUESTO_ID, capacidadTrabajo: 6, nombre: 'Puesto Valencia Norte' })
@@ -243,7 +243,7 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     await app.close()
   })
 
-  it('bloquea con 400 si el puesto esta lleno en el momento de la solicitud', async () => {
+  it('bloquea con 400 si el puesto está lleno en el momento de la solicitud', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.puestoEmergencia.findFirst.mockResolvedValue({ id: PUESTO_ID, capacidadTrabajo: 3, nombre: 'Puesto Valencia Norte' })
@@ -259,7 +259,7 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
     await app.close()
   })
 
-  it('devuelve 404 si el puesto no existe o no esta activo', async () => {
+  it('devuelve 404 si el puesto no existe o no está activo', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
@@ -294,7 +294,7 @@ describe('POST /:id/participaciones — solicitud de participacion del voluntari
 
 // ── GET /:id/solicitudes-participacion ────────────────────────────────────────
 
-describe('GET /:id/solicitudes-participacion — listado para responsable', () => {
+describe('GET /:id/solicitudes-participación — listado para responsable', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthUser.id = RESPONSABLE_ID
@@ -360,7 +360,7 @@ describe('POST /participaciones/:solicitudId/aceptar — responsable acepta soli
     mockAuthUser.roles = ['PUESTO_EMERGENCIA']
   })
 
-  it('acepta la solicitud y crea la asignacion activa', async () => {
+  it('acepta la solicitud y crea la asignación activa', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({
       ...solicitudBase,
@@ -398,7 +398,7 @@ describe('POST /participaciones/:solicitudId/aceptar — responsable acepta soli
     await app.close()
   })
 
-  it('bloquea con 400 si la solicitud ya esta revisada', async () => {
+  it('bloquea con 400 si la solicitud ya está revisada', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({
       ...solicitudBase,
@@ -412,7 +412,7 @@ describe('POST /participaciones/:solicitudId/aceptar — responsable acepta soli
     })
 
     expect(response.statusCode).toBe(400)
-    expect(response.json().message).toMatch(/ya esta revisada/i)
+    expect(response.json().message).toMatch(/ya está revisada/i)
     expect(mp.asignacionPuesto.create).not.toHaveBeenCalled()
     await app.close()
   })
@@ -434,7 +434,7 @@ describe('POST /participaciones/:solicitudId/aceptar — responsable acepta soli
     await app.close()
   })
 
-  it('bloquea con 400 si el puesto esta lleno en el momento de aceptar', async () => {
+  it('bloquea con 400 si el puesto está lleno en el momento de aceptar', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({
       ...solicitudBase,
@@ -456,7 +456,7 @@ describe('POST /participaciones/:solicitudId/aceptar — responsable acepta soli
     await app.close()
   })
 
-  it('bloquea con 400 si el voluntario ya esta participando en otro puesto', async () => {
+  it('bloquea con 400 si el voluntario ya está participando en otro puesto', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({
       ...solicitudBase,
@@ -554,7 +554,7 @@ describe('POST /participaciones/:solicitudId/rechazar — responsable rechaza so
     await app.close()
   })
 
-  it('bloquea con 400 si la solicitud ya esta revisada', async () => {
+  it('bloquea con 400 si la solicitud ya está revisada', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({ estado: 'ACEPTADA', puestoId: PUESTO_ID })
 
@@ -667,7 +667,7 @@ describe('DELETE /:id/participantes/:asignacionId — eliminar voluntario activo
     mockAuthUser.roles = ['PUESTO_EMERGENCIA']
   })
 
-  it('elimina al voluntario activo marcando la asignacion como CANCELADA', async () => {
+  it('elimina al voluntario activo marcando la asignación como CANCELADA', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique.mockResolvedValue({ id: PUESTO_ID, adminId: RESPONSABLE_ID, trabajadores: [] })
     mp.asignacionPuesto.findFirst.mockResolvedValue({ id: ASIGNACION_ID })
@@ -686,7 +686,7 @@ describe('DELETE /:id/participantes/:asignacionId — eliminar voluntario activo
     await app.close()
   })
 
-  it('devuelve 404 si la asignacion activa no existe en ese puesto', async () => {
+  it('devuelve 404 si la asignación activa no existe en ese puesto', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique.mockResolvedValue({ id: PUESTO_ID, adminId: RESPONSABLE_ID, trabajadores: [] })
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
@@ -725,13 +725,13 @@ describe('POST /:id/asignaciones — incorporacion directa bloqueada', () => {
     mockAuthUser.roles = ['VOLUNTARIO']
   })
 
-  it('devuelve 410 Gone para el endpoint de asignacion directa', async () => {
+  it('devuelve 410 Gone para el endpoint de asignación directa', async () => {
     const app = await buildTestApp()
 
     const response = await app.inject({ method: 'POST', url: `/api/puestos/${PUESTO_ID}/asignaciones` })
 
     expect(response.statusCode).toBe(410)
-    expect(response.json().message).toMatch(/solicitud de participacion/i)
+    expect(response.json().message).toMatch(/solicitud de participación/i)
     await app.close()
   })
 })
@@ -746,7 +746,7 @@ describe('POST /:id/asignaciones/finalizar — voluntario abandona el puesto', (
     mockAuthUser.roles = ['VOLUNTARIO']
   })
 
-  it('finaliza la asignacion activa del voluntario registrando la hora de fin', async () => {
+  it('finaliza la asignación activa del voluntario registrando la hora de fin', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionPuesto.findFirst.mockResolvedValue({ id: ASIGNACION_ID })
@@ -768,7 +768,7 @@ describe('POST /:id/asignaciones/finalizar — voluntario abandona el puesto', (
     await app.close()
   })
 
-  it('devuelve 404 si el voluntario no tiene asignacion activa en ese puesto', async () => {
+  it('devuelve 404 si el voluntario no tiene asignación activa en ese puesto', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
@@ -783,7 +783,7 @@ describe('POST /:id/asignaciones/finalizar — voluntario abandona el puesto', (
 
 // ── GET /mis-solicitudes-participacion ───────────────────────────────────────
 
-describe('GET /mis-solicitudes-participacion — historial de solicitudes del voluntario', () => {
+describe('GET /mis-solicitudes-participación — historial de solicitudes del voluntario', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthUser.id = VOL_USER_ID
@@ -791,7 +791,7 @@ describe('GET /mis-solicitudes-participacion — historial de solicitudes del vo
     mockAuthUser.roles = ['VOLUNTARIO']
   })
 
-  it('devuelve el historial de solicitudes de participacion del voluntario', async () => {
+  it('devuelve el historial de solicitudes de participación del voluntario', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findMany.mockResolvedValue([
       { ...solicitudBase, estado: 'ACEPTADA' },
@@ -832,7 +832,7 @@ describe('GET /mis-solicitudes-participacion — historial de solicitudes del vo
 
 // ── GET /mis-asignaciones/activa ─────────────────────────────────────────────
 
-describe('GET /mis-asignaciones/activa — asignacion activa del voluntario', () => {
+describe('GET /mis-asignaciones/activa — asignación activa del voluntario', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthUser.id = VOL_USER_ID
@@ -840,7 +840,7 @@ describe('GET /mis-asignaciones/activa — asignacion activa del voluntario', ()
     mockAuthUser.roles = ['VOLUNTARIO']
   })
 
-  it('devuelve la asignacion activa del voluntario con datos del puesto', async () => {
+  it('devuelve la asignación activa del voluntario con datos del puesto', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionPuesto.findFirst.mockResolvedValue({
@@ -859,7 +859,7 @@ describe('GET /mis-asignaciones/activa — asignacion activa del voluntario', ()
     await app.close()
   })
 
-  it('devuelve asignacion null si el voluntario no esta en ningun puesto', async () => {
+  it('devuelve asignación null si el voluntario no está en ningun puesto', async () => {
     const app = await buildTestApp()
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)

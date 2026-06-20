@@ -390,7 +390,7 @@ export default function CoordinadorDashboard() {
       invalidateGestion()
       queryClient.invalidateQueries({ queryKey: ['puesto-detalle-coordinador', detalleId] })
     },
-    onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo aceptar la participacion')),
+    onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo aceptar la participación')),
   })
 
   const rechazarParticipacion = useMutation({
@@ -404,7 +404,7 @@ export default function CoordinadorDashboard() {
       invalidateGestion()
       queryClient.invalidateQueries({ queryKey: ['puesto-detalle-coordinador', detalleId] })
     },
-    onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo rechazar la participacion')),
+    onError: (err: unknown) => setDetailError(parseApiError(err, 'No se pudo rechazar la participación')),
   })
 
   const aceptarSolicitudPuesto = useMutation({
@@ -558,10 +558,10 @@ export default function CoordinadorDashboard() {
         <div className="mx-auto max-w-5xl">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Coordinacion</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Coordinación</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">Panel operativo</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                Gestiona permisos, puestos y la salud general de la aplicacion desde una vista limpia.
+                Gestiona permisos, puestos y la salud general de la aplicación desde una vista limpia.
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -611,7 +611,7 @@ export default function CoordinadorDashboard() {
             <LoadingState />
           ) : (
             <div className="space-y-5">
-              <Panel title="Gestion pendiente" text="Acciones administrativas que mantienen la aplicacion ordenada.">
+              <Panel title="Gestión pendiente" text="Acciones administrativas que mantienen la aplicación ordenada.">
                 <div className="divide-y divide-slate-100">
                   <ActionRow
                     title="Validar nuevos puestos"
@@ -630,7 +630,7 @@ export default function CoordinadorDashboard() {
                     title="Revisar actividad de incidencias"
                     text={incidencias.length > 0
                       ? 'Consulta incidencias y voluntarios asignados.'
-                      : 'Todavia no hay incidencias registradas.'}
+                      : 'Todavía no hay incidencias registradas.'}
                     value={incidencias.length}
                     tone={incidenciasCortadas.length > 0 ? 'warning' : 'muted'}
                     actionLabel="Consultar"
@@ -656,7 +656,7 @@ export default function CoordinadorDashboard() {
               </Panel>
 
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <Panel title="Puestos con avisos" text="Informacion de seguimiento administrativo.">
+                <Panel title="Puestos con avisos" text="Información de seguimiento administrativo.">
                   {puestosConNecesidades.length === 0 ? (
                     <CompactEmpty text="No hay avisos de puestos ahora mismo." />
                   ) : (
@@ -710,7 +710,7 @@ export default function CoordinadorDashboard() {
             <input
               value={busquedaPuestos}
               onChange={(e) => setBusquedaPuestos(e.target.value)}
-              placeholder="Buscar por nombre, direccion, tipo o admin"
+              placeholder="Buscar por nombre, dirección, tipo o admin"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100"
             />
             <FilterBar
@@ -728,10 +728,10 @@ export default function CoordinadorDashboard() {
             {(isLoadingPuestos || isLoadingSolicitudesPuesto) ? (
               <LoadingState />
             ) : isErrorPuestos ? (
-              <EmptyState title="No se pudieron cargar los puestos" text="Revisa que el backend este actualizado." />
+              <EmptyState title="No se pudieron cargar los puestos" text="Revisa que el backend esté actualizado." />
             ) : filtroPuestos === 'pendientes' ? (
               solicitudesPuestoFiltradas.length === 0 ? (
-                <EmptyState title="Sin solicitudes pendientes" text="No hay solicitudes de puesto pendientes que coincidan con la busqueda." />
+                <EmptyState title="Sin solicitudes pendientes" text="No hay solicitudes de puesto pendientes que coincidan con la búsqueda." />
               ) : (
                 <div className="space-y-3">
                   {solicitudesPuestoFiltradas.map((solicitud) => (
@@ -776,8 +776,8 @@ export default function CoordinadorDashboard() {
 
                       <div className="mt-3 grid gap-1 text-xs text-gray-500">
                         <p>Email: {solicitud.usuario.email}</p>
-                        {solicitud.usuario.telefono && <p>Telefono: {solicitud.usuario.telefono}</p>}
-                        <p>Ubicacion: {solicitud.latitud.toFixed(4)}, {solicitud.longitud.toFixed(4)}</p>
+                        {solicitud.usuario.telefono && <p>Teléfono: {solicitud.usuario.telefono}</p>}
+                        <p>Ubicación: {solicitud.latitud.toFixed(4)}, {solicitud.longitud.toFixed(4)}</p>
                         {solicitud.descripcion && <p>{solicitud.descripcion}</p>}
                       </div>
                     </article>
@@ -802,7 +802,7 @@ export default function CoordinadorDashboard() {
                 ))}
               </div>
             ) : puestosFiltrados.length === 0 ? (
-              <EmptyState title="Sin puestos" text="No hay puestos que coincidan con la busqueda." />
+              <EmptyState title="Sin puestos" text="No hay puestos que coincidan con la búsqueda." />
             ) : (
               <div className="space-y-3">
                 {puestosFiltrados.map((puesto) => (
@@ -843,10 +843,10 @@ export default function CoordinadorDashboard() {
 
                     <div className="mt-3 grid gap-1 text-xs text-gray-500">
                       <p>Admin: {puesto.admin.nombre} {puesto.admin.apellidos} - {puesto.admin.email}</p>
-                      <p>Ubicacion: {puesto.latitud.toFixed(4)}, {puesto.longitud.toFixed(4)}</p>
+                      <p>Ubicación: {puesto.latitud.toFixed(4)}, {puesto.longitud.toFixed(4)}</p>
                       {puesto.solicitudesPendientes > 0 && (
                         <p className="font-medium text-amber-700">
-                          {puesto.solicitudesPendientes} solicitudes de participacion pendientes
+                          {puesto.solicitudesPendientes} solicitudes de participación pendientes
                         </p>
                       )}
                     </div>
@@ -866,7 +866,7 @@ export default function CoordinadorDashboard() {
             <input
               value={busquedaIncidencias}
               onChange={(e) => setBusquedaIncidencias(e.target.value)}
-              placeholder="Buscar por titulo, categoria o descripcion"
+              placeholder="Buscar por título, categoría o descripción"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-100"
             />
             <FilterBar
@@ -891,10 +891,10 @@ export default function CoordinadorDashboard() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="font-semibold text-gray-950">{incidencia.titulo || 'Incidencia en via'}</h2>
+                        <h2 className="font-semibold text-gray-950">{incidencia.titulo || 'Incidencia en vía'}</h2>
                         <Badge variant={incidencia.estado === 'CORTADA' ? 'danger' : 'success'}>{incidencia.estado}</Badge>
                       </div>
-                      <p className="mt-1 text-sm text-gray-600">{incidencia.descripcion || incidencia.categoria || 'Sin descripcion'}</p>
+                      <p className="mt-1 text-sm text-gray-600">{incidencia.descripcion || incidencia.categoria || 'Sin descripción'}</p>
                       <p className="mt-1 text-xs text-gray-500">
                         {incidencia.latitud.toFixed(4)}, {incidencia.longitud.toFixed(4)} - {incidencia._count.asignacionesVoluntarios} voluntarios activos
                       </p>
@@ -1074,7 +1074,7 @@ export default function CoordinadorDashboard() {
           <div className="space-y-4">
             <ModalTitle
               title="Eliminar incidencia"
-              text={`Se eliminara "${incidenciaAEliminar.titulo || 'Incidencia en via'}" y sus asignaciones asociadas. Usa esta accion solo para registros erroneos o abuso.`}
+              text={`Se eliminará "${incidenciaAEliminar.titulo || 'Incidencia en vía'}" y sus asignaciones asociadas. Usa esta acción solo para registros erróneos o abuso.`}
             />
             <ModalActions onCancel={() => setIncidenciaAEliminar(null)}>
               <Button
@@ -1094,7 +1094,7 @@ export default function CoordinadorDashboard() {
           <div className="space-y-4">
             <ModalTitle
               title="Eliminar usuario"
-              text={`Se desactivara y anonimizara la cuenta de ${usuarioAEliminar.nombre} ${usuarioAEliminar.apellidos}. Se revocaran sus sesiones y se conservara el historial operativo.`}
+              text={`Se desactivará y anonimizará la cuenta de ${usuarioAEliminar.nombre} ${usuarioAEliminar.apellidos}. Se revocarán sus sesiones y se conservará el historial operativo.`}
             />
             <ModalActions onCancel={() => setUsuarioAEliminar(null)}>
               <Button
@@ -1121,7 +1121,7 @@ export default function CoordinadorDashboard() {
             }}
             className="space-y-3"
           >
-            <ModalTitle title="Rechazar participacion" text="Indica por que esta persona no puede incorporarse al puesto." />
+            <ModalTitle title="Rechazar participación" text="Indica por qué esta persona no puede incorporarse al puesto." />
             <textarea
               value={motivoRechazoParticipacion}
               onChange={(e) => setMotivoRechazoParticipacion(e.target.value)}
@@ -1159,7 +1159,7 @@ export default function CoordinadorDashboard() {
               required
               minLength={10}
               maxLength={500}
-              placeholder="Falta informacion, ubicacion no operativa, capacidad insuficiente..."
+              placeholder="Falta información, ubicación no operativa, capacidad insuficiente..."
               className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
             <ModalActions onCancel={() => setRechazoSolicitudId(null)}>
@@ -1178,19 +1178,19 @@ export default function CoordinadorDashboard() {
             }}
             className="space-y-4"
           >
-            <ModalTitle title="Editar puesto" text="Actualiza los datos operativos visibles para coordinacion y equipos." />
+            <ModalTitle title="Editar puesto" text="Actualiza los datos operativos visibles para coordinación y equipos." />
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Nombre" value={form.nombre} onChange={(value) => setForm({ ...form, nombre: value })} />
               <Field label="Tipo" value={form.tipo} onChange={(value) => setForm({ ...form, tipo: value })} />
-              <Field label="Direccion" value={form.direccion} onChange={(value) => setForm({ ...form, direccion: value })} />
+              <Field label="Dirección" value={form.direccion} onChange={(value) => setForm({ ...form, direccion: value })} />
               <Field label="Capacidad" type="number" value={form.capacidadTrabajo} onChange={(value) => setForm({ ...form, capacidadTrabajo: value })} />
               <Field label="Latitud" type="number" value={form.latitud} onChange={(value) => setForm({ ...form, latitud: value })} />
               <Field label="Longitud" type="number" value={form.longitud} onChange={(value) => setForm({ ...form, longitud: value })} />
             </div>
 
             <label className="block">
-              <span className="text-xs font-medium text-gray-600">Estado de gestion</span>
+              <span className="text-xs font-medium text-gray-600">Estado de gestión</span>
               <select
                 value={form.estadoSolicitud}
                 onChange={(e) => setForm({ ...form, estadoSolicitud: e.target.value as PuestoEstado })}
@@ -1203,7 +1203,7 @@ export default function CoordinadorDashboard() {
             </label>
 
             <div>
-              <label className="block text-xs font-medium text-gray-600">Descripcion</label>
+              <label className="block text-xs font-medium text-gray-600">Descripción</label>
               <textarea
                 value={form.descripcion}
                 onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
@@ -1235,7 +1235,7 @@ export default function CoordinadorDashboard() {
           <div className="space-y-4">
             <ModalTitle
               title="Retirar puesto"
-              text={`Se retirara ${eliminando.nombre} de la operativa, se cancelaran asignaciones activas y se conservara el historial.`}
+              text={`Se retirará a ${eliminando.nombre} de la operativa, se cancelarán las asignaciones activas y se conservará el historial.`}
             />
             <ModalActions onCancel={() => setEliminando(null)}>
               <Button
@@ -1255,7 +1255,7 @@ export default function CoordinadorDashboard() {
           <div className="max-h-[82vh] overflow-y-auto pr-1">
             <ModalTitle
               title={detalle?.puesto.nombre ?? 'Detalle del puesto'}
-              text={detalle?.puesto.direccion ?? 'Cargando informacion operativa...'}
+              text={detalle?.puesto.direccion ?? 'Cargando información operativa...'}
             />
 
             {isLoadingDetalle || !detalle ? (
@@ -1406,7 +1406,7 @@ export default function CoordinadorDashboard() {
 
                 <DetailSection title="Actividad reciente">
                   {detalle.actividad.length === 0 ? (
-                    <p className="text-sm text-gray-500">Todavia no hay actividad registrada para este puesto.</p>
+                    <p className="text-sm text-gray-500">Todavía no hay actividad registrada para este puesto.</p>
                   ) : (
                     <div className="space-y-2">
                       {detalle.actividad.map((evento) => (
@@ -1423,7 +1423,7 @@ export default function CoordinadorDashboard() {
                   )}
                 </DetailSection>
 
-                <DetailSection title="Gestion del equipo">
+                <DetailSection title="Gestión del equipo">
                   <p className="mb-3 text-xs text-gray-500">El puesto mantiene un responsable principal y voluntarios de apoyo.</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <form
@@ -1676,8 +1676,8 @@ function formatAccion(accion: string) {
     DESACTIVAR_PUESTO: 'Puesto desactivado',
     ELIMINAR_PUESTO: 'Puesto eliminado',
     CAMBIAR_RESPONSABLE_PUESTO: 'Responsable actualizado',
-    ACEPTAR_PARTICIPACION_PUESTO: 'Participacion aceptada',
-    RECHAZAR_PARTICIPACION_PUESTO: 'Participacion rechazada',
+    ACEPTAR_PARTICIPACION_PUESTO: 'Participación aceptada',
+    RECHAZAR_PARTICIPACION_PUESTO: 'Participación rechazada',
   }
 
   return labels[accion] ?? accion

@@ -62,12 +62,12 @@ async function prepararCiudadano(page: Page) {
 }
 
 test.describe('Acceso ciudadano', () => {
-  test('sin sesion la raiz redirige a login', async ({ page }) => {
+  test('sin sesión la raiz redirige a login', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByRole('heading', { name: /iniciar sesion/i })).toBeVisible()
   })
 
-  test('con sesion muestra el dashboard ciudadano', async ({ page }) => {
+  test('con sesión muestra el dashboard ciudadano', async ({ page }) => {
     await prepararCiudadano(page)
     await page.goto('/ciudadano')
 

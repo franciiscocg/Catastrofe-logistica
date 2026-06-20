@@ -25,14 +25,14 @@ describe('pointToSegmentDistanceKm', () => {
     expect(dist).toBeLessThan(15)
   })
 
-  it('clampea al extremo inicial si el punto esta antes del segmento', () => {
+  it('clampea al extremo inicial si el punto está antes del segmento', () => {
     const before: [number, number] = [38.0, -0.4]
     const dist = pointToSegmentDistanceKm(before, A, B)
     expect(dist).toBeGreaterThan(100)
     expect(dist).toBeLessThan(120)
   })
 
-  it('clampea al extremo final si el punto esta despues del segmento', () => {
+  it('clampea al extremo final si el punto está despues del segmento', () => {
     const after: [number, number] = [41.0, -0.4]
     const dist = pointToSegmentDistanceKm(after, A, B)
     expect(dist).toBeGreaterThan(100)
@@ -79,13 +79,13 @@ describe('blockedIncidenciasNearRoute', () => {
     expect(blockedIncidenciasNearRoute(RUTA, [])).toHaveLength(0)
   })
 
-  it('detecta una incidencia CORTADA que esta sobre la ruta del voluntario', () => {
+  it('detecta una incidencia CORTADA que está sobre la ruta del voluntario', () => {
     const blocked = blockedIncidenciasNearRoute(RUTA, [incCortadaEnRuta])
     expect(blocked).toHaveLength(1)
     expect(blocked[0].id).toBe('inc-1')
   })
 
-  it('no bloquea si la incidencia CORTADA esta lejos de la ruta', () => {
+  it('no bloquea si la incidencia CORTADA está lejos de la ruta', () => {
     expect(blockedIncidenciasNearRoute(RUTA, [incCortadaLejos])).toHaveLength(0)
   })
 

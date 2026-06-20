@@ -94,14 +94,14 @@ test.describe('Voluntario — Ayudar en puesto', () => {
     ).toBeVisible({ timeout: 8000 })
   })
 
-  test('el listado de puestos muestra informacion de ocupacion o capacidad', async ({ page }) => {
+  test('el listado de puestos muestra información de ocupacion o capacidad', async ({ page }) => {
     await page.getByText('Ayudar en puesto').click()
     await page.waitForTimeout(500)
     const infoVisible = await page.getByText(/voluntario|capacidad|trabajando|\d+\/\d+|plaza/i).count()
     expect(infoVisible).toBeGreaterThanOrEqual(0)
   })
 
-  test('cada puesto ofrece opcion de solicitar participacion o unirse', async ({ page }) => {
+  test('cada puesto ofrece opcion de solicitar participación o unirse', async ({ page }) => {
     await page.getByText('Ayudar en puesto').click()
     await page.waitForTimeout(1000)
     const count = await page.getByText(/solicitar|unirse|apuntarse|participar|pedir/i).count()
@@ -111,13 +111,13 @@ test.describe('Voluntario — Ayudar en puesto', () => {
 
 // ── Voluntario: historial de solicitudes ─────────────────────────────────────
 
-test.describe('Voluntario — Mis solicitudes de participacion', () => {
+test.describe('Voluntario — Mis solicitudes de participación', () => {
   test.beforeEach(async ({ page }) => {
     await injectVolAuth(page)
     await gotoVoluntario(page)
   })
 
-  test('existe una seccion para ver el estado de las solicitudes de participacion', async ({ page }) => {
+  test('existe una seccion para ver el estado de las solicitudes de participación', async ({ page }) => {
     await page.getByText('Ayudar en puesto').click()
     await page.waitForTimeout(500)
     const count = await page.getByText(/solicitud|estado|pendiente|aceptad|rechazad|mi.*solicitud/i).count()
@@ -134,7 +134,7 @@ test.describe('Voluntario — Mis solicitudes de participacion', () => {
 
 // ── Voluntario: estado de asignacion activa ───────────────────────────────────
 
-test.describe('Voluntario — Asignacion activa en puesto', () => {
+test.describe('Voluntario — Asignación activa en puesto', () => {
   test.beforeEach(async ({ page }) => {
     await injectVolAuth(page)
     await gotoVoluntario(page)
@@ -146,7 +146,7 @@ test.describe('Voluntario — Asignacion activa en puesto', () => {
     ).toBeVisible({ timeout: 8000 })
   })
 
-  test('si el voluntario tiene asignacion activa puede ver acciones del puesto', async ({ page }) => {
+  test('si el voluntario tiene asignación activa puede ver acciones del puesto', async ({ page }) => {
     await page.getByText('Ayudar en puesto').click()
     await page.waitForTimeout(800)
     const count = await page.getByText(/abandonar|salir|finalizar|inventario|stock|actualizar/i).count()
@@ -156,7 +156,7 @@ test.describe('Voluntario — Asignacion activa en puesto', () => {
 
 // ── Responsable de puesto: gestion de solicitudes ────────────────────────────
 
-test.describe('Responsable — Solicitudes de participacion pendientes', () => {
+test.describe('Responsable — Solicitudes de participación pendientes', () => {
   test.beforeEach(async ({ page }) => {
     await injectPuestoAuth(page)
     await gotoPuesto(page)
@@ -207,7 +207,7 @@ test.describe('Voluntario — incorporacion directa no disponible', () => {
     await gotoVoluntario(page)
   })
 
-  test('la UI no ofrece incorporacion directa, solo solicitud de participacion', async ({ page }) => {
+  test('la UI no ofrece incorporacion directa, solo solicitud de participación', async ({ page }) => {
     await page.getByText('Ayudar en puesto').click()
     await page.waitForTimeout(500)
     // No debe haber boton de "unirse directamente" sin proceso de solicitud

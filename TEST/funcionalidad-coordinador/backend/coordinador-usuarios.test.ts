@@ -41,7 +41,7 @@ vi.mock('../../../backend/src/middleware/auth.middleware.js', () => ({
 vi.mock('../../../backend/src/middleware/rbac.middleware.js', () => ({
   requireRole: vi.fn((...roles: string[]) => async (_request, reply) => {
     if (!roles.some((r) => mockAuthUser.roles.includes(r))) {
-      reply.status(403).send({ error: 'No tienes permiso para esta accion' })
+      reply.status(403).send({ error: 'No tienes permiso para está accion' })
     }
   }),
 }))
@@ -222,7 +222,7 @@ describe('PATCH /coordinador/:id — gestion de roles y estado del usuario', () 
 
 // ── DELETE /coordinador/:id — eliminacion administrativa ──────────────────────
 
-describe('DELETE /coordinador/:id — eliminacion administrativa de usuario', () => {
+describe('DELETE /coordinador/:id — eliminación administrativa de usuario', () => {
   beforeEach(() => {
     resetCoordinador()
     mp.auditLog.create.mockResolvedValue({ id: 'audit-1' })

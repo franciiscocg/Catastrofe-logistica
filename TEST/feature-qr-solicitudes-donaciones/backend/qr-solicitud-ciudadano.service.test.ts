@@ -76,7 +76,7 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
     )
   })
 
-  it('descuenta el inventario disponible al confirmar un QR de solicitud valido', async () => {
+  it('descuenta el inventario disponible al confirmar un QR de solicitud válido', async () => {
     allowAccess()
     mp.auditLog.findFirst.mockResolvedValue(null)
     mp.inventario.findMany.mockResolvedValue([ITEM_DISPONIBLE])
@@ -102,7 +102,7 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
     )
   })
 
-  it('registra auditoria de uso unico con el requestId del QR', async () => {
+  it('registra auditoria de uso único con el requestId del QR', async () => {
     allowAccess()
     mp.auditLog.findFirst.mockResolvedValue(null)
     mp.inventario.findMany.mockResolvedValue([ITEM_DISPONIBLE])
@@ -186,7 +186,7 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
     expect(mp.inventario.updateMany).toHaveBeenCalledOnce()
   })
 
-  it('rechaza un QR de solicitud antiguo que no tiene codigo de un solo uso', async () => {
+  it('rechaza un QR de solicitud antiguo que no tiene código de un solo uso', async () => {
     allowAccess()
     const codigoSinRequestId = JSON.stringify({
       t: 'SC',
@@ -198,7 +198,7 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
       confirmarQrInventario(PUESTO_ID, { codigo: codigoSinRequestId }, USER_ID),
     ).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Este QR de solicitud es antiguo y no tiene codigo de un solo uso. Genera un QR nuevo.',
+      message: 'Este QR de solicitud es antiguo y no tiene código de un solo uso. Genera un QR nuevo.',
     })
   })
 
@@ -207,10 +207,10 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
 
     await expect(
       confirmarQrInventario(PUESTO_ID, { codigo: 'no-es-json!!!' }, USER_ID),
-    ).rejects.toMatchObject({ statusCode: 400, message: 'El QR no tiene un formato valido' })
+    ).rejects.toMatchObject({ statusCode: 400, message: 'El QR no tiene un formato válido' })
   })
 
-  it('rechaza un QR con JSON valido pero formato desconocido', async () => {
+  it('rechaza un QR con JSON válido pero formato desconocido', async () => {
     allowAccess()
 
     await expect(
@@ -218,7 +218,7 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
     ).rejects.toMatchObject({ statusCode: 400, message: 'Formato de QR no reconocido' })
   })
 
-  it('rechaza una solicitud cuyo unico producto tiene cantidad 0', async () => {
+  it('rechaza una solicitud cuyo único producto tiene cantidad 0', async () => {
     allowAccess()
     const codigoCantidadCero = JSON.stringify({
       t: 'SC',
@@ -229,7 +229,7 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
 
     await expect(
       confirmarQrInventario(PUESTO_ID, { codigo: codigoCantidadCero }, USER_ID),
-    ).rejects.toMatchObject({ statusCode: 400, message: 'El QR no incluye productos validos' })
+    ).rejects.toMatchObject({ statusCode: 400, message: 'El QR no incluye productos válidos' })
   })
 
   it('informa con 404 si el producto del QR no existe en inventario disponible', async () => {

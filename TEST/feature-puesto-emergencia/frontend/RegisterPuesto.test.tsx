@@ -120,7 +120,7 @@ describe('RegisterPuesto', () => {
     })
   })
 
-  it('muestra el estado pendiente si ya existe una solicitud en revision', async () => {
+  it('muestra el estado pendiente si ya existe una solicitud en revisión', async () => {
     mockApiGet.mockResolvedValue({
       data: {
         solicitud: {
@@ -138,7 +138,7 @@ describe('RegisterPuesto', () => {
 
     renderRegister()
 
-    expect(await screen.findByText('En espera de aprobacion')).toBeInTheDocument()
+    expect(await screen.findByText('En espera de aprobación')).toBeInTheDocument()
     expect(screen.getAllByText(/CEIP La Paz/).length).toBeGreaterThan(0)
     expect(screen.queryByText('Enviar solicitud')).not.toBeInTheDocument()
   })

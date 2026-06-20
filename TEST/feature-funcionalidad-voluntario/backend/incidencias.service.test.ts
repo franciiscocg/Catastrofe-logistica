@@ -79,7 +79,7 @@ describe('createAsignacionIncidencia', () => {
     expect(mp.asignacionIncidencia.create).toHaveBeenCalledOnce()
   })
 
-  it('solo acepta incidencias CORTADAS — lanza 404 si ya esta transitable', async () => {
+  it('solo acepta incidencias CORTADAS — lanza 404 si ya está transitable', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
@@ -93,18 +93,18 @@ describe('createAsignacionIncidencia', () => {
     expect(mp.asignacionIncidencia.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario tiene una donacion activa en curso', async () => {
+  it('lanza 400 si el voluntario tiene una donación activa en curso', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({ id: 'don-activa' })
 
     await expect(createAsignacionIncidencia(USUARIO_ID, INCIDENCIA_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('donacion activa'),
+      message: expect.stringContaining('donación activa'),
     })
     expect(mp.asignacionIncidencia.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario ya esta ayudando en un puesto activo', async () => {
+  it('lanza 400 si el voluntario ya está ayudando en un puesto activo', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue({
@@ -118,7 +118,7 @@ describe('createAsignacionIncidencia', () => {
     })
   })
 
-  it('es idempotente si el voluntario ya esta asignado a la misma incidencia', async () => {
+  it('es idempotente si el voluntario ya está asignado a la misma incidencia', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
@@ -130,7 +130,7 @@ describe('createAsignacionIncidencia', () => {
     expect(mp.asignacionIncidencia.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario ya esta en otra incidencia diferente', async () => {
+  it('lanza 400 si el voluntario ya está en otra incidencia diferente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
@@ -161,7 +161,7 @@ describe('createAsignacionIncidencia', () => {
 describe('finalizarAsignacionIncidencia', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('finaliza la asignacion activa y registra la hora de fin', async () => {
+  it('finaliza la asignación activa y registra la hora de fin', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.asignacionIncidencia.findFirst.mockResolvedValue({ id: ASIGNACION_ID })
     mp.asignacionIncidencia.update.mockResolvedValue({
@@ -179,13 +179,13 @@ describe('finalizarAsignacionIncidencia', () => {
     )
   })
 
-  it('lanza 404 si no hay asignacion activa para esa incidencia', async () => {
+  it('lanza 404 si no hay asignación activa para esa incidencia', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.asignacionIncidencia.findFirst.mockResolvedValue(null)
 
     await expect(finalizarAsignacionIncidencia(USUARIO_ID, INCIDENCIA_ID)).rejects.toMatchObject({
       statusCode: 404,
-      message: 'No tienes una asignacion activa en esta incidencia',
+      message: 'No tienes una asignación activa en esta incidencia',
     })
     expect(mp.asignacionIncidencia.update).not.toHaveBeenCalled()
   })
@@ -274,7 +274,7 @@ describe('getAsignacionIncidenciaActiva', () => {
     expect(result?.incidencia.estado).toBe('CORTADA')
   })
 
-  it('devuelve null si no hay asignacion activa', async () => {
+  it('devuelve null si no hay asignación activa', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.asignacionIncidencia.findFirst.mockResolvedValue(null)
 

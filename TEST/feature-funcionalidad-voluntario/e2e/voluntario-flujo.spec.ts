@@ -51,7 +51,7 @@ test.describe('Seleccion de rol — Voluntario', () => {
     await expect(page.getByText('Voluntario')).toBeVisible()
   })
 
-  test('redirige a login con role=voluntario al pulsar la tarjeta sin sesion', async ({ page }) => {
+  test('redirige a login con role=voluntario al pulsar la tarjeta sin sesión', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: /Acceder como Voluntario/i }).click()
     await expect(page).toHaveURL(/\/auth\/login.*role=voluntario/)
@@ -90,7 +90,7 @@ test.describe('Dashboard voluntario', () => {
   })
 
   test('muestra las tres opciones de accion del voluntario', async ({ page }) => {
-    await expect(page.getByText('Hacer una donacion')).toBeVisible()
+    await expect(page.getByText('Hacer una donación')).toBeVisible()
     await expect(page.getByText('Ayudar en incidencia')).toBeVisible()
     await expect(page.getByText('Ayudar en puesto')).toBeVisible()
   })
@@ -110,19 +110,19 @@ test.describe('Donaciones — vista de necesidades', () => {
     await gotoVoluntario(page)
   })
 
-  test('al pulsar Hacer una donacion aparece la seccion de donaciones', async ({ page }) => {
-    await page.getByText('Hacer una donacion').click()
+  test('al pulsar Hacer una donación aparece la seccion de donaciones', async ({ page }) => {
+    await page.getByText('Hacer una donación').click()
     await expect(page.getByRole('heading', { name: 'Donaciones' })).toBeVisible()
   })
 
-  test('muestra las pestanas Objetos y Mis donaciones al entrar en donacion', async ({ page }) => {
-    await page.getByText('Hacer una donacion').click()
+  test('muestra las pestanas Objetos y Mis donaciones al entrar en donación', async ({ page }) => {
+    await page.getByText('Hacer una donación').click()
     await expect(page.getByRole('button', { name: 'Objetos' })).toBeVisible()
     await expect(page.getByText(/Mis donaciones/)).toBeVisible()
   })
 
   test('muestra necesidades agrupadas por producto o mensaje de vacio', async ({ page }) => {
-    await page.getByText('Hacer una donacion').click()
+    await page.getByText('Hacer una donación').click()
     await expect(
       page.getByText(/agua|comida|herramienta|producto|necesidad|sin|vac[ií]o|cargando/i).first()
     ).toBeVisible({ timeout: 8000 })
@@ -138,7 +138,7 @@ test.describe('Donaciones — Mis donaciones', () => {
   })
 
   test('al pulsar Mis donaciones muestra el historial del voluntario', async ({ page }) => {
-    await page.getByText('Hacer una donacion').click()
+    await page.getByText('Hacer una donación').click()
     const misDonacionesTab = page.getByText(/Mis donaciones/)
     await expect(misDonacionesTab).toBeVisible()
     await misDonacionesTab.click()
@@ -164,7 +164,7 @@ test.describe('Ayudar en incidencia', () => {
     await expect(page.getByText('TRANSITABLE')).not.toBeVisible()
   })
 
-  test('las incidencias se ordenan por cercania con ubicacion del voluntario', async ({ page }) => {
+  test('las incidencias se ordenan por cercania con ubicación del voluntario', async ({ page }) => {
     await page.context().setGeolocation({ latitude: 39.4254, longitude: -0.4178 })
     await gotoVoluntario(page)
     await page.getByText('Ayudar en incidencia').click()
@@ -199,8 +199,8 @@ test.describe('Ayudar en puesto', () => {
 
 // ── Control de actividad operativa unica activa ───────────────────────────────
 
-test.describe('Control de actividad unica activa', () => {
-  test('el dashboard carga con sesion activa sin redirigir a login', async ({ page }) => {
+test.describe('Control de actividad única activa', () => {
+  test('el dashboard carga con sesión activa sin redirigir a login', async ({ page }) => {
     await injectAuth(page)
     await gotoVoluntario(page)
     await expect(page).not.toHaveURL(/\/auth\/login/)

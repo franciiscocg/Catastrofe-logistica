@@ -122,7 +122,7 @@ describe('entrada publica', () => {
   })
 })
 
-describe('registro e inicio de sesion', () => {
+describe('registro e inicio de sesión', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthState.isAuthenticated = false
@@ -172,7 +172,7 @@ describe('registro e inicio de sesion', () => {
   })
 
   it.each(['maria@example.com', '12345678A'])(
-    'permite iniciar sesion con %s y redirige a seleccionar rol',
+    'permite iniciar sesión con %s y redirige a seleccionar rol',
     async (identifier) => {
       renderWithRouter(<Login />)
 
@@ -345,7 +345,7 @@ describe('coordinador', () => {
     await abrirSolicitudesPendientes()
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
-    fireEvent.change(screen.getByPlaceholderText(/Falta informacion/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Falta información/i), {
       target: { value: 'Falta documentacion' },
     })
     const rechazarButtons = screen.getAllByRole('button', { name: /^Rechazar$/i })

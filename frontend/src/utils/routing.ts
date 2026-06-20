@@ -96,7 +96,7 @@ async function fetchRouteCandidates(
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
   const data = await res.json()
-  if (data.code !== 'Ok') throw new Error('No se encontro ruta disponible')
+  if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
 
   return data.routes.map((route: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }) => {
     const points: [number, number][] = route.geometry.coordinates.map(
@@ -176,7 +176,7 @@ async function findSafeRoute(
 ): Promise<SafeRouteCandidate> {
   const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias, modo, signal)
   const directBest = sortRouteCandidates([...directCandidates])[0]
-  if (!directBest) throw new Error('No se encontro ruta disponible')
+  if (!directBest) throw new Error('No se encontró ruta disponible')
 
   const candidates: SafeRouteCandidate[] = directCandidates.map((candidate) => ({
     ...candidate,
@@ -186,7 +186,7 @@ async function findSafeRoute(
   const requestedWaypointSets = new Set<string>([waypointSetKey([desde, hasta])])
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
+    if (signal?.aborted) throw new DOMException('Búsqueda de ruta cancelada', 'AbortError')
     const best = sortRouteCandidates([...candidates])[0]
     if (!best) break
     if (best.incidenciasCercanas === 0) return best
@@ -205,7 +205,7 @@ async function findSafeRoute(
           incidenciasEvitadas: Math.max(0, directBest.incidenciasCercanas - candidate.incidenciasCercanas),
         })))
       } catch {
-        if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
+        if (signal?.aborted) throw new DOMException('Búsqueda de ruta cancelada', 'AbortError')
       }
     }
   }
@@ -275,7 +275,7 @@ export async function fetchRutaConPasos(
     const res = await fetch(url, { signal })
     if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
     const data = await res.json()
-    if (data.code !== 'Ok') throw new Error('No se encontro ruta disponible')
+    if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
     stepLegs.push(...(data.routes[0].legs as { steps: unknown[] }[]))
   }
 

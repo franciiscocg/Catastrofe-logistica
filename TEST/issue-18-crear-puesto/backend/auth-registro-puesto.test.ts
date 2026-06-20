@@ -153,7 +153,7 @@ describe('registerUser - registro unificado', () => {
     }))
   })
 
-  it('lanza error 400 si el email ya esta registrado', async () => {
+  it('lanza error 400 si el email ya está registrado', async () => {
     mp.usuario.findUnique.mockResolvedValue({ id: 'existing-user' })
 
     await expect(registerUser({
@@ -165,7 +165,7 @@ describe('registerUser - registro unificado', () => {
     })).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/email/) })
   })
 
-  it('lanza error 400 si el DNI ya esta registrado', async () => {
+  it('lanza error 400 si el DNI ya está registrado', async () => {
     mp.usuario.findUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 'existing-user' })
@@ -196,7 +196,7 @@ describe('loginUser', () => {
     vi.clearAllMocks()
   })
 
-  it('permite iniciar sesion con email correcto', async () => {
+  it('permite iniciar sesión con email correcto', async () => {
     mockCompare.mockResolvedValue(true)
     mp.usuario.findUnique.mockResolvedValue(usuarioBase)
 
@@ -211,7 +211,7 @@ describe('loginUser', () => {
     expect(user).toMatchObject({ id: 'user-1', email: 'maria@example.com' })
   })
 
-  it('permite iniciar sesion con DNI convertido a mayusculas', async () => {
+  it('permite iniciar sesión con DNI convertido a mayusculas', async () => {
     mockCompare.mockResolvedValue(true)
     mp.usuario.findUnique.mockResolvedValue(usuarioBase)
 

@@ -173,12 +173,12 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
         setStatus(blocked || showSecureWarning ? 'blocked' : 'error')
         setError(
           showSecureWarning
-            ? 'El navegador solo permite usar la camara en HTTPS o en localhost.'
+            ? 'El navegador solo permite usar la cámara en HTTPS o en localhost.'
             : blocked
-              ? 'Permite el acceso a la camara para poder escanear el codigo.'
+              ? 'Permite el acceso a la cámara para poder escanear el código.'
               : brave
-                ? 'Brave esta bloqueando la camara con sus escudos. Pulsa el icono del leon en la barra de direcciones, baja los Brave Shields para este sitio (o desactiva el bloqueo de huella digital) y reintenta.'
-                : 'No se pudo abrir una camara compatible. Comprueba permisos y que ninguna otra aplicacion la este usando.',
+                ? 'Brave está bloqueando la cámara con sus escudos. Pulsa el icono del león en la barra de direcciones, baja los Brave Shields para este sitio (o desactiva el bloqueo de huella digital) y reintenta.'
+                : 'No se pudo abrir una cámara compatible. Comprueba permisos y que ninguna otra aplicación la esté usando.',
         )
       }
     }
@@ -205,7 +205,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Escaner QR</p>
               <p className="truncate text-sm font-semibold text-slate-950">
-                {status === 'scanning' ? 'Camara activa' : 'Camara lista para escanear'}
+                {status === 'scanning' ? 'Cámara activa' : 'Cámara lista para escanear'}
               </p>
             </div>
           </div>
@@ -228,7 +228,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
             {isLoading && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950 text-white">
                 <Loader2 className="h-7 w-7 animate-spin" aria-hidden />
-                <p className="text-sm font-medium">Abriendo camara...</p>
+                <p className="text-sm font-medium">Abriendo cámara...</p>
               </div>
             )}
             {status === 'scanning' && (
@@ -239,7 +239,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
           </div>
 
           <div className="mt-3 text-center text-sm text-slate-600" aria-live="polite">
-            <p>Acerca el codigo al recuadro y manten el movil estable hasta que vibre o se cierre el lector.</p>
+            <p>Acerca el código al recuadro y mantén el móvil estable hasta que vibre o se cierre el lector.</p>
             {cameraLabel && <p className="mt-1 text-xs text-slate-400">{cameraLabel}</p>}
           </div>
 
@@ -263,7 +263,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
             <RotateCcw className="h-4 w-4" aria-hidden />
-            Reintentar camara
+            Reintentar cámara
           </button>
         </div>
       </div>

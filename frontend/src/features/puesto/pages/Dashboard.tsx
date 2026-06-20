@@ -612,7 +612,7 @@ function HistorialInventarioSheet({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Historial</p>
             <h2 className="text-lg font-bold text-gray-900">Movimientos de inventario</h2>
-            <p className="text-sm text-gray-500">Ultimas entradas, salidas, ajustes y eliminaciones.</p>
+            <p className="text-sm text-gray-500">Últimas entradas, salidas, ajustes y eliminaciones.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none">x</button>
         </div>
@@ -625,7 +625,7 @@ function HistorialInventarioSheet({
           ) : historial.length === 0 ? (
             <div className="text-center py-10 text-gray-400">
               <p className="text-3xl mb-2">📋</p>
-              <p className="text-sm">Todavia no hay movimientos registrados.</p>
+              <p className="text-sm">Todavía no hay movimientos registrados.</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -755,7 +755,7 @@ function WorkersSheet({
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Voluntarios</p>
           <p className="font-semibold text-gray-900">Solicitudes y personas activas</p>
-          <p className="mt-0.5 text-sm text-gray-500">Revisa peticiones de apoyo y consulta quien esta colaborando ahora.</p>
+          <p className="mt-0.5 text-sm text-gray-500">Revisa peticiones de apoyo y consulta quién está colaborando ahora.</p>
         </div>
         <button onClick={onClose} className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100">x</button>
       </div>
@@ -838,7 +838,7 @@ function WorkersSheet({
               <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-amber-500" />
             </div>
           ) : !participantes?.length ? (
-            <p className="rounded-lg bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">Aun no hay voluntarios activos</p>
+            <p className="rounded-lg bg-gray-50 px-3 py-6 text-center text-sm text-gray-500">Aún no hay voluntarios activos</p>
           ) : (
             <div className="space-y-2">
               {participantes.map((participante) => (
@@ -849,7 +849,7 @@ function WorkersSheet({
                     </p>
                     <p className="text-xs text-gray-500">DNI: {participante.usuario.dni ?? 'No informado'}</p>
                     {participante.usuario.telefono && (
-                      <p className="text-xs text-gray-500">Telefono: {participante.usuario.telefono}</p>
+                      <p className="text-xs text-gray-500">Teléfono: {participante.usuario.telefono}</p>
                     )}
                   </div>
                   {isAdmin && confirmRemoveId === participante.id && (
@@ -913,7 +913,7 @@ function PrioridadOperativaPanel({
     <section className="rounded-lg border border-slate-200 bg-white">
       <div className="border-b border-slate-100 px-4 py-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prioridad ahora</p>
-        <h2 className="mt-0.5 text-sm font-semibold text-slate-950">Gestion operativa</h2>
+        <h2 className="mt-0.5 text-sm font-semibold text-slate-950">Gestión operativa</h2>
       </div>
 
       <div className="space-y-4 p-4">
@@ -951,7 +951,7 @@ function PrioridadOperativaPanel({
             </button>
           </div>
           {criticos.length === 0 ? (
-            <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">Sin productos en nivel critico.</p>
+            <p className="rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-500">Sin productos en nivel crítico.</p>
           ) : (
             <div className="space-y-2">
               {criticos.slice(0, 3).map((item) => (
@@ -1034,10 +1034,10 @@ function SolicitudPuestoForm() {
       const latitud = parseFloat(form.latitud)
       const longitud = parseFloat(form.longitud)
       if (!form.nombre.trim()) throw new Error('El nombre del puesto es obligatorio')
-      if (!form.direccion.trim()) throw new Error('La direccion es obligatoria')
+      if (!form.direccion.trim()) throw new Error('La dirección es obligatoria')
       if (!form.tipo.trim()) throw new Error('Indica el tipo de instalacion')
-      if (Number.isNaN(latitud) || latitud < -90 || latitud > 90) throw new Error('Latitud invalida')
-      if (Number.isNaN(longitud) || longitud < -180 || longitud > 180) throw new Error('Longitud invalida')
+      if (Number.isNaN(latitud) || latitud < -90 || latitud > 90) throw new Error('Latitud inválida')
+      if (Number.isNaN(longitud) || longitud < -180 || longitud > 180) throw new Error('Longitud inválida')
 
       return apiClient.post('/api/puestos/solicitudes', {
         nombre: form.nombre.trim(),
@@ -1090,7 +1090,7 @@ function SolicitudPuestoForm() {
           <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Pendiente</p>
           <p className="font-semibold text-gray-900 mt-2">Solicitud enviada</p>
           <p className="text-sm text-gray-500 mt-1">
-            {solicitud.nombre} esta esperando revision de coordinacion.
+            {solicitud.nombre} está esperando la revisión de coordinación.
           </p>
           <div className="mt-4 text-left bg-amber-50 rounded-lg p-3 text-sm text-amber-900">
             <p className="font-medium">{solicitud.direccion}</p>
@@ -1107,7 +1107,7 @@ function SolicitudPuestoForm() {
         <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">Puesto</p>
         <h1 className="text-xl font-bold text-gray-900 mt-1">Crear solicitud de puesto</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Completa los datos del puesto para que coordinacion pueda revisarlo y activarlo.
+          Completa los datos del puesto para que coordinación pueda revisarlo y activarlo.
         </p>
       </div>
 
@@ -1130,7 +1130,7 @@ function SolicitudPuestoForm() {
           <input value={form.nombre} onChange={set('nombre')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Calle o direccion</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Calle o dirección</label>
           <input value={form.direccion} onChange={set('direccion')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
         </div>
         <div>
@@ -1164,10 +1164,10 @@ function SolicitudPuestoForm() {
             requestLocation()
           }}
         >
-          Usar ubicacion actual
+          Usar ubicación actual
         </Button>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Descripcion</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Descripción</label>
           <textarea value={form.descripcion} onChange={set('descripcion')} rows={3} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none" />
         </div>
 
@@ -1369,7 +1369,7 @@ export default function PuestoDashboard() {
       const data = (err as { response?: { data?: { error?: string; details?: Array<{ message?: string }> } } }).response?.data
       const detail = data?.details?.[0]?.message
       const message = data?.error && data.error !== 'Bad Request' ? data.error : detail
-      setQrError(message ?? 'No se pudo confirmar el QR. Revisa la conexion e intentalo de nuevo.')
+      setQrError(message ?? 'No se pudo confirmar el QR. Revisa la conexión e inténtalo de nuevo.')
     } finally {
       setQrConfirmando(false)
     }
@@ -1483,7 +1483,7 @@ export default function PuestoDashboard() {
           <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
             <p className="font-medium">
               {necesitamos} productos faltan tras compensar stock y necesidades
-              {criticos > 0 ? ` - ${criticos} critico${criticos === 1 ? '' : 's'}` : ''}
+              {criticos > 0 ? ` - ${criticos} crítico${criticos === 1 ? '' : 's'}` : ''}
             </p>
             <div className="flex gap-2">
               {necesitamos > 0 && (
@@ -1568,7 +1568,7 @@ export default function PuestoDashboard() {
                 {qrResult.parsed?.type === 'SOLICITUD_CIUDADANO'
                   ? 'Solicitud de ciudadano'
                   : qrResult.parsed?.type === 'DONACION_ENTREGA'
-                    ? 'Donacion entrante'
+                    ? 'Donación entrante'
                     : 'Formato no reconocido'}
               </p>
             </div>
@@ -1581,7 +1581,7 @@ export default function PuestoDashboard() {
                 <p className="text-xs text-slate-500">
                   {qrResult.parsed.type === 'SOLICITUD_CIUDADANO'
                     ? 'Al confirmar, se restaran estos productos del inventario disponible.'
-                    : 'Al confirmar, se sumara la donacion al inventario disponible.'}
+                    : 'Al confirmar, la donación se sumará al inventario disponible.'}
                 </p>
                 <div className="mt-2 space-y-1">
                   {productosFromQr(qrResult.parsed, inventario).map((producto) => (

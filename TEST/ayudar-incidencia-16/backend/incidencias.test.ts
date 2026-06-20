@@ -82,24 +82,24 @@ const incidenciaBase = {
 // ── categoriaIncidenciaSchema ─────────────────────────────────────────────────
 
 describe('categoriaIncidenciaSchema — validacion de categorias predefinidas', () => {
-  it('acepta la categoria "inundacion"', () => {
+  it('acepta la categoría "inundacion"', () => {
     expect(() => categoriaIncidenciaSchema.parse('inundacion')).not.toThrow()
     expect(categoriaIncidenciaSchema.parse('inundacion')).toBe('inundacion')
   })
 
-  it('acepta la categoria "obstaculos_via"', () => {
+  it('acepta la categoría "obstaculos_via"', () => {
     expect(categoriaIncidenciaSchema.parse('obstaculos_via')).toBe('obstaculos_via')
   })
 
-  it('acepta la categoria "limpieza"', () => {
+  it('acepta la categoría "limpieza"', () => {
     expect(categoriaIncidenciaSchema.parse('limpieza')).toBe('limpieza')
   })
 
-  it('acepta la categoria "asistencia"', () => {
+  it('acepta la categoría "asistencia"', () => {
     expect(categoriaIncidenciaSchema.parse('asistencia')).toBe('asistencia')
   })
 
-  it('rechaza una categoria no definida en el sistema', () => {
+  it('rechaza una categoría no definida en el sistema', () => {
     expect(() => categoriaIncidenciaSchema.parse('terremoto')).toThrow()
     expect(() => categoriaIncidenciaSchema.parse('incendio')).toThrow()
     expect(() => categoriaIncidenciaSchema.parse('')).toThrow()
@@ -108,10 +108,10 @@ describe('categoriaIncidenciaSchema — validacion de categorias predefinidas', 
 
 // ── createIncidenciaSchema — titulo y categoria ───────────────────────────────
 
-describe('createIncidenciaSchema — campos titulo y categoria (nuevos)', () => {
+describe('createIncidenciaSchema — campos titulo y categoría (nuevos)', () => {
   const baseValido = { ...PUNTO_PAIPORTA, estado: 'CORTADA' as const }
 
-  it('acepta incidencia sin titulo ni categoria (compatibilidad retroactiva)', () => {
+  it('acepta incidencia sin titulo ni categoría (compatibilidad retroactiva)', () => {
     expect(() => createIncidenciaSchema.parse(baseValido)).not.toThrow()
   })
 
@@ -134,7 +134,7 @@ describe('createIncidenciaSchema — campos titulo y categoria (nuevos)', () => 
     expect(result.titulo).toBe('Calle inundada')
   })
 
-  it('acepta categoria valida junto con titulo', () => {
+  it('acepta categoría válida junto con titulo', () => {
     const result = createIncidenciaSchema.parse({
       ...baseValido,
       titulo: 'Barricada en avenida',
@@ -144,17 +144,17 @@ describe('createIncidenciaSchema — campos titulo y categoria (nuevos)', () => 
     expect(result.categoria).toBe('obstaculos_via')
   })
 
-  it('rechaza categoria que no es de las 4 predefinidas', () => {
+  it('rechaza categoría que no es de las 4 predefinidas', () => {
     expect(() => createIncidenciaSchema.parse({ ...baseValido, categoria: 'terremoto' })).toThrow()
   })
 })
 
 // ── createIncidencia con titulo y categoria ───────────────────────────────────
 
-describe('createIncidencia — persistencia de titulo y categoria', () => {
+describe('createIncidencia — persistencia de titulo y categoría', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('persiste titulo y categoria cuando se proporcionan', async () => {
+  it('persiste titulo y categoría cuando se proporcionan', async () => {
     mp.catastrofe.findMany.mockResolvedValue([CATASTROFE_VALENCIA])
     mp.incidenciaVia.findMany.mockResolvedValue([])
     mp.incidenciaVia.create.mockResolvedValue({
@@ -181,7 +181,7 @@ describe('createIncidencia — persistencia de titulo y categoria', () => {
     expect(result.categoria).toBe('inundacion')
   })
 
-  it('crea incidencia sin titulo ni categoria (campos opcionales)', async () => {
+  it('crea incidencia sin titulo ni categoría (campos opcionales)', async () => {
     mp.catastrofe.findMany.mockResolvedValue([CATASTROFE_VALENCIA])
     mp.incidenciaVia.findMany.mockResolvedValue([])
     mp.incidenciaVia.create.mockResolvedValue({
@@ -220,7 +220,7 @@ describe('createIncidencia — persistencia de titulo y categoria', () => {
     }
   })
 
-  it('la deteccion de duplicados busca incidencias incluyendo titulo y categoria', async () => {
+  it('la deteccion de duplicados busca incidencias incluyendo titulo y categoría', async () => {
     mp.catastrofe.findMany.mockResolvedValue([CATASTROFE_VALENCIA])
     mp.incidenciaVia.findMany.mockResolvedValue([
       {
@@ -246,7 +246,7 @@ describe('createIncidencia — persistencia de titulo y categoria', () => {
     )
   })
 
-  it('con force=true omite la comprobacion de duplicados aunque haya titulo y categoria', async () => {
+  it('con force=true omite la comprobacion de duplicados aunque haya titulo y categoría', async () => {
     mp.catastrofe.findMany.mockResolvedValue([CATASTROFE_VALENCIA])
     mp.incidenciaVia.create.mockResolvedValue({ id: 'inc-forzada', ...incidenciaBase })
 
@@ -265,7 +265,7 @@ describe('createIncidencia — persistencia de titulo y categoria', () => {
 
 // ── createAsignacionIncidencia ────────────────────────────────────────────────
 
-describe('createAsignacionIncidencia — asignacion de voluntario a incidencia', () => {
+describe('createAsignacionIncidencia — asignación de voluntario a incidencia', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mp.$transaction.mockImplementation(async (fn: (tx: typeof mp) => Promise<unknown>) => fn(mp))
@@ -296,7 +296,7 @@ describe('createAsignacionIncidencia — asignacion de voluntario a incidencia',
     )
   })
 
-  it('es idempotente: devuelve la asignacion activa si el voluntario ya esta en la misma incidencia', async () => {
+  it('es idempotente: devuelve la asignación activa si el voluntario ya está en la misma incidencia', async () => {
     const asignacionExistente = {
       id: ASIGNACION_ID,
       voluntarioId: VOLUNTARIO_ID,
@@ -315,7 +315,7 @@ describe('createAsignacionIncidencia — asignacion de voluntario a incidencia',
     expect(mp.asignacionIncidencia.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario tiene una donacion activa', async () => {
+  it('lanza 400 si el voluntario tiene una donación activa', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.donacion.findFirst.mockResolvedValue({ id: 'don-activa' })
 
@@ -323,13 +323,13 @@ describe('createAsignacionIncidencia — asignacion de voluntario a incidencia',
       createAsignacionIncidencia(VOL_USER_ID, INCIDENCIA_ID),
     ).rejects.toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('donacion activa'),
+      message: expect.stringContaining('donación activa'),
     })
 
     expect(mp.asignacionIncidencia.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario ya esta ayudando en un puesto activo', async () => {
+  it('lanza 400 si el voluntario ya está ayudando en un puesto activo', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue({
@@ -350,7 +350,7 @@ describe('createAsignacionIncidencia — asignacion de voluntario a incidencia',
     expect(mp.asignacionIncidencia.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario ya esta asignado a otra incidencia', async () => {
+  it('lanza 400 si el voluntario ya está asignado a otra incidencia', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
@@ -401,7 +401,7 @@ describe('createAsignacionIncidencia — asignacion de voluntario a incidencia',
 describe('finalizarAsignacionIncidencia — voluntario termina de atender incidencia', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('finaliza la asignacion activa registrando la hora de fin', async () => {
+  it('finaliza la asignación activa registrando la hora de fin', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionIncidencia.findFirst.mockResolvedValue({ id: ASIGNACION_ID })
     mp.asignacionIncidencia.update.mockResolvedValue({
@@ -424,7 +424,7 @@ describe('finalizarAsignacionIncidencia — voluntario termina de atender incide
     )
   })
 
-  it('lanza 404 si el voluntario no tiene asignacion activa en esa incidencia', async () => {
+  it('lanza 404 si el voluntario no tiene asignación activa en esa incidencia', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionIncidencia.findFirst.mockResolvedValue(null)
 
@@ -449,10 +449,10 @@ describe('finalizarAsignacionIncidencia — voluntario termina de atender incide
 
 // ── getAsignacionIncidenciaActiva ─────────────────────────────────────────────
 
-describe('getAsignacionIncidenciaActiva — consulta de asignacion activa del voluntario', () => {
+describe('getAsignacionIncidenciaActiva — consulta de asignación activa del voluntario', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('devuelve la asignacion activa con datos de la incidencia', async () => {
+  it('devuelve la asignación activa con datos de la incidencia', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionIncidencia.findFirst.mockResolvedValue({
       id: ASIGNACION_ID,
@@ -478,7 +478,7 @@ describe('getAsignacionIncidenciaActiva — consulta de asignacion activa del vo
     expect(select).not.toHaveProperty('reportante')
   })
 
-  it('devuelve null si el voluntario no tiene ninguna asignacion activa', async () => {
+  it('devuelve null si el voluntario no tiene ninguna asignación activa', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionIncidencia.findFirst.mockResolvedValue(null)
 
@@ -501,7 +501,7 @@ describe('getAsignacionIncidenciaActiva — consulta de asignacion activa del vo
 describe('listAsignacionesIncidencia — historial de incidencias atendidas por el voluntario', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('devuelve el historial de asignaciones con datos de incidencia incluyendo categoria', async () => {
+  it('devuelve el historial de asignaciones con datos de incidencia incluyendo categoría', async () => {
     mp.voluntario.findUnique.mockResolvedValue(voluntarioBase)
     mp.asignacionIncidencia.findMany.mockResolvedValue([
       {

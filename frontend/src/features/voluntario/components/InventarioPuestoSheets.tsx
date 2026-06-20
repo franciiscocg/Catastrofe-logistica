@@ -56,7 +56,7 @@ export function AddInventarioPuestoSheet({
       return
     }
     if (!categoria.trim()) {
-      setError('La categoria es obligatoria.')
+      setError('La categoría es obligatoria.')
       return
     }
     if (!unidad.trim()) {
@@ -64,7 +64,7 @@ export function AddInventarioPuestoSheet({
       return
     }
     if (Number.isNaN(parsedCantidad) || parsedCantidad < 0) {
-      setError('Introduce una cantidad valida.')
+      setError('Introduce una cantidad válida.')
       return
     }
 
@@ -135,7 +135,7 @@ export function AddInventarioPuestoSheet({
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Categoria</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Categoría</label>
               <input
                 value={categoria}
                 onChange={(event) => setCategoria(event.target.value)}
@@ -220,7 +220,7 @@ export function OperacionInventarioPuestoSheet({
         : 'Ajustar inventario'
   const help = operacion === 'entrada'
     ? isNecesario
-      ? 'Resta de lo que falta. Si llega mas de lo pendiente, el sobrante pasa a disponible.'
+      ? 'Resta de lo que falta. Si llega más de lo pendiente, el sobrante pasa a disponible.'
       : 'Suma material que acaba de entrar al puesto.'
     : operacion === 'salida'
       ? isNecesario
@@ -228,7 +228,7 @@ export function OperacionInventarioPuestoSheet({
         : 'Resta material entregado o retirado del puesto.'
       : operacion === 'necesidad'
         ? 'Descarta primero el stock disponible y publica como urgente solo lo que siga faltando.'
-        : 'Fija por separado lo que hay fisicamente y lo que hace falta pedir.'
+        : 'Fija por separado lo que hay físicamente y lo que hace falta pedir.'
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -241,7 +241,7 @@ export function OperacionInventarioPuestoSheet({
         parsedDisponible < 0 ||
         parsedNecesario < 0
       ) {
-        setError('Introduce cantidades validas.')
+        setError('Introduce cantidades válidas.')
         return
       }
       if (parsedDisponible > 0 && parsedNecesario > 0) {
@@ -267,7 +267,7 @@ export function OperacionInventarioPuestoSheet({
 
     const parsed = Number(cantidad.replace(',', '.'))
     if (Number.isNaN(parsed) || parsed < 0) {
-      setError('Introduce una cantidad valida.')
+      setError('Introduce una cantidad válida.')
       return
     }
     if (parsed === 0) {

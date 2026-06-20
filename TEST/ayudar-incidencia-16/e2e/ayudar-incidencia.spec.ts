@@ -68,7 +68,7 @@ async function gotoCiudadano(page: import('@playwright/test').Page) {
 
 // ── Ciudadano: reporte de incidencia con titulo y categoria ───────────────────
 
-test.describe('Ciudadano — Reporte de incidencia con titulo y categoria', () => {
+test.describe('Ciudadano — Reporte de incidencia con titulo y categoría', () => {
   test.beforeAll(async ({ browser }) => {
     const ctx = await browser.newContext()
     const p = await ctx.newPage()
@@ -98,14 +98,14 @@ test.describe('Ciudadano — Reporte de incidencia con titulo y categoria', () =
     expect(inputCount).toBeGreaterThanOrEqual(0)
   })
 
-  test('el formulario de reporte incluye selector de categoria', async ({ page }) => {
+  test('el formulario de reporte incluye selector de categoría', async ({ page }) => {
     await page.getByText(/reportar calle|reportar incidencia/i).first().click()
     await page.waitForTimeout(500)
     const count = await page.getByText(/categor[ií]a|tipo de incidencia|inundaci[oó]n|obst[aá]culos|limpieza|asistencia/i).count()
     expect(count).toBeGreaterThanOrEqual(0)
   })
 
-  test('el formulario puede mostrar equipamiento recomendado segun categoria', async ({ page }) => {
+  test('el formulario puede mostrar equipamiento recomendado segun categoría', async ({ page }) => {
     await page.getByText(/reportar calle|reportar incidencia/i).first().click()
     await page.waitForTimeout(800)
     const count = await page.getByText(/equipamiento|recomendado|material|guante|bota|chaleco|botiq/i).count()
@@ -115,7 +115,7 @@ test.describe('Ciudadano — Reporte de incidencia con titulo y categoria', () =
 
 // ── Voluntario: listado de incidencias con categoria y equipamiento ────────────
 
-test.describe('Voluntario — Listado de incidencias con categoria', () => {
+test.describe('Voluntario — Listado de incidencias con categoría', () => {
   test.beforeAll(async ({ browser }) => {
     const ctx = await browser.newContext()
     const p = await ctx.newPage()
@@ -142,14 +142,14 @@ test.describe('Voluntario — Listado de incidencias con categoria', () => {
     await expect(page.getByText('TRANSITABLE')).not.toBeVisible()
   })
 
-  test('las incidencias pueden mostrar la categoria asignada', async ({ page }) => {
+  test('las incidencias pueden mostrar la categoría asignada', async ({ page }) => {
     await page.getByText('Ayudar en incidencia').click()
     await page.waitForTimeout(800)
     const count = await page.getByText(/inundaci[oó]n|obst[aá]culos|limpieza|asistencia/i).count()
     expect(count).toBeGreaterThanOrEqual(0)
   })
 
-  test('se puede acceder a la informacion de equipamiento recomendado por categoria', async ({ page }) => {
+  test('se puede acceder a la información de equipamiento recomendado por categoría', async ({ page }) => {
     await page.getByText('Ayudar en incidencia').click()
     await page.waitForTimeout(800)
     const count = await page.getByText(/equipamiento|recomendado|material necesario|guante|bota|chaleco/i).count()
@@ -159,13 +159,13 @@ test.describe('Voluntario — Listado de incidencias con categoria', () => {
 
 // ── Voluntario: confirmacion antes de unirse a incidencia ─────────────────────
 
-test.describe('Voluntario — Confirmacion de recomendaciones antes de unirse', () => {
+test.describe('Voluntario — Confirmación de recomendaciones antes de unirse', () => {
   test.beforeEach(async ({ page }) => {
     await injectVolAuth(page)
     await gotoVoluntario(page)
   })
 
-  test('al intentar unirse a una incidencia se requiere alguna confirmacion o aviso', async ({ page }) => {
+  test('al intentar unirse a una incidencia se requiere alguna confirmación o aviso', async ({ page }) => {
     await page.getByText('Ayudar en incidencia').click()
     await page.waitForTimeout(800)
     // Busca señales de que se requiere confirmacion o hay un paso previo
@@ -173,7 +173,7 @@ test.describe('Voluntario — Confirmacion de recomendaciones antes de unirse', 
     expect(count).toBeGreaterThanOrEqual(0)
   })
 
-  test('el voluntario puede ver su asignacion activa si ya esta en una incidencia', async ({ page }) => {
+  test('el voluntario puede ver su asignación activa si ya está en una incidencia', async ({ page }) => {
     await page.getByText('Ayudar en incidencia').click()
     await page.waitForTimeout(500)
     const count = await page.getByText(/mi asignaci[oó]n|actualmente ayudando|abandonar|finalizar|salir/i).count()
@@ -189,13 +189,13 @@ test.describe('Voluntario — Confirmacion de recomendaciones antes de unirse', 
 
 // ── Voluntario: fallback para incidencias sin categoria ───────────────────────
 
-test.describe('Voluntario — Compatibilidad con incidencias sin categoria', () => {
+test.describe('Voluntario — Compatibilidad con incidencias sin categoría', () => {
   test.beforeEach(async ({ page }) => {
     await injectVolAuth(page)
     await gotoVoluntario(page)
   })
 
-  test('las incidencias sin categoria se muestran sin errores usando descripcion como fallback', async ({ page }) => {
+  test('las incidencias sin categoría se muestran sin errores usando descripción como fallback', async ({ page }) => {
     await page.getByText('Ayudar en incidencia').click()
     await page.waitForTimeout(500)
     // El listado debe cargar sin errores aunque haya incidencias sin categoria

@@ -60,7 +60,7 @@ export async function loginUser({ identifier, password }: LoginInput) {
 
   if (!user.activo) throw appError('Cuenta desactivada', 403)
   if (EMAIL_VERIFICATION_REQUIRED && !user.emailVerified) {
-    throw appError('Verifica tu cuenta antes de iniciar sesion', 403)
+    throw appError('Verifica tu cuenta antes de iniciar sesión', 403)
   }
 
   if (user.roles.includes(RolUsuario.VOLUNTARIO)) {
@@ -94,7 +94,7 @@ export async function rotateRefreshToken(refreshToken: string) {
   })
 
   if (!record || record.revokedAt || record.expiresAt <= new Date() || !record.usuario.activo) {
-    throw appError('Sesion expirada', 401)
+    throw appError('Sesión expirada', 401)
   }
 
   await prisma.refreshToken.update({
@@ -116,10 +116,10 @@ export async function revokeRefreshToken(refreshToken?: string) {
 
 export async function registerUser(input: RegisterInput) {
   const exists = await prisma.usuario.findUnique({ where: { email: input.email } })
-  if (exists) throw badRequest('Este email ya esta registrado')
+  if (exists) throw badRequest('Este email ya está registrado')
 
   const dniExists = await prisma.usuario.findUnique({ where: { dni: input.dni.toUpperCase() } })
-  if (dniExists) throw badRequest('Este DNI/NIE ya esta registrado')
+  if (dniExists) throw badRequest('Este DNI/NIE ya está registrado')
 
   const hashed = await bcrypt.hash(input.password, 12)
   const roles = [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]

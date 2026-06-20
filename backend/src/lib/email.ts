@@ -28,7 +28,7 @@ function getAppBaseUrl() {
 }
 
 function getMailFrom() {
-  return process.env.MAIL_FROM ?? 'Catastrofe Logistica <no-reply@catlogistica.local>'
+  return process.env.MAIL_FROM ?? 'Catástrofe Logística <no-reply@catlogistica.local>'
 }
 
 export function assertEmailConfigured() {
@@ -36,13 +36,13 @@ export function assertEmailConfigured() {
 
   const provider = process.env.EMAIL_PROVIDER?.toLowerCase()
   if (provider === 'resend' && !process.env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY obligatorio en produccion cuando EMAIL_PROVIDER=resend')
+    throw new Error('RESEND_API_KEY obligatorio en producción cuando EMAIL_PROVIDER=resend')
   }
   if (provider !== 'resend' && !process.env.SMTP_HOST) {
-    throw new Error('SMTP_HOST obligatorio en produccion para enviar emails')
+    throw new Error('SMTP_HOST obligatorio en producción para enviar emails')
   }
   if (!process.env.MAIL_FROM) {
-    throw new Error('MAIL_FROM obligatorio en produccion para enviar emails')
+    throw new Error('MAIL_FROM obligatorio en producción para enviar emails')
   }
   if (!process.env.APP_PUBLIC_URL && !process.env.FRONTEND_URL) {
     throw new Error('APP_PUBLIC_URL o FRONTEND_URL obligatorio para generar enlaces de email')
@@ -163,8 +163,8 @@ function actionTemplate(title: string, body: string, actionText: string, actionU
 
 export async function sendAccountVerificationEmail(input: { to: string; nombre: string; token: string }) {
   const url = `${getAppBaseUrl()}/auth/verify-account?token=${encodeURIComponent(input.token)}`
-  const subject = 'Verifica tu cuenta de Catastrofe Logistica'
-  const body = `Hola ${input.nombre}, verifica tu cuenta para poder iniciar sesion en Catastrofe Logistica.`
+  const subject = 'Verifica tu cuenta de Catástrofe Logística'
+  const body = `Hola ${input.nombre}, verifica tu cuenta para poder iniciar sesión en Catástrofe Logística.`
 
   return sendMail({
     to: input.to,
@@ -176,13 +176,13 @@ export async function sendAccountVerificationEmail(input: { to: string; nombre: 
 
 export async function sendPasswordResetEmail(input: { to: string; nombre: string; token: string }) {
   const url = `${getAppBaseUrl()}/auth/reset-password?token=${encodeURIComponent(input.token)}`
-  const subject = 'Recupera tu contrasena de Catastrofe Logistica'
-  const body = `Hola ${input.nombre}, hemos recibido una solicitud para restablecer tu contrasena. Si no has sido tu, puedes ignorar este mensaje.`
+  const subject = 'Recupera tu contraseña de Catástrofe Logística'
+  const body = `Hola ${input.nombre}, hemos recibido una solicitud para restablecer tu contraseña. Si no has sido tu, puedes ignorar este mensaje.`
 
   return sendMail({
     to: input.to,
     subject,
-    text: `${body}\n\nRestablecer contrasena: ${url}`,
-    html: actionTemplate(subject, body, 'Restablecer contrasena', url),
+    text: `${body}\n\nRestablecer contraseña: ${url}`,
+    html: actionTemplate(subject, body, 'Restablecer contraseña', url),
   })
 }

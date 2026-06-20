@@ -14,7 +14,7 @@ export default function App() {
   }, [])
 
   if (!isSessionInitialized) {
-    return <div className="min-h-screen bg-gray-50" aria-label="Cargando sesion" />
+    return <div className="min-h-screen bg-gray-50" aria-label="Cargando sesión" />
   }
 
   return (

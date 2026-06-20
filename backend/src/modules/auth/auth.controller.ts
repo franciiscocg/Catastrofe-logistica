@@ -48,7 +48,7 @@ function readRefreshCookie(request: FastifyRequest, reply: FastifyReply) {
   if (refreshToken) return refreshToken
 
   clearRefreshCookie(reply)
-  throw Object.assign(new Error('Sesion expirada'), { statusCode: 401 })
+  throw Object.assign(new Error('Sesión expirada'), { statusCode: 401 })
 }
 
 async function signAccessToken(reply: FastifyReply, user: { id: string; email: string; roles: string[] }) {
@@ -85,7 +85,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       })
     } catch (error) {
       verificationEmailSent = false
-      request.log.error({ err: error, userId: user.id }, 'No se pudo enviar el email de verificacion')
+      request.log.error({ err: error, userId: user.id }, 'No se pudo enviar el email de verificación')
     }
 
     return reply.status(201).send({

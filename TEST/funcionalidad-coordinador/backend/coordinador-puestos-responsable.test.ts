@@ -48,7 +48,7 @@ vi.mock('../../../backend/src/middleware/auth.middleware.js', () => ({
 vi.mock('../../../backend/src/middleware/rbac.middleware.js', () => ({
   requireRole: vi.fn((...roles: string[]) => async (_request, reply) => {
     if (!roles.some((r) => mockAuthUser.roles.includes(r))) {
-      reply.status(403).send({ error: 'No tienes permiso para esta accion' })
+      reply.status(403).send({ error: 'No tienes permiso para está accion' })
     }
   }),
 }))
@@ -271,7 +271,7 @@ describe('POST /coordinador/:id/voluntarios — alta de voluntarios de apoyo', (
     await app.close()
   })
 
-  it('devuelve 404 si el puesto no esta activo', async () => {
+  it('devuelve 404 si el puesto no está activo', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique.mockResolvedValue(null)
 
@@ -285,7 +285,7 @@ describe('POST /coordinador/:id/voluntarios — alta de voluntarios de apoyo', (
     await app.close()
   })
 
-  it('devuelve 400 si el voluntario ya esta asignado a este puesto', async () => {
+  it('devuelve 400 si el voluntario ya está asignado a este puesto', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique.mockResolvedValue({ id: PUESTO_ID, activo: true, capacidadTrabajo: 6 })
     mp.usuario.findUnique.mockResolvedValue({ id: 'user-1', roles: ['VOLUNTARIO'] })
@@ -302,7 +302,7 @@ describe('POST /coordinador/:id/voluntarios — alta de voluntarios de apoyo', (
     await app.close()
   })
 
-  it('devuelve 400 cuando el puesto esta lleno', async () => {
+  it('devuelve 400 cuando el puesto está lleno', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique.mockResolvedValue({ id: PUESTO_ID, activo: true, capacidadTrabajo: 6 })
     mp.usuario.findUnique.mockResolvedValue({ id: 'user-1', roles: ['VOLUNTARIO'] })
@@ -340,7 +340,7 @@ describe('POST /coordinador/:id/voluntarios — alta de voluntarios de apoyo', (
 describe('GET /coordinador — metricas de tarjeta del panel administrativo', () => {
   beforeEach(resetCoordinador)
 
-  it('expone responsable unico, personas totales, tipo y estado NECESITA_VOLUNTARIOS', async () => {
+  it('expone responsable único, personas totales, tipo y estado NECESITA_VOLUNTARIOS', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findMany.mockResolvedValue([
       {

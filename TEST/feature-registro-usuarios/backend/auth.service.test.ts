@@ -61,7 +61,7 @@ describe('auth.service', () => {
   it.each([
     ['email', 'maria@example.com', { email: 'maria@example.com' }],
     ['dni', '12345678a', { dni: '12345678A' }],
-  ])('permite iniciar sesion con %s', async (_tipo, identifier, where) => {
+  ])('permite iniciar sesión con %s', async (_tipo, identifier, where) => {
     mockCompare.mockResolvedValue(true)
     mp.usuario.findUnique.mockResolvedValue({
       id: 'user-1',

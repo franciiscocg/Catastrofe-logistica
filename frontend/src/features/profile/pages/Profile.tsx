@@ -41,7 +41,7 @@ function validatePhone(value: string) {
 
   const normalized = trimmed.replace(/[\s-]/g, '')
   if (!/^(?:\+34)?[6789][0-9]{8}$/.test(normalized)) {
-    return 'Introduce un telefono espanol valido.'
+    return 'Introduce un teléfono español válido.'
   }
 
   return null
@@ -49,7 +49,7 @@ function validatePhone(value: string) {
 
 function validateVehicleField(value: string, label: string) {
   const trimmed = value.trim()
-  if (!trimmed) return `${label} es obligatorio si tienes vehiculo disponible.`
+  if (!trimmed) return `${label} es obligatorio si tienes vehículo disponible.`
   if (trimmed.length > 40) return `${label} no puede superar 40 caracteres.`
   return null
 }
@@ -167,8 +167,8 @@ export default function Profile() {
     const nextErrors: { tipoVehiculo?: string; matricula?: string; capacidad?: string } = {}
 
     if (voluntario.vehiculoDisponible) {
-      nextErrors.tipoVehiculo = validateVehicleField(voluntario.tipoVehiculo, 'El tipo de vehiculo') ?? undefined
-      nextErrors.matricula = validateVehicleField(voluntario.matricula, 'La matricula o identificador') ?? undefined
+      nextErrors.tipoVehiculo = validateVehicleField(voluntario.tipoVehiculo, 'El tipo de vehículo') ?? undefined
+      nextErrors.matricula = validateVehicleField(voluntario.matricula, 'La matrícula o identificador') ?? undefined
 
       const capacidad = voluntario.capacidad.trim()
       if (capacidad && capacidad.length > 40) {
@@ -204,9 +204,9 @@ export default function Profile() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Perfil operativo</p>
-              <h1 className="mt-1 text-2xl font-semibold text-slate-950">Datos de intervencion</h1>
+              <h1 className="mt-1 text-2xl font-semibold text-slate-950">Datos de intervención</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                Informacion minima para identificarte, contactar contigo y asignarte tareas durante una emergencia.
+                Información mínima para identificarte, contactar contigo y asignarte tareas durante una emergencia.
               </p>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
@@ -264,7 +264,7 @@ export default function Profile() {
               {personalErrors.apellidos && <span className="mt-1 block text-xs font-medium text-red-600">{personalErrors.apellidos}</span>}
             </label>
             <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
-              Telefono operativo
+              Teléfono operativo
               <input
                 value={personal.telefono}
                 onChange={(event) => setPersonal((prev) => ({ ...prev, telefono: event.target.value }))}
@@ -310,7 +310,7 @@ export default function Profile() {
             </label>
 
             <label className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-              Vehiculo disponible
+              Vehículo disponible
               <input
                 type="checkbox"
                 checked={voluntario.vehiculoDisponible}
@@ -333,7 +333,7 @@ export default function Profile() {
                   {voluntarioErrors.tipoVehiculo && <span className="mt-1 block text-xs font-medium text-red-600">{voluntarioErrors.tipoVehiculo}</span>}
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
-                  Matricula
+                  Matrícula
                   <input
                     value={voluntario.matricula}
                     onChange={(event) => setVoluntario((prev) => ({ ...prev, matricula: event.target.value }))}
@@ -375,8 +375,8 @@ export default function Profile() {
 
         <div className="mt-4">
           <StatusRow label="Identidad" ready value={`${personal.nombre || 'Nombre'} ${personal.apellidos || ''}`.trim()} />
-          <StatusRow label="Telefono" ready={hasPhone} value={hasPhone ? personal.telefono : 'Necesario para coordinacion'} />
-          <StatusRow label="Vehiculo" ready={hasVehicleData} value={hasVehicle ? `${voluntario.tipoVehiculo || 'Vehiculo'} - ${voluntario.matricula || 'sin matricula'}` : 'No disponible'} />
+          <StatusRow label="Teléfono" ready={hasPhone} value={hasPhone ? personal.telefono : 'Necesario para coordinación'} />
+          <StatusRow label="Vehículo" ready={hasVehicleData} value={hasVehicle ? `${voluntario.tipoVehiculo || 'Vehículo'} - ${voluntario.matricula || 'sin matrícula'}` : 'No disponible'} />
         </div>
 
         <div className="mt-4 border-t border-slate-100 pt-4">

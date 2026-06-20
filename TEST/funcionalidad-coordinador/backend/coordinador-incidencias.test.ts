@@ -45,7 +45,7 @@ vi.mock('../../../backend/src/middleware/auth.middleware.js', () => ({
 vi.mock('../../../backend/src/middleware/rbac.middleware.js', () => ({
   requireRole: vi.fn((...roles: string[]) => async (_request, reply) => {
     if (!roles.some((r) => mockAuthUser.roles.includes(r))) {
-      reply.status(403).send({ error: 'No tienes permiso para esta accion' })
+      reply.status(403).send({ error: 'No tienes permiso para está accion' })
     }
   }),
 }))
@@ -97,7 +97,7 @@ function resetCoordinador() {
 
 // ── DELETE /:id — eliminacion administrativa de incidencia ────────────────────
 
-describe('DELETE /:id — eliminacion administrativa de incidencia', () => {
+describe('DELETE /:id — eliminación administrativa de incidencia', () => {
   beforeEach(() => {
     resetCoordinador()
     mp.asignacionIncidencia.deleteMany.mockResolvedValue({ count: 0 })
@@ -277,7 +277,7 @@ describe('DELETE /coordinador/:id/voluntarios/:asignacionId — retirar voluntar
     mp.auditLog.create.mockResolvedValue({ id: 'audit-1' })
   })
 
-  it('cancela la asignacion activa y registra RETIRAR_VOLUNTARIO_INCIDENCIA', async () => {
+  it('cancela la asignación activa y registra RETIRAR_VOLUNTARIO_INCIDENCIA', async () => {
     const app = await buildTestApp()
     mp.asignacionIncidencia.findFirst.mockResolvedValue({ id: ASIGNACION_ID, voluntarioId: 'vol-1' })
     mp.asignacionIncidencia.update.mockResolvedValue({ id: ASIGNACION_ID, estado: 'CANCELADA' })
@@ -300,7 +300,7 @@ describe('DELETE /coordinador/:id/voluntarios/:asignacionId — retirar voluntar
     await app.close()
   })
 
-  it('devuelve 404 si la asignacion activa no existe', async () => {
+  it('devuelve 404 si la asignación activa no existe', async () => {
     const app = await buildTestApp()
     mp.asignacionIncidencia.findFirst.mockResolvedValue(null)
 

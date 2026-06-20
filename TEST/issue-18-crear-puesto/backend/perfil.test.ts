@@ -47,7 +47,7 @@ describe('perfil de usuario', () => {
     vi.clearAllMocks()
   })
 
-  it('normaliza telefono y audita los campos modificados', async () => {
+  it('normaliza teléfono y audita los campos modificados', async () => {
     const app = await buildApp()
     prismaMock.usuario.update.mockResolvedValue({
       id: 'user-1',
@@ -78,7 +78,7 @@ describe('perfil de usuario', () => {
     await app.close()
   })
 
-  it('rechaza telefonos no validos y campos no editables', async () => {
+  it('rechaza telefonos no válidos y campos no editables', async () => {
     const app = await buildApp()
     const invalidPhone = await app.inject({
       method: 'PATCH',
@@ -103,7 +103,7 @@ describe('perfil operativo de voluntario', () => {
     vi.clearAllMocks()
   })
 
-  it('normaliza datos del vehiculo y registra auditoria', async () => {
+  it('normaliza datos del vehículo y registra auditoria', async () => {
     const app = await buildApp()
     prismaMock.voluntario.upsert.mockResolvedValue({
       id: 'vol-1',

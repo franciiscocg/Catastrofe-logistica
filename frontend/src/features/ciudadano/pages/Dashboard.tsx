@@ -67,7 +67,7 @@ const CATEGORIAS_INCIDENCIA: Array<{
   {
     value: 'asistencia',
     label: 'Ayuda a personas',
-    equipment: ['Botiquin basico', 'Agua', 'Manta termica', 'Telefono con bateria'],
+    equipment: ['Botiquín básico', 'Agua', 'Manta térmica', 'Teléfono con batería'],
   },
 ]
 
@@ -154,7 +154,7 @@ async function fetchRouteCandidates(
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
   const data = await res.json()
-  if (data.code !== 'Ok') throw new Error('No se encontro ruta disponible')
+  if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
 
   return data.routes.map((route: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }) => {
     const points: [number, number][] = route.geometry.coordinates.map(
@@ -231,13 +231,13 @@ export async function fetchRutaEvitandoIncidencias(
 ) {
   const directCandidates = await fetchRouteCandidates([desde, hasta], incidencias, signal)
   const directBest = sortRouteCandidates([...directCandidates])[0]
-  if (!directBest) throw new Error('No se encontro ruta disponible')
+  if (!directBest) throw new Error('No se encontró ruta disponible')
 
   const candidates: RouteCandidate[] = [...directCandidates]
   const requestedWaypointSets = new Set<string>()
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
+    if (signal?.aborted) throw new DOMException('Búsqueda de ruta cancelada', 'AbortError')
     const best = sortRouteCandidates([...candidates])[0]
     if (!best) break
     if (best.incidenciasCercanas === 0) {
@@ -256,7 +256,7 @@ export async function fetchRutaEvitandoIncidencias(
       try {
         candidates.push(...await fetchRouteCandidates(waypointSet, incidencias, signal))
       } catch {
-        if (signal?.aborted) throw new DOMException('Busqueda de ruta cancelada', 'AbortError')
+        if (signal?.aborted) throw new DOMException('Búsqueda de ruta cancelada', 'AbortError')
         // Probamos otros desvios si un waypoint cae en zona no enrutable.
       }
     }
@@ -381,8 +381,8 @@ export default function CiudadanoDashboard() {
     CATEGORIAS_INCIDENCIA.find((categoria) => categoria.value === reportCategoria) ?? CATEGORIAS_INCIDENCIA[1]
   ), [reportCategoria])
   const reportLocationLabel = useMemo(() => {
-    if (!reportPosition) return 'Sin ubicacion marcada'
-    if (reportAddressLoading) return 'Buscando direccion...'
+    if (!reportPosition) return 'Sin ubicación marcada'
+    if (reportAddressLoading) return 'Buscando dirección...'
     return reportAddress ?? `${reportPosition[0].toFixed(5)}, ${reportPosition[1].toFixed(5)}`
   }, [reportAddress, reportAddressLoading, reportPosition])
 
@@ -553,9 +553,9 @@ export default function CiudadanoDashboard() {
     } catch (e) {
       const aborted = e instanceof DOMException && e.name === 'AbortError'
       if (aborted && routeAbortReasonRef.current === 'cancel') {
-        setRouteError('Busqueda de ruta cancelada.')
+        setRouteError('Búsqueda de ruta cancelada.')
       } else if (aborted && routeAbortReasonRef.current === 'timeout') {
-        setRouteError('La busqueda de ruta ha tardado demasiado. Intentalo de nuevo.')
+        setRouteError('La búsqueda de ruta ha tardado demasiado. Inténtalo de nuevo.')
       } else {
         setRouteError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
       }
@@ -665,7 +665,7 @@ export default function CiudadanoDashboard() {
       }
 
       setIncidencias((prev) => [pendingIncidencia, ...prev])
-      setReportSuccess('Reporte guardado offline. Se enviara cuando vuelva la conexion.')
+      setReportSuccess('Reporte guardado offline. Se enviará cuando vuelva la conexión.')
       setPendingDuplicate(null)
       setReportTitulo('')
       setReportCategoria('obstaculos_via')
@@ -884,7 +884,7 @@ export default function CiudadanoDashboard() {
 
     const comentario = comentarioTexto.trim()
     if (!comentario) {
-      setComentarioError('Escribe un comentario para guardar la actualizacion.')
+      setComentarioError('Escribe un comentario para guardar la actualización.')
       return
     }
 
@@ -1329,7 +1329,7 @@ export default function CiudadanoDashboard() {
                         onClick={handleCancelarBusquedaRuta}
                         className="w-full rounded-md border border-blue-300 bg-white/70 px-2 py-1 font-medium text-blue-800 hover:bg-white"
                       >
-                        Cancelar busqueda de ruta
+                        Cancelar búsqueda de ruta
                       </button>
                     </div>
                   )}
@@ -1549,7 +1549,7 @@ export default function CiudadanoDashboard() {
                     setReportError(null)
                   }}
                 >
-                  Cambiar ubicacion
+                  Cambiar ubicación
                 </Button>
               </div>
             </div>
@@ -1597,7 +1597,7 @@ export default function CiudadanoDashboard() {
                 }}
                 maxLength={500}
                 className="w-full resize-none rounded-xl border-gray-300 bg-white text-sm text-gray-900 shadow-sm focus:border-red-500 focus:ring-red-500"
-                placeholder="Ejemplo: Hay agua acumulada y no pasan vehiculos."
+                placeholder="Ejemplo: Hay agua acumulada y no pasan vehículos."
               />
             </div>
 
@@ -1638,12 +1638,12 @@ export default function CiudadanoDashboard() {
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Resumen</p>
               <p className="mt-2 text-sm font-medium leading-snug text-gray-900">
                 Se reportara <span className="font-semibold text-red-700">{selectedReportCategory.label.toLocaleLowerCase('es')}</span>
-                {reportPosition ? <> en <span className="font-semibold">{reportLocationLabel}</span></> : ' cuando marques una ubicacion'}.
+                {reportPosition ? <> en <span className="font-semibold">{reportLocationLabel}</span></> : ' cuando marques una ubicación'}.
               </p>
               <p className="mt-1 text-xs leading-relaxed text-gray-500">
                 {reportDescripcion.trim()
                   ? `Detalle: ${reportDescripcion.trim()}`
-                  : 'No has anadido detalle. El reporte se enviara solo con tipo y ubicacion.'}
+                  : 'No has añadido detalles. El reporte se enviará solo con el tipo y la ubicación.'}
               </p>
             </div>
 
@@ -1686,7 +1686,7 @@ export default function CiudadanoDashboard() {
               >
                 {isPickingLocation
                   ? (reportPosition ? 'Confirmar punto' : 'Toca el mapa')
-                  : (reportPosition ? 'Enviar reporte' : 'Marca una ubicacion')}
+                  : (reportPosition ? 'Enviar reporte' : 'Marca una ubicación')}
               </Button>
             </div>
           </div>

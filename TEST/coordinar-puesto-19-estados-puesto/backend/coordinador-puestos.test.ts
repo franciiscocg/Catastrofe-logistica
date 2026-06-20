@@ -64,7 +64,7 @@ vi.mock('../../../backend/src/middleware/auth.middleware.js', () => ({
 vi.mock('../../../backend/src/middleware/rbac.middleware.js', () => ({
   requireRole: vi.fn((...roles: string[]) => async (_request, reply) => {
     if (!roles.some((r) => mockAuthUser.roles.includes(r))) {
-      reply.status(403).send({ error: 'No tienes permiso para esta accion' })
+      reply.status(403).send({ error: 'No tienes permiso para está accion' })
     }
   }),
 }))
@@ -209,7 +209,7 @@ describe('GET /coordinador — listado de puestos para coordinador', () => {
     await app.close()
   })
 
-  it('calcula estadoOperativo OPERATIVO cuando todo esta cubierto', async () => {
+  it('calcula estadoOperativo OPERATIVO cuando todo está cubierto', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findMany.mockResolvedValue([
       {
@@ -343,7 +343,7 @@ describe('PATCH /coordinador/:id — editar puesto', () => {
     await app.close()
   })
 
-  it('devuelve 400 si capacidadTrabajo esta fuera del rango 1-500', async () => {
+  it('devuelve 400 si capacidadTrabajo está fuera del rango 1-500', async () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique.mockResolvedValue({ id: PUESTO_ID })
 
@@ -374,7 +374,7 @@ describe('PATCH /coordinador/:id — editar puesto', () => {
 
 // ── DELETE /coordinador/:id — eliminar puesto ─────────────────────────────────
 
-describe('DELETE /coordinador/:id — eliminacion logica de puesto', () => {
+describe('DELETE /coordinador/:id — eliminación logica de puesto', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthUser.roles = ['COORDINADOR']
@@ -390,7 +390,7 @@ describe('DELETE /coordinador/:id — eliminacion logica de puesto', () => {
     const app = await buildTestApp()
     mp.puestoEmergencia.findUnique
       .mockResolvedValueOnce({ id: PUESTO_ID })
-      .mockResolvedValue({ ...puestoConCuentas, activo: false, motivoRechazo: 'Puesto eliminado por coordinacion' })
+      .mockResolvedValue({ ...puestoConCuentas, activo: false, motivoRechazo: 'Puesto eliminado por coordinación' })
 
     const response = await app.inject({ method: 'DELETE', url: `/api/puestos/coordinador/${PUESTO_ID}` })
 
@@ -404,12 +404,12 @@ describe('DELETE /coordinador/:id — eliminacion logica de puesto', () => {
     expect(mp.solicitudParticipacionPuesto.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { puestoId: PUESTO_ID, estado: 'PENDIENTE' },
-        data: expect.objectContaining({ estado: 'RECHAZADA', motivoRechazo: 'Puesto eliminado por coordinacion' }),
+        data: expect.objectContaining({ estado: 'RECHAZADA', motivoRechazo: 'Puesto eliminado por coordinación' }),
       }),
     )
     expect(mp.puestoEmergencia.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ activo: false, motivoRechazo: 'Puesto eliminado por coordinacion' }),
+        data: expect.objectContaining({ activo: false, motivoRechazo: 'Puesto eliminado por coordinación' }),
       }),
     )
     expect(mp.auditLog.create).toHaveBeenCalledWith(
@@ -516,7 +516,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     mp.auditLog.create.mockResolvedValue({ id: 'audit-1' })
   })
 
-  it('acepta solicitud creando nueva asignacion cuando voluntario no esta en ningun puesto', async () => {
+  it('acepta solicitud creando nueva asignación cuando voluntario no está en ningun puesto', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue(solicitudBase)
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -542,7 +542,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     await app.close()
   })
 
-  it('reutiliza asignacion existente cuando el voluntario ya esta activo en ESTE puesto', async () => {
+  it('reutiliza asignación existente cuando el voluntario ya está activo en ESTE puesto', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue(solicitudBase)
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -563,7 +563,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     await app.close()
   })
 
-  it('reasigna al voluntario finalizando asignacion anterior cuando estaba en OTRO puesto', async () => {
+  it('reasigna al voluntario finalizando asignación anterior cuando estaba en OTRO puesto', async () => {
     const app = await buildTestApp()
     const asignacionOtroPuesto = {
       ...asignacionActiva,
@@ -600,7 +600,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     await app.close()
   })
 
-  it('bloquea con 400 cuando el puesto esta lleno y el voluntario no esta en el', async () => {
+  it('bloquea con 400 cuando el puesto está lleno y el voluntario no está en el', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue(solicitudBase)
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
@@ -618,7 +618,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     await app.close()
   })
 
-  it('bloquea con 400 si la solicitud ya esta revisada', async () => {
+  it('bloquea con 400 si la solicitud ya está revisada', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({ ...solicitudBase, estado: 'ACEPTADA' })
 
@@ -632,7 +632,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     await app.close()
   })
 
-  it('bloquea con 400 si el puesto no esta activo', async () => {
+  it('bloquea con 400 si el puesto no está activo', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({
       ...solicitudBase,
@@ -645,7 +645,7 @@ describe('POST /coordinador/participaciones/:id/aceptar — aceptacion y reasign
     })
 
     expect(response.statusCode).toBe(400)
-    expect(response.json().message).toMatch(/no esta activo/i)
+    expect(response.json().message).toMatch(/no está activo/i)
     await app.close()
   })
 
@@ -751,7 +751,7 @@ describe('POST /coordinador/participaciones/:id/rechazar — rechazo de solicitu
     await app.close()
   })
 
-  it('bloquea con 400 si la solicitud ya esta revisada', async () => {
+  it('bloquea con 400 si la solicitud ya está revisada', async () => {
     const app = await buildTestApp()
     mp.solicitudParticipacionPuesto.findUnique.mockResolvedValue({ estado: 'RECHAZADA' })
 

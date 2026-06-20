@@ -51,7 +51,7 @@ vi.mock('../../../backend/src/middleware/auth.middleware.js', () => ({
 vi.mock('../../../backend/src/middleware/rbac.middleware.js', () => ({
   requireRole: vi.fn((...roles: string[]) => async (_req, reply) => {
     if (!roles.some((r) => mockAuthUser.roles.includes(r))) {
-      reply.status(403).send({ error: 'No tienes permiso para esta accion' })
+      reply.status(403).send({ error: 'No tienes permiso para está accion' })
     }
   }),
 }))
@@ -209,7 +209,7 @@ describe('POST /api/puestos/solicitudes', () => {
     await app.close()
   })
 
-  it('devuelve 400 si el nombre esta vacio', async () => {
+  it('devuelve 400 si el nombre está vacio', async () => {
     const app = await buildApp()
 
     const res = await app.inject({
@@ -223,7 +223,7 @@ describe('POST /api/puestos/solicitudes', () => {
     await app.close()
   })
 
-  it('devuelve 400 si la latitud esta fuera de rango', async () => {
+  it('devuelve 400 si la latitud está fuera de rango', async () => {
     const app = await buildApp()
 
     const res = await app.inject({
@@ -312,7 +312,7 @@ describe('POST /api/puestos/solicitudes/:id/aceptar', () => {
     await app.close()
   })
 
-  it('devuelve 400 si la solicitud no esta PENDIENTE', async () => {
+  it('devuelve 400 si la solicitud no está PENDIENTE', async () => {
     const app = await buildApp()
     mp.solicitudPuesto.findUnique.mockResolvedValue({ id: 'solicitud-1', estado: 'ACEPTADA' })
 
@@ -399,7 +399,7 @@ describe('POST /api/puestos/solicitudes/:id/rechazar', () => {
     await app.close()
   })
 
-  it('rechaza la operacion si no se indica un motivo util', async () => {
+  it('rechaza la operación si no se indica un motivo util', async () => {
     const app = await buildApp()
     mp.solicitudPuesto.findUnique.mockResolvedValue({ estado: 'PENDIENTE' })
     mp.solicitudPuesto.update.mockResolvedValue({ id: 'solicitud-1', estado: 'RECHAZADA' })

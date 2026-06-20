@@ -25,7 +25,7 @@ function renderPage(path = '/verificar') {
   )
 }
 
-describe('pagina publica de verificacion', () => {
+describe('pagina publica de verificación', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     apiGet.mockImplementation((url: string) => {
@@ -56,7 +56,7 @@ describe('pagina publica de verificacion', () => {
     })
   })
 
-  it('consulta automaticamente la donacion incluida en la URL publica', async () => {
+  it('consulta automaticamente la donación incluida en la URL publica', async () => {
     renderPage('/verificar/don-1')
 
     await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/api/public/audit/donacion/don-1'))

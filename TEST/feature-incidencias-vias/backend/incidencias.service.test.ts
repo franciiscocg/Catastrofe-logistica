@@ -51,7 +51,7 @@ describe('createIncidencia', () => {
     expect(Object.hasOwn(createArgs.data, 'catastrofe' + 'Id')).toBe(false)
   })
 
-  it('crea incidencia sin resolver ninguna catastrofe activa por ubicacion', async () => {
+  it('crea incidencia sin resolver ninguna catastrofe activa por ubicación', async () => {
     mp.incidenciaVia.findMany.mockResolvedValue([])
     mp.incidenciaVia.create.mockResolvedValue({ id: 'inc-fuera', ...PUNTO_FUERA, estado: 'CORTADA' })
 

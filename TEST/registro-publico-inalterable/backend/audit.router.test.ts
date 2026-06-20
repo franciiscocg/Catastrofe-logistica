@@ -54,7 +54,7 @@ describe('API publica de auditoria', () => {
     expect(verifyReply.body).toEqual({ valid: true, totalEvents: 2 })
   })
 
-  it('devuelve 404 cuando una donacion no tiene eventos', async () => {
+  it('devuelve 404 cuando una donación no tiene eventos', async () => {
     service.getEventsByEntidad.mockResolvedValue([])
     const routes = await buildAuditApp()
     const reply = createReply()

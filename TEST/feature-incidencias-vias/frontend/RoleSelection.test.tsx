@@ -90,7 +90,7 @@ describe('RoleSelection', () => {
     expect(screen.queryByText('Coordinador')).not.toBeInTheDocument()
   })
 
-  it('redirige a login con el rol cuando se elige Ciudadano sin sesion', () => {
+  it('redirige a login con el rol cuando se elige Ciudadano sin sesión', () => {
     renderRoleSelection()
 
     fireEvent.click(screen.getByRole('button', { name: /acceder como ciudadano/i }))
@@ -99,7 +99,7 @@ describe('RoleSelection', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/auth/login?role=ciudadano')
   })
 
-  it('redirige a login con el rol cuando se elige Voluntario sin sesion', () => {
+  it('redirige a login con el rol cuando se elige Voluntario sin sesión', () => {
     renderRoleSelection()
 
     fireEvent.click(screen.getByRole('button', { name: /acceder como voluntario/i }))
@@ -108,7 +108,7 @@ describe('RoleSelection', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/auth/login?role=voluntario')
   })
 
-  it('redirige a login con el rol cuando se elige Puesto de Emergencia sin sesion', () => {
+  it('redirige a login con el rol cuando se elige Puesto de Emergencia sin sesión', () => {
     renderRoleSelection()
 
     fireEvent.click(screen.getByRole('button', { name: /acceder como puesto de emergencia/i }))
@@ -117,7 +117,7 @@ describe('RoleSelection', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/auth/login?role=puesto')
   })
 
-  it('navega al dashboard del rol si ya hay sesion iniciada', () => {
+  it('navega al dashboard del rol si ya hay sesión iniciada', () => {
     authState.value = {
       isAuthenticated: true,
       user: {
@@ -168,7 +168,7 @@ describe('RoleSelection', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('cierra la sesion desde la pantalla de roles autenticada', () => {
+  it('cierra la sesión desde la pantalla de roles autenticada', () => {
     authState.value = {
       isAuthenticated: true,
       user: {

@@ -24,12 +24,12 @@ function deniedInstructions(): string {
   const { isIOS, isMacSafari } = detectBrowser()
 
   if (isIOS) {
-    return 'En iPhone/iPad el permiso no se vuelve a pedir desde la web. Toca "aA" o el icono de la barra de direcciones > Ajustes del sitio web > Ubicacion > Permitir, o activala en los Ajustes del sistema para este navegador. Luego recarga la pagina.'
+    return 'En iPhone/iPad el permiso no se vuelve a pedir desde la web. Toca "aA" o el icono de la barra de direcciones > Ajustes del sitio web > Ubicación > Permitir, o actívala en los Ajustes del sistema para este navegador. Luego recarga la página.'
   }
   if (isMacSafari) {
-    return 'Safari no vuelve a preguntar una vez bloqueada. Ve a Safari > Ajustes > Sitios web > Ubicacion, permite este sitio y recarga la pagina.'
+    return 'Safari no vuelve a preguntar una vez bloqueada. Ve a Safari > Ajustes > Sitios web > Ubicación, permite este sitio y recarga la página.'
   }
-  return 'Pulsa el icono de permisos del navegador junto a la direccion, permite la ubicacion y recarga la pagina.'
+  return 'Pulsa el icono de permisos del navegador junto a la dirección, permite la ubicación y recarga la página.'
 }
 
 export default function LocationPermissionBanner() {
@@ -48,16 +48,16 @@ export default function LocationPermissionBanner() {
   let description: string
 
   if (isInsecureContext) {
-    title = 'Ubicacion no disponible'
+    title = 'Ubicación no disponible'
     description =
-      'La ubicacion solo funciona con una conexion segura (HTTPS) o en localhost. Abre la app por su direccion https:// para poder activarla.'
+      'La ubicación solo funciona con una conexión segura (HTTPS) o en localhost. Abre la app por su dirección https:// para poder activarla.'
   } else if (isDenied) {
-    title = 'Ubicacion bloqueada'
+    title = 'Ubicación bloqueada'
     description = deniedInstructions()
   } else {
-    title = 'Ubicacion desactivada'
+    title = 'Ubicación desactivada'
     description =
-      'Activa el permiso de ubicacion para ordenar puestos por cercania, calcular rutas y registrar incidencias con tu posicion actual.'
+      'Activa el permiso de ubicación para ordenar puestos por cercanía, calcular rutas y registrar incidencias con tu posición actual.'
   }
 
   return (
@@ -73,7 +73,7 @@ export default function LocationPermissionBanner() {
             onClick={request}
             className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-amber-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2"
           >
-            {isDenied ? 'Reintentar' : 'Activar ubicacion'}
+            {isDenied ? 'Reintentar' : 'Activar ubicación'}
           </button>
         )}
       </div>

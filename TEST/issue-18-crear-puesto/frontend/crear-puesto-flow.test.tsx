@@ -162,16 +162,16 @@ describe('RegisterPuesto — solicitud PENDIENTE', () => {
   it('muestra el estado de espera con los datos de la solicitud', async () => {
     renderWithQuery(<RegisterPuesto />)
 
-    expect(await screen.findByText('En espera de aprobacion')).toBeInTheDocument()
+    expect(await screen.findByText('En espera de aprobación')).toBeInTheDocument()
     // El nombre aparece varias veces (en el texto y en el resumen); la direccion es unica
     expect(screen.getAllByText('CEIP La Paz').length).toBeGreaterThan(0)
     expect(screen.getByText('Calle Mayor 12')).toBeInTheDocument()
   })
 
-  it('no muestra el formulario de envio mientras esta PENDIENTE', async () => {
+  it('no muestra el formulario de envio mientras está PENDIENTE', async () => {
     renderWithQuery(<RegisterPuesto />)
 
-    await screen.findByText('En espera de aprobacion')
+    await screen.findByText('En espera de aprobación')
     expect(screen.queryByRole('button', { name: /Enviar solicitud/i })).not.toBeInTheDocument()
   })
 })
@@ -387,7 +387,7 @@ describe('CoordinadorDashboard — gestion de solicitudes', () => {
 
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
-    fireEvent.change(screen.getByPlaceholderText(/Falta informacion/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Falta información/i), {
       target: { value: 'Falta documentacion del responsable' },
     })
     const rechazarBtns = screen.getAllByRole('button', { name: /^Rechazar$/i })

@@ -47,13 +47,13 @@ function makeReply() {
   return reply
 }
 
-describe('auth.controller cookies de sesion', () => {
+describe('auth.controller cookies de sesión', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubEnv('NODE_ENV', 'test')
   })
 
-  it('entrega el refresh token solo mediante cookie HttpOnly al iniciar sesion', async () => {
+  it('entrega el refresh token solo mediante cookie HttpOnly al iniciar sesión', async () => {
     mocks.loginUser.mockResolvedValue(user)
     mocks.issueRefreshToken.mockResolvedValue('refresh-token-login')
     const reply = makeReply()
@@ -95,7 +95,7 @@ describe('auth.controller cookies de sesion', () => {
     expect(result).not.toHaveProperty('refreshToken')
   })
 
-  it('revoca y borra la cookie al cerrar sesion', async () => {
+  it('revoca y borra la cookie al cerrar sesión', async () => {
     const reply = makeReply()
 
     await logout(

@@ -56,7 +56,7 @@ describe('confirmarQrInventario', () => {
     mp.donacion.updateMany.mockResolvedValue({ count: 1 })
   })
 
-  it('descuenta inventario al confirmar una solicitud ciudadana valida', async () => {
+  it('descuenta inventario al confirmar una solicitud ciudadana válida', async () => {
     allowPuestoAccess()
     mp.inventario.findMany.mockResolvedValue([ITEM_DISPONIBLE])
     mp.inventario.updateMany.mockResolvedValue({ count: 1 })
@@ -121,7 +121,7 @@ describe('confirmarQrInventario', () => {
     expect(mp.inventario.updateMany).not.toHaveBeenCalled()
   })
 
-  it('rechaza solicitudes ciudadanas antiguas sin codigo de un solo uso', async () => {
+  it('rechaza solicitudes ciudadanas antiguas sin código de un solo uso', async () => {
     allowPuestoAccess()
 
     const codigo = JSON.stringify({
@@ -133,24 +133,24 @@ describe('confirmarQrInventario', () => {
     await expect(confirmarQrInventario(PUESTO_ID, { codigo }, USER_ID))
       .rejects.toMatchObject({
         statusCode: 400,
-        message: 'Este QR de solicitud es antiguo y no tiene codigo de un solo uso. Genera un QR nuevo.',
+        message: 'Este QR de solicitud es antiguo y no tiene código de un solo uso. Genera un QR nuevo.',
       })
     expect(mp.inventario.updateMany).not.toHaveBeenCalled()
   })
 
-  it('rechaza codigos que no son JSON legible', async () => {
+  it('rechaza códigos que no son JSON legible', async () => {
     allowPuestoAccess()
 
     await expect(confirmarQrInventario(PUESTO_ID, { codigo: 'esto-no-es-json' }, USER_ID))
       .rejects.toMatchObject({
         statusCode: 400,
-        message: 'El QR no tiene un formato valido',
+        message: 'El QR no tiene un formato válido',
       })
     expect(mp.inventario.findMany).not.toHaveBeenCalled()
     expect(mp.donacion.findFirst).not.toHaveBeenCalled()
   })
 
-  it('rechaza codigos JSON que no son de solicitud ni de donacion', async () => {
+  it('rechaza códigos JSON que no son de solicitud ni de donación', async () => {
     allowPuestoAccess()
 
     await expect(confirmarQrInventario(PUESTO_ID, { codigo: JSON.stringify({ hola: 'mundo' }) }, USER_ID))
@@ -162,7 +162,7 @@ describe('confirmarQrInventario', () => {
     expect(mp.donacion.findFirst).not.toHaveBeenCalled()
   })
 
-  it('rechaza una solicitud ciudadana sin productos validos', async () => {
+  it('rechaza una solicitud ciudadana sin productos válidos', async () => {
     allowPuestoAccess()
 
     const codigo = JSON.stringify({
@@ -175,7 +175,7 @@ describe('confirmarQrInventario', () => {
     await expect(confirmarQrInventario(PUESTO_ID, { codigo }, USER_ID))
       .rejects.toMatchObject({
         statusCode: 400,
-        message: 'El QR no incluye productos validos',
+        message: 'El QR no incluye productos válidos',
       })
     expect(mp.inventario.findMany).not.toHaveBeenCalled()
   })
@@ -220,7 +220,7 @@ describe('confirmarQrInventario', () => {
     expect(mp.inventario.updateMany).not.toHaveBeenCalled()
   })
 
-  it('compensa necesidad, marca donacion entregada y registra auditoria', async () => {
+  it('compensa necesidad, marca donación entregada y registra auditoria', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue({
       id: 'don-1',
@@ -283,7 +283,7 @@ describe('confirmarQrInventario', () => {
     }))
   })
 
-  it('rechaza una donacion si el codigo ya no corresponde a una donacion en camino', async () => {
+  it('rechaza una donación si el código ya no corresponde a una donación en camino', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue(null)
 
@@ -300,12 +300,12 @@ describe('confirmarQrInventario', () => {
     await expect(confirmarQrInventario(PUESTO_ID, { codigo }, USER_ID))
       .rejects.toMatchObject({
         statusCode: 409,
-        message: 'Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.',
+        message: 'Este QR de donación no se puede confirmar: no existe, ya fue usado o la donación no está en camino.',
       })
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })
 
-  it('rechaza una donacion si el contenido del QR no coincide con lo registrado', async () => {
+  it('rechaza una donación si el contenido del QR no coincide con lo registrado', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue({
       id: 'don-1',
@@ -333,7 +333,7 @@ describe('confirmarQrInventario', () => {
     await expect(confirmarQrInventario(PUESTO_ID, { codigo }, USER_ID))
       .rejects.toMatchObject({
         statusCode: 400,
-        message: 'El contenido del QR no coincide con la donacion registrada',
+        message: 'El contenido del QR no coincide con la donación registrada',
       })
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })

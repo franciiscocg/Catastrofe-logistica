@@ -52,15 +52,15 @@ function validate(f: PuestoForm): Record<string, string> {
   const errors: Record<string, string> = {}
   if (!f.nombrePuesto.trim()) errors.nombrePuesto = 'El nombre del puesto es obligatorio'
   if (!f.tipo) errors.tipo = 'Selecciona el tipo de instalacion'
-  if (!f.direccion.trim()) errors.direccion = 'La direccion es obligatoria'
+  if (!f.direccion.trim()) errors.direccion = 'La dirección es obligatoria'
 
   const lat = Number.parseFloat(f.latitud)
   const lng = Number.parseFloat(f.longitud)
   if (!f.latitud || Number.isNaN(lat) || lat < -90 || lat > 90) {
-    errors.latitud = 'Latitud invalida (entre -90 y 90)'
+    errors.latitud = 'Latitud inválida (entre -90 y 90)'
   }
   if (!f.longitud || Number.isNaN(lng) || lng < -180 || lng > 180) {
-    errors.longitud = 'Longitud invalida (entre -180 y 180)'
+    errors.longitud = 'Longitud inválida (entre -180 y 180)'
   }
 
   return errors
@@ -100,13 +100,13 @@ function EstadoPendiente({ solicitud, onVolver }: { solicitud: SolicitudPuesto; 
     <div className="min-h-screen bg-amber-50 flex flex-col justify-center px-4">
       <div className="max-w-sm mx-auto w-full text-center">
         <div className="text-5xl mb-4">...</div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">En espera de aprobacion</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">En espera de aprobación</h1>
         <p className="text-sm text-gray-500 mb-6">
-          Tu solicitud para <strong>{solicitud.nombre}</strong> esta siendo revisada por el coordinador.
+          Tu solicitud para <strong>{solicitud.nombre}</strong> está siendo revisada por el coordinador.
         </p>
         <div className="bg-white border border-amber-200 rounded-xl px-4 py-3 text-xs text-gray-500 text-left space-y-1 mb-6">
           <p><span className="font-medium">Puesto:</span> {solicitud.nombre}</p>
-          <p><span className="font-medium">Direccion:</span> {solicitud.direccion}</p>
+          <p><span className="font-medium">Dirección:</span> {solicitud.direccion}</p>
           <p><span className="font-medium">Enviada:</span> {new Date(solicitud.createdAt).toLocaleDateString('es-ES')}</p>
         </div>
         <button onClick={onVolver} className="text-sm text-amber-700 hover:text-amber-900 underline">
@@ -217,7 +217,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       onSuccess()
     } catch (err: unknown) {
       const response = (err as { response?: { data?: { error?: string } } })?.response
-      setSubmitError(response?.data?.error ?? 'Error al enviar la solicitud. Intentalo de nuevo.')
+      setSubmitError(response?.data?.error ?? 'Error al enviar la solicitud. Inténtalo de nuevo.')
     } finally {
       setLoading(false)
     }
@@ -248,13 +248,13 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div>
-        <Label required>Direccion completa</Label>
+        <Label required>Dirección completa</Label>
         <Input value={form.direccion} onChange={set('direccion')} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta, Valencia" />
       </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Descripcion <span className="text-gray-400 font-normal">(opcional)</span>
+          Descripción <span className="text-gray-400 font-normal">(opcional)</span>
         </label>
         <textarea
           value={form.descripcion}
@@ -267,7 +267,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
 
       <div className="border-t border-gray-100 pt-4">
         <p className="text-sm font-medium text-gray-700 mb-3">
-          Ubicacion del puesto <span className="text-red-500">*</span>
+          Ubicación del puesto <span className="text-red-500">*</span>
         </p>
         <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation} className="mb-3">
           {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
@@ -275,7 +275,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
 
         {form.latitud && form.longitud && (
           <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 mb-3">
-            Ubicacion capturada: {Number.parseFloat(form.latitud).toFixed(4)}, {Number.parseFloat(form.longitud).toFixed(4)}
+            Ubicación capturada: {Number.parseFloat(form.latitud).toFixed(4)}, {Number.parseFloat(form.longitud).toFixed(4)}
           </div>
         )}
 
@@ -299,7 +299,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       )}
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-        <strong>Pendiente de aprobacion:</strong> Tu solicitud sera revisada por un coordinador. El puesto se activara cuando sea aceptada.
+        <strong>Pendiente de aprobación:</strong> Tu solicitud será revisada por un coordinador. El puesto se activará cuando sea aceptada.
       </div>
 
       <Button type="submit" fullWidth loading={loading} className="bg-amber-500 hover:bg-amber-600 focus-visible:ring-amber-500">
@@ -397,7 +397,7 @@ export default function RegisterPuesto() {
             Volver
           </button>
           <h1 className="text-2xl font-bold text-gray-900">Registrar puesto de emergencia</h1>
-          <p className="text-sm text-gray-500 mt-1">Tu solicitud sera verificada antes de activarse.</p>
+          <p className="text-sm text-gray-500 mt-1">Tu solicitud será verificada antes de activarse.</p>
         </div>
 
         <FormularioPuesto
