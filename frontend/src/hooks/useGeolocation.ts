@@ -109,9 +109,15 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
     permissionState: null,
   }))
 
+  // Refleja la ultima posicion sin que sea dependencia del efecto del watch:
+  // si lo fuera, cada fix de GPS reiniciaria el watchPosition en bucle y
+  // congelaria el navegador (sobre todo en movil, donde los fixes son rapidos).
+  const positionRef = useRef<GeoPosition | null>(state.position)
+
   const onSuccess = useCallback((pos: GeolocationPosition) => {
     const position = toGeoPosition(pos)
     savePosition(position)
+    positionRef.current = position
     setState({
       position,
       error: null,
@@ -212,7 +218,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (isIOSWebKit() && !state.position) {
+    if (isIOSWebKit() && !positionRef.current) {
       setState((prev) => ({
         ...prev,
         error: prev.error ?? GEOLOCATION_ERROR_PROMPT,
@@ -229,7 +235,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
         watchIdRef.current = null
       }
     }
-  }, [startWatching, state.position])
+  }, [startWatching])
 
   useEffect(() => {
     if (!isSecureGeolocationOrigin()) return
