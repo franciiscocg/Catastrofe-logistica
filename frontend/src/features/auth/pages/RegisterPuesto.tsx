@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useGeolocation } from '@/hooks/useGeolocation'
@@ -174,17 +174,39 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
     ? [Number.parseFloat(form.latitud), Number.parseFloat(form.longitud)]
     : null
 
-  useEffect(() => {
-    if (!locationRequested || !position) return
+  const applySelectedLocation = useCallback(async ([lat, lng]: [number, number], recenter = false) => {
     setForm((prev) => ({
       ...prev,
-      latitud: position.lat.toFixed(6),
-      longitud: position.lng.toFixed(6),
+      direccion: '',
+      latitud: lat.toFixed(6),
+      longitud: lng.toFixed(6),
     }))
-    setMapCenter([position.lat, position.lng])
-    setErrors((prev) => ({ ...prev, ubicacion: '' }))
+    if (recenter) setMapCenter([lat, lng])
+    setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    setLocationLoading(true)
+    setLocationError('')
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`,
+        { headers: { Accept: 'application/json', 'Accept-Language': 'es' } },
+      )
+      if (!response.ok) throw new Error('reverse-failed')
+      const result = await response.json() as { display_name?: string }
+      if (!result.display_name) throw new Error('address-not-found')
+      setForm((prev) => ({ ...prev, direccion: result.display_name ?? '' }))
+    } catch {
+      setLocationError('No se ha podido obtener la calle. Puedes escribirla manualmente sin perder el punto seleccionado.')
+    } finally {
+      setLocationLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!locationRequested || !position) return
     setLocationRequested(false)
-  }, [locationRequested, position])
+    void applySelectedLocation([position.lat, position.lng], true)
+  }, [applySelectedLocation, locationRequested, position])
 
   const set = (field: keyof PuestoForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -194,13 +216,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
 
   const handleUseMyLocation = () => {
     if (position) {
-      setForm((prev) => ({
-        ...prev,
-        latitud: position.lat.toFixed(6),
-        longitud: position.lng.toFixed(6),
-      }))
-      setMapCenter([position.lat, position.lng])
-      setErrors((prev) => ({ ...prev, ubicacion: '' }))
+      void applySelectedLocation([position.lat, position.lng], true)
     } else {
       setLocationRequested(true)
       requestGeo()
@@ -255,29 +271,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
-  const selectMapPoint = async ([lat, lng]: [number, number]) => {
-    setForm((prev) => ({ ...prev, latitud: lat.toFixed(6), longitud: lng.toFixed(6) }))
-    setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
-    setLocationLoading(true)
-    setLocationError('')
-    try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`,
-        { headers: { Accept: 'application/json', 'Accept-Language': 'es' } },
-      )
-      if (!response.ok) throw new Error('reverse-failed')
-      const result = await response.json() as { display_name?: string }
-      if (result.display_name) {
-        setForm((prev) => ({ ...prev, direccion: result.display_name ?? prev.direccion }))
-      }
-    } catch {
-      if (!form.direccion.trim()) {
-        setLocationError('Punto seleccionado. Escribe también la calle para identificar el puesto.')
-      }
-    } finally {
-      setLocationLoading(false)
-    }
-  }
+  const selectMapPoint = (point: [number, number]) => void applySelectedLocation(point)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -390,7 +384,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
               className="h-64 rounded-xl overflow-hidden border border-gray-200"
             />
             <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation}>
-              {geoLoading ? 'Obteniendo ubicación...' : 'Centrar en mi ubicación actual'}
+              {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
             </Button>
             <Label required>Dirección seleccionada</Label>
             <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Se completará al elegir un punto" />
