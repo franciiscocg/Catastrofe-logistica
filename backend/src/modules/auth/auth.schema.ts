@@ -17,6 +17,7 @@ export const registerSchema = z.object({
 export const requestPasswordResetSchema = z.object({
   email: z.string().email('Introduce un correo electrónico válido'),
   dni: z.string().min(1, 'Introduce tu DNI/NIE'),
+  recoveryCode: z.string().min(16, 'Introduce tu código de recuperación'),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
 })
 

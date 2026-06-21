@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '@/utils/errors'
 export default function RequestPasswordReset() {
   const [email, setEmail] = useState('')
   const [dni, setDni] = useState('')
+  const [recoveryCode, setRecoveryCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [message, setMessage] = useState('')
@@ -27,6 +28,7 @@ export default function RequestPasswordReset() {
       await apiClient.post<{ ok: boolean }>('/api/auth/password-reset/request', {
         email: email.trim(),
         dni: dni.trim().toUpperCase(),
+        recoveryCode: recoveryCode.trim(),
         password,
       })
       setMessage('Contraseña actualizada. Ya puedes iniciar sesión.')
@@ -63,6 +65,15 @@ export default function RequestPasswordReset() {
           onChange={(event) => setDni(event.target.value.toUpperCase())}
           className="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
           placeholder="DNI/NIE"
+          autoComplete="off"
+        />
+        <input
+          required
+          minLength={16}
+          value={recoveryCode}
+          onChange={(event) => setRecoveryCode(event.target.value)}
+          className="w-full rounded-lg border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
+          placeholder="Código de recuperación"
           autoComplete="off"
         />
         <input

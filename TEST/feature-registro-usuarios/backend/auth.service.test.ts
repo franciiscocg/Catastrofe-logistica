@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
@@ -51,6 +52,8 @@ import { loginUser, registerUser, requestPasswordReset } from '../../../backend/
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mp = prisma as any
 const PASSWORD_HASH = '$2a$12$CWU2PWH3aCQqnwskDa.I9uwQSsjCbrzy9uhVfMD0txvaLdOjwwR0u'
+const RECOVERY_CODE = 'codigo-recuperacion-seguro-123'
+const RECOVERY_HASH = createHash('sha256').update(RECOVERY_CODE).digest('hex')
 
 describe('auth.service', () => {
   beforeEach(() => {
@@ -108,6 +111,7 @@ describe('auth.service', () => {
     })
 
     expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
+    expect(result.recoveryCode).toHaveLength(24)
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         password: expect.any(String),
@@ -115,6 +119,7 @@ describe('auth.service', () => {
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
         emailVerified: true,
+        recoveryCodeHash: expect.any(String),
       }),
     }))
     expect(mp.voluntario.create).toHaveBeenCalledWith({
@@ -122,14 +127,15 @@ describe('auth.service', () => {
     })
   })
 
-  it('cambia la contraseña cuando coinciden correo y DNI y revoca las sesiones', async () => {
-    mp.usuario.findFirst.mockResolvedValue({ id: 'user-1' })
+  it('cambia la contraseña con el código de recuperación y revoca las sesiones', async () => {
+    mp.usuario.findFirst.mockResolvedValue({ id: 'user-1', recoveryCodeHash: RECOVERY_HASH })
     mp.usuario.update.mockResolvedValue({ id: 'user-1' })
     mp.refreshToken.updateMany.mockResolvedValue({ count: 2 })
 
     await expect(requestPasswordReset({
       email: ' MARIA@EXAMPLE.COM ',
       dni: '12345678a',
+      recoveryCode: RECOVERY_CODE,
       password: 'NuevaPassword123',
     })).resolves.toEqual({ ok: true })
 
@@ -144,7 +150,6 @@ describe('auth.service', () => {
       where: { id: 'user-1' },
       data: expect.objectContaining({
         password: expect.any(String),
-        emailVerified: true,
       }),
     })
     expect(mp.usuario.update.mock.calls[0][0].data.password).not.toBe('NuevaPassword123')
@@ -154,15 +159,16 @@ describe('auth.service', () => {
     })
   })
 
-  it('rechaza la recuperación cuando correo y DNI no coinciden', async () => {
-    mp.usuario.findFirst.mockResolvedValue(null)
+  it('rechaza la recuperación cuando el código secreto no coincide', async () => {
+    mp.usuario.findFirst.mockResolvedValue({ id: 'user-1', recoveryCodeHash: RECOVERY_HASH })
 
     await expect(requestPasswordReset({
       email: 'maria@example.com',
       dni: '00000000A',
+      recoveryCode: 'codigo-recuperacion-incorrecto',
       password: 'NuevaPassword123',
     })).rejects.toMatchObject({
-      message: 'El correo y el DNI/NIE no coinciden con ninguna cuenta activa',
+      message: 'Los datos o el código de recuperación no son válidos',
       statusCode: 400,
     })
     expect(mp.usuario.update).not.toHaveBeenCalled()

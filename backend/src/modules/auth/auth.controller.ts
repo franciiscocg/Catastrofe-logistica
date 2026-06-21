@@ -8,6 +8,7 @@ import {
   issueRefreshToken,
   loginUser,
   registerUser,
+  regenerateRecoveryCode,
   requestPasswordReset,
   revokeRefreshToken,
   rotateRefreshToken,
@@ -66,13 +67,13 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
-  const { user } = await registerUser(input)
+  const { user, recoveryCode } = await registerUser(input)
 
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
   setRefreshCookie(reply, refreshToken)
 
-  return reply.status(201).send({ user, ...tokenPayload })
+  return reply.status(201).send({ user, recoveryCode, ...tokenPayload })
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
@@ -97,6 +98,11 @@ export async function logout(request: FastifyRequest, reply: FastifyReply) {
 export async function requestReset(request: FastifyRequest, reply: FastifyReply) {
   const input = requestPasswordResetSchema.parse(request.body)
   return reply.send(await requestPasswordReset(input))
+}
+
+export async function generateRecoveryCode(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request.user as { id: string }).id
+  return reply.send(await regenerateRecoveryCode(userId))
 }
 
 export async function me(request: FastifyRequest, reply: FastifyReply) {

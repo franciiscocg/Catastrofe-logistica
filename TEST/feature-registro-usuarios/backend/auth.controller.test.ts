@@ -14,6 +14,7 @@ vi.mock('../../../backend/src/modules/auth/auth.service.js', () => ({
   revokeRefreshToken: mocks.revokeRefreshToken,
   registerUser: vi.fn(),
   requestPasswordReset: vi.fn(),
+  regenerateRecoveryCode: vi.fn(),
 }))
 
 import { login, logout, refresh } from '../../../backend/src/modules/auth/auth.controller.js'

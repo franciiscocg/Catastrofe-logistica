@@ -23,6 +23,10 @@ function createPlainToken() {
   return randomBytes(32).toString('base64url')
 }
 
+function createRecoveryCode() {
+  return randomBytes(18).toString('base64url')
+}
+
 function addMs(ms: number) {
   return new Date(Date.now() + ms)
 }
@@ -120,6 +124,7 @@ export async function registerUser(input: RegisterInput) {
   if (dniExists) throw badRequest('Este DNI/NIE ya está registrado')
 
   const hashed = await bcrypt.hash(input.password, 12)
+  const recoveryCode = createRecoveryCode()
   const roles = [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
 
   const user = await prisma.$transaction(async (tx) => {
@@ -135,6 +140,7 @@ export async function registerUser(input: RegisterInput) {
         activo: true,
         emailVerified: true,
         emailVerifiedAt: new Date(),
+        recoveryCodeHash: hashToken(recoveryCode),
       },
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true, emailVerified: true },
     })
@@ -145,10 +151,10 @@ export async function registerUser(input: RegisterInput) {
     return created
   })
 
-  return { user }
+  return { user, recoveryCode }
 }
 
-export async function requestPasswordReset({ email, dni, password }: RequestPasswordResetInput) {
+export async function requestPasswordReset({ email, dni, recoveryCode, password }: RequestPasswordResetInput) {
   const user = await prisma.usuario.findFirst({
     where: {
       email: email.trim().toLowerCase(),
@@ -156,7 +162,9 @@ export async function requestPasswordReset({ email, dni, password }: RequestPass
       activo: true,
     },
   })
-  if (!user) throw badRequest('El correo y el DNI/NIE no coinciden con ninguna cuenta activa')
+  if (!user || !user.recoveryCodeHash || hashToken(recoveryCode.trim()) !== user.recoveryCodeHash) {
+    throw badRequest('Los datos o el código de recuperación no son válidos')
+  }
 
   const hashed = await bcrypt.hash(password, 12)
   await prisma.$transaction([
@@ -171,4 +179,13 @@ export async function requestPasswordReset({ email, dni, password }: RequestPass
   ])
 
   return { ok: true }
+}
+
+export async function regenerateRecoveryCode(usuarioId: string) {
+  const recoveryCode = createRecoveryCode()
+  await prisma.usuario.update({
+    where: { id: usuarioId },
+    data: { recoveryCodeHash: hashToken(recoveryCode) },
+  })
+  return { recoveryCode }
 }

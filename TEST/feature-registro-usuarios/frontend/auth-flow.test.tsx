@@ -138,6 +138,7 @@ describe('registro e inicio de sesión', () => {
           roles: ['CIUDADANO', 'VOLUNTARIO'],
         },
         accessToken: 'token-123',
+        recoveryCode: 'codigo-recuperacion-seguro',
       },
     })
   })
@@ -162,6 +163,8 @@ describe('registro e inicio de sesión', () => {
         dni: '12345678A',
       })
     })
+    expect(screen.getByText('codigo-recuperacion-seguro')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /He guardado el código/i }))
     expect(mockLogin).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'maria@example.com' }),
       'token-123',

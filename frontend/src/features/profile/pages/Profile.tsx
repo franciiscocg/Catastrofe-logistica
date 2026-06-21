@@ -84,6 +84,7 @@ export default function Profile() {
   const [personalErrors, setPersonalErrors] = useState<{ nombre?: string; apellidos?: string; telefono?: string }>({})
   const [voluntarioErrors, setVoluntarioErrors] = useState<{ tipoVehiculo?: string; matricula?: string; capacidad?: string }>({})
   const [message, setMessage] = useState('')
+  const [recoveryCode, setRecoveryCode] = useState('')
 
   const userQuery = useQuery({
     queryKey: ['perfil-usuario'],
@@ -147,6 +148,15 @@ export default function Profile() {
       setMessage('Preferencias operativas actualizadas')
     },
     onError: (err) => setMessage(parseError(err, 'No se pudieron guardar las preferencias')),
+  })
+
+  const generateRecoveryCode = useMutation({
+    mutationFn: () => apiClient.post<{ recoveryCode: string }>('/api/auth/recovery-code'),
+    onSuccess: (response) => {
+      setRecoveryCode(response.data.recoveryCode)
+      setMessage('Código de recuperación generado. Guarda la copia antes de salir.')
+    },
+    onError: (err) => setMessage(parseError(err, 'No se pudo generar el código de recuperación')),
   })
 
   const handleSavePersonal = () => {
@@ -388,6 +398,24 @@ export default function Profile() {
               <Badge>Sin rol</Badge>
             )}
           </div>
+        </div>
+
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Seguridad</p>
+          <p className="mt-1 text-xs text-slate-600">Genera un código secreto para recuperar la contraseña sin correo.</p>
+          {recoveryCode && (
+            <code className="mt-2 block select-all break-all rounded-md bg-slate-950 px-3 py-2 text-xs font-semibold text-white">
+              {recoveryCode}
+            </code>
+          )}
+          <button
+            type="button"
+            onClick={() => generateRecoveryCode.mutate()}
+            disabled={generateRecoveryCode.isPending}
+            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {recoveryCode ? 'Regenerar código' : 'Generar código de recuperación'}
+          </button>
         </div>
 
         {message && (
