@@ -1467,7 +1467,10 @@ export async function puestosRouter(app: FastifyInstance) {
     preHandler: [requireAuth],
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const trabajadores = await listTrabajadores(id)
+    const user = req.user as { id?: string; sub?: string; roles?: string[] }
+    const requesterId = user.sub ?? user.id
+    if (!requesterId) return reply.status(401).send({ error: 'No autenticado' })
+    const trabajadores = await listTrabajadores(id, requesterId, user.roles ?? [])
     return reply.send({ trabajadores })
   })
 
