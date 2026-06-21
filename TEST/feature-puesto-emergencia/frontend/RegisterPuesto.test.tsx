@@ -75,6 +75,10 @@ function renderRegister() {
 describe('RegisterPuesto', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ lat: '39.4254', lon: '-0.4178', display_name: 'Calle Mayor 12, Paiporta, Valencia' }],
+    }))
     mockApiGet.mockResolvedValue({ data: { solicitud: null } })
     mockApiPost.mockResolvedValue({ data: { solicitud: { id: 'solicitud-1', estado: 'PENDIENTE' } } })
   })
@@ -96,12 +100,8 @@ describe('RegisterPuesto', () => {
     fireEvent.change(screen.getByPlaceholderText(/Horario de apertura/), {
       target: { value: 'Aula de apoyo escolar' },
     })
-    fireEvent.change(screen.getByPlaceholderText('39.4254'), {
-      target: { value: '39.4254' },
-    })
-    fireEvent.change(screen.getByPlaceholderText('-0.4178'), {
-      target: { value: '-0.4178' },
-    })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar dirección' }))
+    await screen.findByText('Ubicación seleccionada correctamente')
 
     fireEvent.click(screen.getByText('Enviar solicitud'))
 

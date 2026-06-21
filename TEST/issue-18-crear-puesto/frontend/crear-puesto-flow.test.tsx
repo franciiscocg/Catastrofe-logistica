@@ -94,6 +94,10 @@ function setUser(roles: string[] = ['CIUDADANO', 'VOLUNTARIO']) {
 describe('RegisterPuesto — estado sin solicitud previa', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ lat: '39.4254', lon: '-0.4178', display_name: 'Calle Mayor 12' }],
+    }))
     setUser()
     mockApiGet.mockResolvedValue({ data: { solicitud: null } })
   })
@@ -113,8 +117,8 @@ describe('RegisterPuesto — estado sin solicitud previa', () => {
     fireEvent.change(screen.getByPlaceholderText(/CEIP La Paz/), { target: { value: 'CEIP La Paz' } })
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'colegio' } })
     fireEvent.change(screen.getByPlaceholderText(/Calle Mayor/), { target: { value: 'Calle Mayor 12' } })
-    fireEvent.change(screen.getByPlaceholderText('39.4254'), { target: { value: '39.4254' } })
-    fireEvent.change(screen.getByPlaceholderText('-0.4178'), { target: { value: '-0.4178' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar dirección' }))
+    await screen.findByText('Ubicación seleccionada correctamente')
 
     fireEvent.click(screen.getByRole('button', { name: /Enviar solicitud/i }))
 
@@ -179,6 +183,10 @@ describe('RegisterPuesto — solicitud PENDIENTE', () => {
 describe('RegisterPuesto — solicitud RECHAZADA', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ lat: '39.4254', lon: '-0.4178', display_name: 'Calle Mayor 12' }],
+    }))
     setUser(['CIUDADANO', 'PUESTO_EMERGENCIA'])
     mockApiGet.mockResolvedValue({
       data: {
@@ -228,8 +236,8 @@ describe('RegisterPuesto — solicitud RECHAZADA', () => {
     fireEvent.change(screen.getByPlaceholderText(/CEIP La Paz/), { target: { value: 'CEIP La Paz' } })
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'colegio' } })
     fireEvent.change(screen.getByPlaceholderText(/Calle Mayor/), { target: { value: 'Calle Mayor 12' } })
-    fireEvent.change(screen.getByPlaceholderText('39.4254'), { target: { value: '39.4254' } })
-    fireEvent.change(screen.getByPlaceholderText('-0.4178'), { target: { value: '-0.4178' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar dirección' }))
+    await screen.findByText('Ubicación seleccionada correctamente')
     fireEvent.click(screen.getByRole('button', { name: /^Enviar solicitud$/i }))
 
     await waitFor(() => {

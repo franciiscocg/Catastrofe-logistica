@@ -5,6 +5,7 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
+import Map from '@/components/shared/Map'
 
 interface SolicitudPuesto {
   id: string
@@ -57,10 +58,10 @@ function validate(f: PuestoForm): Record<string, string> {
   const lat = Number.parseFloat(f.latitud)
   const lng = Number.parseFloat(f.longitud)
   if (!f.latitud || Number.isNaN(lat) || lat < -90 || lat > 90) {
-    errors.latitud = 'Latitud inválida (entre -90 y 90)'
+    errors.ubicacion = 'Busca la dirección o selecciona el punto en el mapa'
   }
   if (!f.longitud || Number.isNaN(lng) || lng < -180 || lng > 180) {
-    errors.longitud = 'Longitud inválida (entre -180 y 180)'
+    errors.ubicacion = 'Busca la dirección o selecciona el punto en el mapa'
   }
 
   return errors
@@ -164,6 +165,14 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
   const [loading, setLoading] = useState(false)
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
   const [locationRequested, setLocationRequested] = useState(false)
+  const [locationMode, setLocationMode] = useState<'address' | 'map'>('address')
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const [mapCenter, setMapCenter] = useState<[number, number]>([39.425, -0.4])
+
+  const selectedPosition: [number, number] | null = form.latitud && form.longitud
+    ? [Number.parseFloat(form.latitud), Number.parseFloat(form.longitud)]
+    : null
 
   useEffect(() => {
     if (!locationRequested || !position) return
@@ -172,6 +181,8 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       latitud: position.lat.toFixed(6),
       longitud: position.lng.toFixed(6),
     }))
+    setMapCenter([position.lat, position.lng])
+    setErrors((prev) => ({ ...prev, ubicacion: '' }))
     setLocationRequested(false)
   }, [locationRequested, position])
 
@@ -188,9 +199,83 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
         latitud: position.lat.toFixed(6),
         longitud: position.lng.toFixed(6),
       }))
+      setMapCenter([position.lat, position.lng])
+      setErrors((prev) => ({ ...prev, ubicacion: '' }))
     } else {
       setLocationRequested(true)
       requestGeo()
+    }
+  }
+
+  const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({
+      ...prev,
+      direccion: e.target.value,
+      ...(locationMode === 'address' ? { latitud: '', longitud: '' } : {}),
+    }))
+    setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    setLocationError('')
+  }
+
+  const searchAddress = async () => {
+    const query = form.direccion.trim()
+    if (!query) {
+      setErrors((prev) => ({ ...prev, direccion: 'Escribe una calle o dirección' }))
+      return
+    }
+
+    setLocationLoading(true)
+    setLocationError('')
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=es&q=${encodeURIComponent(query)}`,
+        { headers: { Accept: 'application/json', 'Accept-Language': 'es' } },
+      )
+      if (!response.ok) throw new Error('search-failed')
+      const results = await response.json() as Array<{ lat: string; lon: string; display_name: string }>
+      const result = results[0]
+      if (!result) {
+        setLocationError('No hemos encontrado esa dirección. Añade el municipio o el código postal.')
+        return
+      }
+      const lat = Number.parseFloat(result.lat)
+      const lng = Number.parseFloat(result.lon)
+      setForm((prev) => ({
+        ...prev,
+        direccion: result.display_name,
+        latitud: lat.toFixed(6),
+        longitud: lng.toFixed(6),
+      }))
+      setMapCenter([lat, lng])
+      setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    } catch {
+      setLocationError('No se ha podido buscar la dirección. Comprueba tu conexión e inténtalo de nuevo.')
+    } finally {
+      setLocationLoading(false)
+    }
+  }
+
+  const selectMapPoint = async ([lat, lng]: [number, number]) => {
+    setForm((prev) => ({ ...prev, latitud: lat.toFixed(6), longitud: lng.toFixed(6) }))
+    setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    setLocationLoading(true)
+    setLocationError('')
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`,
+        { headers: { Accept: 'application/json', 'Accept-Language': 'es' } },
+      )
+      if (!response.ok) throw new Error('reverse-failed')
+      const result = await response.json() as { display_name?: string }
+      if (result.display_name) {
+        setForm((prev) => ({ ...prev, direccion: result.display_name ?? prev.direccion }))
+      }
+    } catch {
+      if (!form.direccion.trim()) {
+        setLocationError('Punto seleccionado. Escribe también la calle para identificar el puesto.')
+      }
+    } finally {
+      setLocationLoading(false)
     }
   }
 
@@ -248,11 +333,6 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div>
-        <Label required>Dirección completa</Label>
-        <Input value={form.direccion} onChange={set('direccion')} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta, Valencia" />
-      </div>
-
-      <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Descripción <span className="text-gray-400 font-normal">(opcional)</span>
         </label>
@@ -269,27 +349,62 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
         <p className="text-sm font-medium text-gray-700 mb-3">
           Ubicación del puesto <span className="text-red-500">*</span>
         </p>
-        <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation} className="mb-3">
-          {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
-        </Button>
+        <div className="grid grid-cols-2 gap-2 mb-3" role="group" aria-label="Cómo indicar la ubicación">
+          <button
+            type="button"
+            onClick={() => setLocationMode('address')}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${locationMode === 'address' ? 'border-amber-500 bg-amber-50 text-amber-800' : 'border-gray-300 text-gray-600'}`}
+          >
+            Escribir una calle
+          </button>
+          <button
+            type="button"
+            onClick={() => setLocationMode('map')}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${locationMode === 'map' ? 'border-amber-500 bg-amber-50 text-amber-800' : 'border-gray-300 text-gray-600'}`}
+          >
+            Elegir en el mapa
+          </button>
+        </div>
 
-        {form.latitud && form.longitud && (
-          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 mb-3">
-            Ubicación capturada: {Number.parseFloat(form.latitud).toFixed(4)}, {Number.parseFloat(form.longitud).toFixed(4)}
+        {locationMode === 'address' ? (
+          <div className="space-y-2">
+            <Label required>Calle o dirección</Label>
+            <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta" />
+            <Button type="button" variant="secondary" fullWidth loading={locationLoading} onClick={searchAddress}>
+              Buscar dirección
+            </Button>
+            {selectedPosition && (
+              <Map key={`${mapCenter[0]}-${mapCenter[1]}`} center={mapCenter} zoom={17} reportPoint={selectedPosition} className="h-48 rounded-xl overflow-hidden border border-gray-200" />
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">Pulsa sobre el mapa para marcar la entrada del puesto.</p>
+            <Map
+              key={`${mapCenter[0]}-${mapCenter[1]}`}
+              center={mapCenter}
+              zoom={15}
+              reportPoint={selectedPosition}
+              selectingReportPoint
+              onReportPointSelect={selectMapPoint}
+              className="h-64 rounded-xl overflow-hidden border border-gray-200"
+            />
+            <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation}>
+              {geoLoading ? 'Obteniendo ubicación...' : 'Centrar en mi ubicación actual'}
+            </Button>
+            <Label required>Dirección seleccionada</Label>
+            <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Se completará al elegir un punto" />
           </div>
         )}
 
-        <p className="text-xs text-gray-400 text-center mb-2">o introduce las coordenadas manualmente</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label required>Latitud</Label>
-            <Input type="number" step="0.000001" value={form.latitud} onChange={set('latitud')} error={errors.latitud} placeholder="39.4254" />
+        {locationLoading && locationMode === 'map' && <p className="text-xs text-gray-500">Buscando la dirección del punto...</p>}
+        {locationError && <p className="text-xs text-red-600">{locationError}</p>}
+        <FieldError msg={errors.ubicacion} />
+        {selectedPosition && !errors.ubicacion && (
+          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 mt-3">
+            Ubicación seleccionada correctamente
           </div>
-          <div>
-            <Label required>Longitud</Label>
-            <Input type="number" step="0.000001" value={form.longitud} onChange={set('longitud')} error={errors.longitud} placeholder="-0.4178" />
-          </div>
-        </div>
+        )}
       </div>
 
       {submitError && (
