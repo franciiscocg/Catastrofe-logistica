@@ -164,11 +164,12 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
   const [submitError, setSubmitError] = useState('')
   const [loading, setLoading] = useState(false)
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
-  const [locationRequested, setLocationRequested] = useState(false)
-  const [locationMode, setLocationMode] = useState<'address' | 'map'>('address')
+  const [selectCurrentWhenReady, setSelectCurrentWhenReady] = useState(false)
   const [locationLoading, setLocationLoading] = useState(false)
   const [locationError, setLocationError] = useState('')
   const [mapCenter, setMapCenter] = useState<[number, number]>([39.425, -0.4])
+  const currentLat = position?.lat
+  const currentLng = position?.lng
 
   const selectedPosition: [number, number] | null = form.latitud && form.longitud
     ? [Number.parseFloat(form.latitud), Number.parseFloat(form.longitud)]
@@ -203,10 +204,19 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
   }, [])
 
   useEffect(() => {
-    if (!locationRequested || !position) return
-    setLocationRequested(false)
-    void applySelectedLocation([position.lat, position.lng], true)
-  }, [applySelectedLocation, locationRequested, position])
+    if (currentLat === undefined || currentLng === undefined) {
+      requestGeo()
+      return
+    }
+    if (selectCurrentWhenReady) {
+      setSelectCurrentWhenReady(false)
+      void applySelectedLocation([currentLat, currentLng], true)
+      return
+    }
+    setMapCenter((current) => current[0] === currentLat && current[1] === currentLng
+      ? current
+      : [currentLat, currentLng])
+  }, [applySelectedLocation, currentLat, currentLng, requestGeo, selectCurrentWhenReady])
 
   const set = (field: keyof PuestoForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -218,7 +228,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
     if (position) {
       void applySelectedLocation([position.lat, position.lng], true)
     } else {
-      setLocationRequested(true)
+      setSelectCurrentWhenReady(true)
       requestGeo()
     }
   }
@@ -227,7 +237,8 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
     setForm((prev) => ({
       ...prev,
       direccion: e.target.value,
-      ...(locationMode === 'address' ? { latitud: '', longitud: '' } : {}),
+      latitud: '',
+      longitud: '',
     }))
     setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
     setLocationError('')
@@ -343,55 +354,37 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
         <p className="text-sm font-medium text-gray-700 mb-3">
           Ubicación del puesto <span className="text-red-500">*</span>
         </p>
-        <div className="grid grid-cols-2 gap-2 mb-3" role="group" aria-label="Cómo indicar la ubicación">
-          <button
-            type="button"
-            onClick={() => setLocationMode('address')}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium ${locationMode === 'address' ? 'border-amber-500 bg-amber-50 text-amber-800' : 'border-gray-300 text-gray-600'}`}
-          >
-            Escribir una calle
-          </button>
-          <button
-            type="button"
-            onClick={() => setLocationMode('map')}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium ${locationMode === 'map' ? 'border-amber-500 bg-amber-50 text-amber-800' : 'border-gray-300 text-gray-600'}`}
-          >
-            Elegir en el mapa
-          </button>
+        <div className="space-y-3">
+          <div>
+            <Label required>Calle o dirección</Label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta" />
+              </div>
+              <Button type="button" variant="secondary" loading={locationLoading} onClick={searchAddress}>
+                Buscar dirección
+              </Button>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500">También puedes pulsar sobre el mapa para marcar la entrada del puesto.</p>
+          <Map
+            key={`${mapCenter[0]}-${mapCenter[1]}`}
+            center={mapCenter}
+            zoom={16}
+            userPosition={position ? [position.lat, position.lng] : null}
+            reportPoint={selectedPosition}
+            reportPointKind="emergency-post"
+            selectingReportPoint
+            onReportPointSelect={selectMapPoint}
+            className="h-64 rounded-xl overflow-hidden border border-gray-200"
+          />
+          <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation}>
+            {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
+          </Button>
         </div>
 
-        {locationMode === 'address' ? (
-          <div className="space-y-2">
-            <Label required>Calle o dirección</Label>
-            <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta" />
-            <Button type="button" variant="secondary" fullWidth loading={locationLoading} onClick={searchAddress}>
-              Buscar dirección
-            </Button>
-            {selectedPosition && (
-              <Map key={`${mapCenter[0]}-${mapCenter[1]}`} center={mapCenter} zoom={17} reportPoint={selectedPosition} className="h-48 rounded-xl overflow-hidden border border-gray-200" />
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-xs text-gray-500">Pulsa sobre el mapa para marcar la entrada del puesto.</p>
-            <Map
-              key={`${mapCenter[0]}-${mapCenter[1]}`}
-              center={mapCenter}
-              zoom={15}
-              reportPoint={selectedPosition}
-              selectingReportPoint
-              onReportPointSelect={selectMapPoint}
-              className="h-64 rounded-xl overflow-hidden border border-gray-200"
-            />
-            <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation}>
-              {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
-            </Button>
-            <Label required>Dirección seleccionada</Label>
-            <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Se completará al elegir un punto" />
-          </div>
-        )}
-
-        {locationLoading && locationMode === 'map' && <p className="text-xs text-gray-500">Buscando la dirección del punto...</p>}
+        {locationLoading && <p className="text-xs text-gray-500">Completando la ubicación...</p>}
         {locationError && <p className="text-xs text-red-600">{locationError}</p>}
         <FieldError msg={errors.ubicacion} />
         {selectedPosition && !errors.ubicacion && (

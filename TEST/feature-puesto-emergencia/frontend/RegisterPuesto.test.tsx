@@ -130,11 +130,10 @@ describe('RegisterPuesto', () => {
     await screen.findByText('Registrar puesto de emergencia')
     fireEvent.change(screen.getByPlaceholderText(/CEIP La Paz/), { target: { value: 'CEIP La Paz' } })
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'colegio' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Elegir en el mapa' }))
     fireEvent.click(screen.getByRole('button', { name: 'Usar mi ubicación actual' }))
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('Se completará al elegir un punto')).toHaveValue('Calle de la Paz 4, Paiporta, Valencia')
+      expect(screen.getByPlaceholderText(/Calle Mayor 12/)).toHaveValue('Calle de la Paz 4, Paiporta, Valencia')
     })
     fireEvent.click(screen.getByText('Enviar solicitud'))
 
