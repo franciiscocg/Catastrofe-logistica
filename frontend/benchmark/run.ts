@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -154,7 +154,6 @@ if (ejecutadoDirectamente) {
   const outDir = resolve(dirname(fileURLToPath(import.meta.url)), 'resultados')
   runBenchmark().then(({ results, agg }) => {
     writeArtifacts(outDir, results, agg, DEFAULT_CONFIG)
-    // eslint-disable-next-line no-console
     console.log(`Benchmark completado: ${results.length} ejecuciones. Resultados en ${outDir}`)
   })
 }
