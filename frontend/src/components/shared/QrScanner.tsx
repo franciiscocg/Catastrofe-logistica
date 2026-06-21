@@ -129,8 +129,13 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
         })
 
         try {
+          // html5-qrcode 2.3.8 exige que el PRIMER argumento sea un objeto de UNA
+          // sola clave (facingMode/deviceId con `exact`). Nuestros targets llevan
+          // ademas width/height/frameRate, asi que los pasamos por `videoConstraints`
+          // (segundo argumento), que admite un MediaTrackConstraints completo y tiene
+          // prioridad: cuando es valido, el primer argumento ni se valida ni se usa.
           await scanner.start(
-            target,
+            { facingMode: 'environment' },
             {
               fps: 15,
               qrbox: (viewfinderWidth, viewfinderHeight) => {
@@ -140,6 +145,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
               },
               aspectRatio: 1,
               disableFlip: false,
+              videoConstraints: target,
             },
             (decoded) => {
               if (completedRef.current) return
