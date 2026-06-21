@@ -84,12 +84,6 @@ export default function Register() {
         dni: form.dni.trim().toUpperCase(),
       })
 
-      if (data.requiresEmailVerification || !data.accessToken) {
-        const delivery = data.verificationEmailSent === false ? '&emailSent=false' : ''
-        navigate(`/auth/registro-exitoso?verification=pending${delivery}${roleParam ? `&role=${roleParam}` : ''}`)
-        return
-      }
-
       login(data.user, data.accessToken, undefined, data.accessTokenExpiresAt)
       navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
     } catch (err) {

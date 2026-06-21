@@ -13,14 +13,10 @@ const { prismaMock } = vi.hoisted(() => {
     solicitudPuesto: {
       create: vi.fn(),
     },
-    accountVerificationToken: {
-      create: vi.fn(),
-    },
     $transaction: vi.fn((cb) =>
       cb({
         usuario: prismaMock.usuario,
         voluntario: prismaMock.voluntario,
-        accountVerificationToken: prismaMock.accountVerificationToken,
       }),
     ),
   }
@@ -71,7 +67,6 @@ describe('registerUser - registro unificado', () => {
     })
 
     expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
-    expect(result.verificationToken).toEqual(expect.any(String))
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         email: 'maria@example.com',
@@ -79,17 +74,11 @@ describe('registerUser - registro unificado', () => {
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
+        emailVerified: true,
       }),
     }))
     expect(mp.voluntario.create).toHaveBeenCalledWith({
       data: { usuarioId: 'user-1' },
-    })
-    expect(mp.accountVerificationToken.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        usuarioId: 'user-1',
-        tokenHash: expect.any(String),
-        expiresAt: expect.any(Date),
-      }),
     })
   })
 

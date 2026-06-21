@@ -65,7 +65,6 @@ enum EstadoSolicitudParticipacionPuesto {
 model Usuario {
   id        String       @id @default(cuid())
   email     String       @unique
-  firebaseUid String?    @unique
   password  String
   nombre    String
   apellidos String
@@ -89,8 +88,6 @@ model Usuario {
   solicitudesParticipacionPuesto SolicitudParticipacionPuesto[] @relation("SolicitanteParticipacionPuesto")
   solicitudesParticipacionPuestoRevisadas SolicitudParticipacionPuesto[] @relation("ResponsableParticipacionPuesto")
   refreshTokens      RefreshToken[]
-  verificationTokens AccountVerificationToken[]
-  passwordResetTokens PasswordResetToken[]
 
   @@map("usuarios")
 }
@@ -129,36 +126,6 @@ model RefreshToken {
   @@index([usuarioId, revokedAt])
   @@index([expiresAt])
   @@map("refresh_tokens")
-}
-
-model AccountVerificationToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
-  usuarioId String
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-
-  @@index([usuarioId, usedAt])
-  @@index([expiresAt])
-  @@map("account_verification_tokens")
-}
-
-model PasswordResetToken {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
-  usuarioId String
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-
-  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-
-  @@index([usuarioId, usedAt])
-  @@index([expiresAt])
-  @@map("password_reset_tokens")
 }
 
 model ComentarioIncidenciaVia {

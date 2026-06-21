@@ -4,25 +4,24 @@ const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     usuario: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
     voluntario: {
       create: vi.fn(),
       upsert: vi.fn(),
     },
-    accountVerificationToken: {
-      create: vi.fn(),
+    refreshToken: {
+      updateMany: vi.fn(),
     },
-    $transaction: vi.fn((cb) =>
-      cb({
+    $transaction: vi.fn((operation) =>
+      Array.isArray(operation) ? Promise.all(operation) : operation({
         usuario: {
           create: prismaMock.usuario.create,
         },
         voluntario: {
           create: prismaMock.voluntario.create,
-        },
-        accountVerificationToken: {
-          create: prismaMock.accountVerificationToken.create,
         },
       }),
     ),
@@ -47,7 +46,7 @@ vi.mock('../../../backend/src/lib/prisma.js', () => ({
 }))
 
 import { prisma } from '../../../backend/src/lib/prisma.js'
-import { loginUser, registerUser } from '../../../backend/src/modules/auth/auth.service.js'
+import { loginUser, registerUser, requestPasswordReset } from '../../../backend/src/modules/auth/auth.service.js'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mp = prisma as any
@@ -109,25 +108,64 @@ describe('auth.service', () => {
     })
 
     expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
-    expect(result.verificationToken).toEqual(expect.any(String))
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         password: expect.any(String),
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
+        emailVerified: true,
       }),
     }))
     expect(mp.voluntario.create).toHaveBeenCalledWith({
       data: { usuarioId: 'user-1' },
     })
-    expect(mp.accountVerificationToken.create).toHaveBeenCalledWith({
+  })
+
+  it('cambia la contraseña cuando coinciden correo y DNI y revoca las sesiones', async () => {
+    mp.usuario.findFirst.mockResolvedValue({ id: 'user-1' })
+    mp.usuario.update.mockResolvedValue({ id: 'user-1' })
+    mp.refreshToken.updateMany.mockResolvedValue({ count: 2 })
+
+    await expect(requestPasswordReset({
+      email: ' MARIA@EXAMPLE.COM ',
+      dni: '12345678a',
+      password: 'NuevaPassword123',
+    })).resolves.toEqual({ ok: true })
+
+    expect(mp.usuario.findFirst).toHaveBeenCalledWith({
+      where: {
+        email: 'maria@example.com',
+        dni: '12345678A',
+        activo: true,
+      },
+    })
+    expect(mp.usuario.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
       data: expect.objectContaining({
-        usuarioId: 'user-1',
-        tokenHash: expect.any(String),
-        expiresAt: expect.any(Date),
+        password: expect.any(String),
+        emailVerified: true,
       }),
     })
+    expect(mp.usuario.update.mock.calls[0][0].data.password).not.toBe('NuevaPassword123')
+    expect(mp.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { usuarioId: 'user-1', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    })
+  })
+
+  it('rechaza la recuperación cuando correo y DNI no coinciden', async () => {
+    mp.usuario.findFirst.mockResolvedValue(null)
+
+    await expect(requestPasswordReset({
+      email: 'maria@example.com',
+      dni: '00000000A',
+      password: 'NuevaPassword123',
+    })).rejects.toMatchObject({
+      message: 'El correo y el DNI/NIE no coinciden con ninguna cuenta activa',
+      statusCode: 400,
+    })
+    expect(mp.usuario.update).not.toHaveBeenCalled()
   })
 
   it('ignora datos legacy de puesto durante el registro unificado', async () => {

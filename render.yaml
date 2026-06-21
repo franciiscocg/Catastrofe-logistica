@@ -14,26 +14,12 @@ services:
         value: 0.0.0.0
       - key: COOKIE_SAME_SITE
         value: none
-      - key: EMAIL_VERIFICATION_REQUIRED
-        value: "true"
-      - key: AUTH_PROVIDER
-        value: firebase
-      - key: FIREBASE_API_KEY
-        value: AIzaSyBs9VE4jRaf017I179kazTIn7d5Q5u63rA
-      - key: FIREBASE_PROJECT_ID
-        value: catastrofe-logistica-tfm-8317
-      - key: EMAIL_PROVIDER
-        value: resend
       - key: JWT_EXPIRES_IN
         value: 15m
       - key: JWT_EXPIRES_SECONDS
         value: "900"
       - key: REFRESH_TOKEN_TTL_DAYS
         value: "14"
-      - key: RESET_TOKEN_TTL_MINUTES
-        value: "30"
-      - key: VERIFY_TOKEN_TTL_HOURS
-        value: "24"
       - key: DATABASE_URL
         fromDatabase:
           name: catastrofe-logistica-db
@@ -47,10 +33,6 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: APP_PUBLIC_URL
-        sync: false
-      - key: MAIL_FROM
-        sync: false
-      - key: RESEND_API_KEY
         sync: false
 
   - type: web
@@ -66,8 +48,6 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
-      - key: VITE_AUTH_PROVIDER
-        value: firebase
 
 databases:
   - name: catastrofe-logistica-db

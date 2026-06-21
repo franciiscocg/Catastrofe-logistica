@@ -21,42 +21,15 @@ backend.
 
 ## 2. Variables del backend en Render
 
-### Opción gratuita recomendada: Firebase Authentication
-
-Para que Firebase envíe los correos de verificación y recuperación sin dominio
-propio, configura en el backend:
-
-```text
-AUTH_PROVIDER=firebase
-FIREBASE_API_KEY=clave-web-del-proyecto
-FIREBASE_PROJECT_ID=id-del-proyecto
-FRONTEND_URL=https://catastrofe-logistica-frontend.onrender.com
-APP_PUBLIC_URL=https://catastrofe-logistica-frontend.onrender.com
-```
-
-En Firebase Authentication activa el proveedor **Email/Password** y añade el
-dominio del frontend a **Authorized domains**. En el frontend configura
-`VITE_AUTH_PROVIDER=firebase`.
-
-Mientras `AUTH_PROVIDER=firebase`, las variables de Resend no se utilizan. Las
-cuentas existentes se migran automáticamente a Firebase cuando inician sesión
-o solicitan una recuperación; PostgreSQL continúa almacenando perfiles y roles.
-
 En `catastrofe-logistica-backend`, configura:
 
 ```text
 FRONTEND_URL=https://catastrofe-logistica-frontend.onrender.com
 APP_PUBLIC_URL=https://catastrofe-logistica-frontend.onrender.com
-EMAIL_VERIFICATION_REQUIRED=true
-EMAIL_PROVIDER=resend
 COOKIE_SAME_SITE=none
-MAIL_FROM="Catastrofe Logistica <no-reply@tu-dominio-verificado.com>"
-RESEND_API_KEY=re_tu_api_key
 ```
 
 `JWT_SECRET`, `DATABASE_URL` y `DIRECT_URL` se generan desde el Blueprint.
-`RESEND_API_KEY` debe guardarse como secreto en Render. `MAIL_FROM` tiene que usar
-un dominio verificado en Resend. No es necesario crear un buzon `no-reply` real.
 
 ## 3. Variables del frontend en Render
 
@@ -97,28 +70,13 @@ FATAL: (ENOTFOUND) tenant/user ... not found
 Cuando esta bien conectado a Render Postgres, el host del datasource ya no debe
 ser `*.supabase.com`.
 
-## 5. Confirmacion y recuperacion por email con Resend
+## 5. Registro y recuperación de contraseña
 
-1. Crea una cuenta en Resend y verifica un dominio desde `Domains`.
-2. Copia en el DNS los registros SPF y DKIM que muestre Resend.
-3. Crea una API key con permiso de envio.
-4. Configura en Render `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` y `MAIL_FROM`.
-5. Mantén `APP_PUBLIC_URL` apuntando al frontend desplegado y vuelve a desplegar el backend.
-
-El backend usa la API HTTPS de Resend. La API key nunca se expone al frontend.
-Los enlaces de verificacion caducan segun `VERIFY_TOKEN_TTL_HOURS` y los de recuperacion
-segun `RESET_TOKEN_TTL_MINUTES`.
-
-Para usar otro proveedor SMTP en desarrollo o en otro despliegue, deja
-`EMAIL_PROVIDER` vacio y configura:
-
-```text
-SMTP_HOST=smtp.tu-proveedor.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=tu_usuario
-SMTP_PASS=tu_password
-```
+El registro no requiere confirmar la dirección de correo y la aplicación no envía
+mensajes electrónicos. La recuperación se realiza directamente en la aplicación
+comprobando la combinación de correo y DNI/NIE, con un máximo de cinco intentos
+cada quince minutos por dirección IP. Al cambiar la contraseña se cierran todas
+las sesiones anteriores del usuario.
 
 ## Notas
 
@@ -126,4 +84,3 @@ SMTP_PASS=tu_password
 - Render Postgres Free tiene 1 GB, solo permite una base gratuita activa por workspace
   y caduca a los 30 dias. Render da un periodo de gracia de 14 dias para actualizarla
   antes de borrar los datos.
-- Con `EMAIL_VERIFICATION_REQUIRED=true`, un usuario nuevo no puede iniciar sesion hasta confirmar el enlace recibido.

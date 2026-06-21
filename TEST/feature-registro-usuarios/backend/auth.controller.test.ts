@@ -13,15 +13,7 @@ vi.mock('../../../backend/src/modules/auth/auth.service.js', () => ({
   rotateRefreshToken: mocks.rotateRefreshToken,
   revokeRefreshToken: mocks.revokeRefreshToken,
   registerUser: vi.fn(),
-  requestAccountVerification: vi.fn(),
   requestPasswordReset: vi.fn(),
-  resetPassword: vi.fn(),
-  verifyAccount: vi.fn(),
-}))
-
-vi.mock('../../../backend/src/lib/email.js', () => ({
-  sendAccountVerificationEmail: vi.fn(),
-  sendPasswordResetEmail: vi.fn(),
 }))
 
 import { login, logout, refresh } from '../../../backend/src/modules/auth/auth.controller.js'

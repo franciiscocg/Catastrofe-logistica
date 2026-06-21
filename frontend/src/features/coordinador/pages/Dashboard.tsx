@@ -520,13 +520,10 @@ export default function CoordinadorDashboard() {
     incidencias.filter((incidencia) => incidencia.estado === 'CORTADA')
   ), [incidencias])
 
-  const usuariosSinVerificar = useMemo(() => (
-    usuarios.filter((usuario) => usuario.activo && !usuario.emailVerified)
-  ), [usuarios])
 
   const loadingInicial = isLoadingPuestos || isLoadingSolicitudesPuesto || isLoadingIncidencias || isLoadingUsuarios
   const usuariosActivos = usuarios.filter((usuario) => usuario.activo).length
-  const trabajoPendiente = puestosPendientes.length + puestosConNecesidades.length + usuariosSinVerificar.length
+  const trabajoPendiente = puestosPendientes.length + puestosConNecesidades.length
 
   const openEdit = (puesto: PuestoCoordinador) => {
     setActionError('')
@@ -691,7 +688,6 @@ export default function CoordinadorDashboard() {
                     <Metric label="Puestos activos" value={String(puestosActivos.length)} />
                     <Metric label="Vias cortadas" value={String(incidenciasCortadas.length)} />
                     <Metric label="Usuarios activos" value={String(usuariosActivos)} />
-                    <Metric label="Usuarios sin verificar" value={String(usuariosSinVerificar.length)} />
                   </div>
                 </Panel>
               </div>

@@ -14,26 +14,12 @@ export const registerSchema = z.object({
   telefono: z.string().optional(),
 })
 
-export const verifyAccountSchema = z.object({
-  token: z.string().min(20),
-})
-
-export const resendVerificationSchema = z.object({
-  identifier: z.string().min(1, 'Introduce tu email o DNI'),
-  password: z.string().min(8, 'Mínimo 8 caracteres').optional(),
-})
-
 export const requestPasswordResetSchema = z.object({
-  identifier: z.string().min(1, 'Introduce tu email o DNI'),
-})
-
-export const resetPasswordSchema = z.object({
-  token: z.string().min(20),
+  email: z.string().email('Introduce un correo electrónico válido'),
+  dni: z.string().min(1, 'Introduce tu DNI/NIE'),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
 })
 
 export type LoginInput = z.infer<typeof loginSchema>
 export type RegisterInput = z.infer<typeof registerSchema>
-export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>
 export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>
-export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
