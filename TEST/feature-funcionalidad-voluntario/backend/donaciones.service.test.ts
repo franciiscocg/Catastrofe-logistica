@@ -132,7 +132,7 @@ describe('createDonacion', () => {
     mp.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(mp))
   })
 
-  it('crea la donacion cuando hay necesidad pendiente suficiente', async () => {
+  it('crea la donación cuando hay necesidad pendiente suficiente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.inventario.findFirst.mockResolvedValue({ cantidad: 10, producto: productoBase, puesto: puestoBase })
     mp.donacion.aggregate.mockResolvedValue({ _sum: { cantidad: 0 } })
@@ -188,14 +188,14 @@ describe('createDonacion', () => {
     await expect(createDonacion(USUARIO_ID, input)).rejects.toMatchObject({ statusCode: 404 })
   })
 
-  it('lanza 400 si la necesidad ya esta cubierta por otras donaciones en camino', async () => {
+  it('lanza 400 si la necesidad ya está cubierta por otras donaciones en camino', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.inventario.findFirst.mockResolvedValue({ cantidad: 10, producto: productoBase, puesto: puestoBase })
     mp.donacion.aggregate.mockResolvedValue({ _sum: { cantidad: 10 } })
 
     await expect(createDonacion(USUARIO_ID, input)).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Esta necesidad ya esta cubierta por otras donaciones en camino',
+      message: 'Esta necesidad ya está cubierta por otras donaciones en camino',
     })
   })
 
@@ -274,7 +274,7 @@ describe('updateDonacionEstado', () => {
     mp.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(mp))
   })
 
-  it('actualiza el estado de la donacion propia exitosamente', async () => {
+  it('actualiza el estado de la donación propia exitosamente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({ id: DONACION_ID, estado: 'PENDIENTE', puestoId: PUESTO_ID })
     mp.donacion.update.mockResolvedValue({ id: DONACION_ID, estado: 'EN_CAMINO', producto: productoBase, puesto: puestoBase })
@@ -287,7 +287,7 @@ describe('updateDonacionEstado', () => {
     )
   })
 
-  it('lanza 404 si la donacion no pertenece al voluntario', async () => {
+  it('lanza 404 si la donación no pertenece al voluntario', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
 
@@ -303,7 +303,7 @@ describe('updateDonacionEstado', () => {
 describe('generarCodigoEntrega', () => {
   beforeEach(() => vi.resetAllMocks())
 
-  it('genera un codigo QR de entrega cuando la donacion esta EN_CAMINO', async () => {
+  it('genera un código QR de entrega cuando la donación está EN_CAMINO', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID, estado: 'EN_CAMINO', entregaCodigo: null,
@@ -320,7 +320,7 @@ describe('generarCodigoEntrega', () => {
     expect(mp.donacion.update).toHaveBeenCalledOnce()
   })
 
-  it('retorna la donacion sin cambios si el codigo ya fue generado (idempotente)', async () => {
+  it('retorna la donación sin cambios si el código ya fue generado (idempotente)', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID, estado: 'EN_CAMINO', entregaCodigo: 'DEL-ya-existe',
@@ -333,7 +333,7 @@ describe('generarCodigoEntrega', () => {
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si la donacion ya fue entregada o cancelada', async () => {
+  it('lanza 400 si la donación ya fue entregada o cancelada', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID, estado: 'ENTREGADA', entregaCodigo: null,
@@ -342,11 +342,11 @@ describe('generarCodigoEntrega', () => {
 
     await expect(generarCodigoEntrega(USUARIO_ID, DONACION_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Solo puedes generar el codigo cuando la donacion esta pendiente o en camino',
+      message: 'Solo puedes generar el código cuando la donación está pendiente o en camino',
     })
   })
 
-  it('lanza 404 si la donacion no existe o no es del voluntario', async () => {
+  it('lanza 404 si la donación no existe o no es del voluntario', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
 

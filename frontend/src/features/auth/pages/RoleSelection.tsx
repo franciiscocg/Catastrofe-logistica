@@ -15,7 +15,7 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
   {
     role: Role.CIUDADANO,
     title: 'Ciudadano',
-    subtitle: 'Busco ayuda o informacion',
+    subtitle: 'Busco ayuda o información',
     icon: 'C',
     color: 'blue',
     requiresAuth: true,
@@ -23,14 +23,14 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
       title: 'Ciudadano',
       icon: 'C',
       color: 'blue',
-      what: 'Eres una persona afectada por la emergencia que necesita ayuda, informacion o quiere reportar el estado de las calles de su zona.',
+      what: 'Eres una persona afectada por la emergencia que necesita ayuda, información o quiere reportar el estado de las calles de su zona.',
       canDo: [
-        'Ver los puestos de ayuda mas cercanos a ti',
-        'Consultar que productos hay disponibles en cada puesto',
-        'Reportar si una calle esta cortada o accesible',
+        'Ver los puestos de ayuda más cercanos a ti',
+        'Consultar qué productos hay disponibles en cada puesto',
+        'Reportar si una calle está cortada o accesible',
         'Calcular rutas seguras para desplazarte',
       ],
-      whenToUse: 'Usalo si eres vecino de la zona afectada y necesitas encontrar ayuda o informarte sobre la situacion.',
+      whenToUse: 'Úsalo si eres vecino de la zona afectada y necesitas encontrar ayuda o informarte sobre la situación.',
     },
   },
   {
@@ -44,20 +44,20 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
       title: 'Voluntario',
       icon: 'V',
       color: 'green',
-      what: 'Eres una persona que quiere colaborar en la respuesta a la emergencia, transportando donaciones o apoyando con trabajo fisico en la zona.',
+      what: 'Eres una persona que quiere colaborar en la respuesta a la emergencia, transportando donaciones o apoyando con trabajo físico en la zona.',
       canDo: [
-        'Transportar donaciones al puesto que mas las necesita',
-        'Recibir instrucciones optimizadas sobre a donde ir',
-        'Verificar entregas con codigo QR',
-        'Apuntarte a tareas de limpieza y apoyo fisico',
+        'Transportar donaciones al puesto que más las necesita',
+        'Recibir instrucciones optimizadas sobre adónde ir',
+        'Verificar entregas con código QR',
+        'Apuntarte a tareas de limpieza y apoyo físico',
       ],
-      whenToUse: 'Usalo si tienes tiempo libre y ganas de ayudar, con o sin vehiculo.',
+      whenToUse: 'Úsalo si tienes tiempo libre y ganas de ayudar, con o sin vehículo.',
     },
   },
   {
     role: Role.PUESTO,
     title: 'Puesto de Emergencia',
-    subtitle: 'Gestiono un punto de distribucion',
+    subtitle: 'Gestiono un punto de distribución',
     icon: 'P',
     color: 'amber',
     requiresAuth: true,
@@ -65,11 +65,11 @@ const ROLES_BASE: Omit<RoleConfig, 'badge'>[] = [
       title: 'Puesto de Emergencia',
       icon: 'P',
       color: 'amber',
-      what: 'Eres el responsable de un punto de distribucion de ayuda: una tienda, un local o cualquier lugar donde se repartan productos a los vecinos afectados.',
+      what: 'Eres el responsable de un punto de distribución de ayuda: una tienda, un local o cualquier lugar donde se repartan productos a los vecinos afectados.',
       canDo: [
         'Gestionar el inventario de productos disponibles',
-        'Publicar que productos necesitas con urgencia',
-        'Verificar la llegada de donaciones mediante codigo QR',
+        'Publicar qué productos necesitas con urgencia',
+        'Verificar la llegada de donaciones mediante código QR',
         'Coordinar a los voluntarios que trabajan en tu puesto',
       ],
       whenToUse: 'Requiere solicitud previa aprobada por el coordinador.',
@@ -95,7 +95,7 @@ const COORDINATOR_ROLE: Omit<RoleConfig, 'badge'> = {
       'Supervisar incidencias y recursos',
       'Revisar el estado general de la operativa',
     ],
-    whenToUse: 'Usalo si tienes permisos de coordinacion y necesitas administrar la respuesta de emergencia.',
+    whenToUse: 'Úsalo si tienes permisos de coordinación y necesitas administrar la respuesta de emergencia.',
   },
 }
 
@@ -186,7 +186,7 @@ export default function RoleSelection() {
                 onClick={() => void endSession()}
                 className="rounded-lg px-4 py-2 text-sm text-gray-400 transition-colors hover:text-red-600"
               >
-                Cerrar sesion
+                Cerrar sesión
               </button>
             </div>
           )}

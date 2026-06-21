@@ -252,7 +252,7 @@ describe('PuestoDashboard', () => {
     expect(screen.getByText('QR-ENTREGA-123')).toBeInTheDocument()
   })
 
-  it('muestra un error informado si backend rechaza la confirmacion QR', async () => {
+  it('muestra un error informado si backend rechaza la confirmación QR', async () => {
     mockApiPost.mockRejectedValueOnce({
       response: {
         data: {

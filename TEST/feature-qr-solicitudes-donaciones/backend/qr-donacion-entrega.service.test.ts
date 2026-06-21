@@ -90,7 +90,7 @@ function codigoDECompacto(overrides: Record<string, unknown> = {}) {
 
 // ── confirmarQrInventario — entrega de donacion (DE) ─────────────────────────
 
-describe('confirmarQrInventario — entrega de donacion (DE)', () => {
+describe('confirmarQrInventario — entrega de donación (DE)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mp.$transaction.mockImplementation(
@@ -99,7 +99,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     mp.donacion.updateMany.mockResolvedValue({ count: 1 })
   })
 
-  it('compensa necesidad disponible y marca la donacion como ENTREGADA', async () => {
+  it('compensa necesidad disponible y marca la donación como ENTREGADA', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue(donacionEnCamino())
     mp.inventario.findUnique
@@ -199,7 +199,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     expect(mp.inventario.create).not.toHaveBeenCalled()
   })
 
-  it('rechaza (409) si la donacion no existe, ya fue usada o no esta EN_CAMINO', async () => {
+  it('rechaza (409) si la donación no existe, ya fue usada o no está EN_CAMINO', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue(null)
 
@@ -208,7 +208,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     ).rejects.toMatchObject({
       statusCode: 409,
       message:
-        'Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.',
+        'Este QR de donación no se puede confirmar: no existe, ya fue usado o la donación no está en camino.',
     })
 
     expect(mp.donacion.update).not.toHaveBeenCalled()
@@ -241,7 +241,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     expect(mp.inventario.create).toHaveBeenCalledOnce()
   })
 
-  it('reconcilia la cantidad cuando el QR difiere y marca la donacion ENTREGADA', async () => {
+  it('reconcilia la cantidad cuando el QR difiere y marca la donación ENTREGADA', async () => {
     // La cantidad del QR/override ahora gana: la donacion se actualiza para
     // cuadrar con lo entregado en lugar de rechazarse. (El 400 por desajuste
     // queda solo para la unidad — cubierto por el test siguiente.)
@@ -267,7 +267,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     )
   })
 
-  it('rechaza (400) si la unidad del QR no coincide con la donacion registrada', async () => {
+  it('rechaza (400) si la unidad del QR no coincide con la donación registrada', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue(donacionEnCamino()) // donacion tiene unidad 'litros'
 
@@ -277,7 +277,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
       confirmarQrInventario(PUESTO_ID, { codigo: codigoUnidadErronea }, USER_ID),
     ).rejects.toMatchObject({
       statusCode: 400,
-      message: 'El contenido del QR no coincide con la donacion registrada',
+      message: 'El contenido del QR no coincide con la donación registrada',
     })
   })
 
@@ -289,7 +289,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
     ).rejects.toMatchObject({ statusCode: 400, message: 'Este QR pertenece a otro puesto' })
   })
 
-  it('rechaza un QR DE que no incluye codigo de entrega', async () => {
+  it('rechaza un QR DE que no incluye código de entrega', async () => {
     allowPuestoAccess()
 
     const codigoSinEntregaCodigo = JSON.stringify({
@@ -312,7 +312,7 @@ describe('confirmarQrInventario — entrega de donacion (DE)', () => {
 describe('generarCodigoEntrega', () => {
   beforeEach(() => vi.resetAllMocks())
 
-  it('genera un codigo DEL-xxx cuando la donacion esta EN_CAMINO y no tiene codigo previo', async () => {
+  it('genera un código DEL-xxx cuando la donación está EN_CAMINO y no tiene código previo', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID,
@@ -343,7 +343,7 @@ describe('generarCodigoEntrega', () => {
     )
   })
 
-  it('es idempotente: devuelve el codigo existente sin crear uno nuevo', async () => {
+  it('es idempotente: devuelve el código existente sin crear uno nuevo', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID,
@@ -359,7 +359,7 @@ describe('generarCodigoEntrega', () => {
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })
 
-  it('rechaza (400) si la donacion ya fue entregada o cancelada', async () => {
+  it('rechaza (400) si la donación ya fue entregada o cancelada', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID,
@@ -371,11 +371,11 @@ describe('generarCodigoEntrega', () => {
 
     await expect(generarCodigoEntrega(USER_ID, DONACION_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Solo puedes generar el codigo cuando la donacion esta pendiente o en camino',
+      message: 'Solo puedes generar el código cuando la donación está pendiente o en camino',
     })
   })
 
-  it('rechaza (404) si la donacion no pertenece al voluntario', async () => {
+  it('rechaza (404) si la donación no pertenece al voluntario', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue(null)
 

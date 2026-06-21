@@ -15,11 +15,9 @@ import { auditRouter } from './modules/audit/audit.router.js'
 import { errorHandler } from './middleware/error.middleware.js'
 import { registerIdempotency } from './middleware/idempotency.middleware.js'
 import { getJwtSecret } from './lib/security.js'
-import { assertEmailConfigured } from './lib/email.js'
+import { prisma } from './lib/prisma.js'
 
 export async function buildApp() {
-  assertEmailConfigured()
-
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
   })
@@ -70,8 +68,37 @@ export async function buildApp() {
   await app.register(donacionesRouter, { prefix: '/api/donaciones' })
   await app.register(auditRouter, { prefix: '/api/public/audit' })
 
-  // Healthcheck
-  app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+  // Liveness: confirma que el proceso responde, sin depender de servicios externos.
+  app.get('/health', async () => ({
+    status: 'ok',
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  }))
+
+  // Readiness: solo devuelve 200 cuando la base de datos está disponible.
+  app.get('/ready', async (_request, reply) => {
+    const startedAt = Date.now()
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      const pendingChainEvents = await prisma.pendingChainEvent.count({
+        where: { intentos: { lt: 5 } },
+      })
+      return reply.send({
+        status: 'ready',
+        database: 'ok',
+        pendingChainEvents,
+        responseTimeMs: Date.now() - startedAt,
+        timestamp: new Date().toISOString(),
+      })
+    } catch {
+      return reply.status(503).send({
+        status: 'not_ready',
+        database: 'unavailable',
+        responseTimeMs: Date.now() - startedAt,
+        timestamp: new Date().toISOString(),
+      })
+    }
+  })
 
   return app
 }

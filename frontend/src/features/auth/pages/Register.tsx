@@ -4,6 +4,7 @@ import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 import { getApiErrorMessage } from '@/utils/errors'
+import type { User } from '@/types/auth.types'
 
 interface StandardForm {
   nombre: string
@@ -14,6 +15,13 @@ interface StandardForm {
 }
 
 type FormErrors = Partial<Record<keyof StandardForm, string>>
+
+interface RegistrationResult {
+  user: User
+  accessToken: string
+  accessTokenExpiresAt?: string
+  recoveryCode: string
+}
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const dniNieRegex = /^([0-9]{8}[A-Za-z]|[XYZxyz][0-9]{7}[A-Za-z])$/
@@ -47,6 +55,7 @@ export default function Register() {
   const [fieldErrors, setFieldErrors] = useState<FormErrors>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [registration, setRegistration] = useState<RegistrationResult | null>(null)
 
   const updateField = (field: keyof StandardForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -84,18 +93,44 @@ export default function Register() {
         dni: form.dni.trim().toUpperCase(),
       })
 
-      if (data.requiresEmailVerification || !data.accessToken) {
-        navigate(`/auth/registro-exitoso?verification=pending${roleParam ? `&role=${roleParam}` : ''}`)
-        return
-      }
-
-      login(data.user, data.accessToken, undefined, data.accessTokenExpiresAt)
-      navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
+      setRegistration(data as RegistrationResult)
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se ha podido crear la cuenta.'))
     } finally {
       setLoading(false)
     }
+  }
+
+  const completeRegistration = () => {
+    if (!registration) return
+    login(registration.user, registration.accessToken, undefined, registration.accessTokenExpiresAt)
+    navigate(roleParam === 'puesto' ? '/auth/registro-puesto' : '/seleccionar-rol')
+  }
+
+  if (registration) {
+    return (
+      <div className="min-h-screen bg-gray-50 px-4 py-8 flex flex-col justify-center">
+        <div className="mx-auto w-full max-w-sm rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+          <h1 className="text-2xl font-bold text-gray-900">Guarda tu código de recuperación</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Lo necesitarás si olvidas la contraseña. Por seguridad solo se muestra una vez y no se envía por correo.
+          </p>
+          <code className="mt-4 block select-all break-all rounded-lg bg-slate-950 px-4 py-3 text-center text-base font-semibold text-white">
+            {registration.recoveryCode}
+          </code>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(registration.recoveryCode)}
+            className="mt-3 w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Copiar código
+          </button>
+          <Button type="button" fullWidth className="mt-3" onClick={completeRegistration}>
+            He guardado el código
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (

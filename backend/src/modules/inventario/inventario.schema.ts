@@ -17,7 +17,7 @@ export const updateCantidadSchema = z.object({
 )
 
 export const confirmarQrSchema = z.object({
-  codigo: z.string().trim().min(1, 'Pega o escanea el codigo del QR'),
+  codigo: z.string().trim().min(1, 'Pega o escanea el código del QR'),
   cantidadOverride: z.number().min(0.01).optional(),
 })
 

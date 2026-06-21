@@ -1,5 +1,9 @@
 import { prisma } from '../../lib/prisma.js'
-import { verifyChain } from '../../lib/chain.js'
+import { verifyChain as verifyFullChain, type VerificationResult } from '../../lib/chain.js'
+
+const VERIFY_CACHE_MS = 30_000
+let verificationCache: (VerificationResult & { latestSequence: number; verifiedAt: string }) | null = null
+let verificationInFlight: Promise<VerificationResult & { latestSequence: number; verifiedAt: string }> | null = null
 
 export async function getEventsByEntidad(entidad: string, entidadId: string) {
   return prisma.chainEvent.findMany({
@@ -72,4 +76,31 @@ export async function getChainStats() {
   return { total, withTSA, latestSequence: latest?.sequence ?? 0, latestHash: latest?.hashPropio ?? null }
 }
 
-export { verifyChain }
+export async function verifyChain() {
+  const latest = await prisma.chainEvent.findFirst({
+    orderBy: { sequence: 'desc' },
+    select: { sequence: true },
+  })
+  const latestSequence = latest?.sequence ?? 0
+
+  if (
+    verificationCache
+    && verificationCache.latestSequence === latestSequence
+    && Date.now() - Date.parse(verificationCache.verifiedAt) < VERIFY_CACHE_MS
+  ) {
+    return verificationCache
+  }
+
+  if (verificationInFlight) return verificationInFlight
+
+  verificationInFlight = verifyFullChain()
+    .then((result) => {
+      verificationCache = { ...result, latestSequence, verifiedAt: new Date().toISOString() }
+      return verificationCache
+    })
+    .finally(() => {
+      verificationInFlight = null
+    })
+
+  return verificationInFlight
+}

@@ -76,12 +76,12 @@ function parseQrOperativo(text: string): QrOperativo {
   try {
     data = JSON.parse(text)
   } catch {
-    throw appError('El QR no tiene un formato valido', 400)
+    throw appError('El QR no tiene un formato válido', 400)
   }
 
   if (data.t === 'SC' && data.p && Array.isArray(data.i)) {
     if (!data.r) {
-      throw appError('Este QR de solicitud es antiguo y no tiene codigo de un solo uso. Genera un QR nuevo.', 400)
+      throw appError('Este QR de solicitud es antiguo y no tiene código de un solo uso. Genera un QR nuevo.', 400)
     }
 
     const productos = data.i
@@ -93,7 +93,7 @@ function parseQrOperativo(text: string): QrOperativo {
         unidad: item.u!,
       }))
 
-    if (productos.length === 0) throw appError('El QR no incluye productos validos', 400)
+    if (productos.length === 0) throw appError('El QR no incluye productos válidos', 400)
 
     return {
       type: 'SOLICITUD_CIUDADANO',
@@ -106,7 +106,7 @@ function parseQrOperativo(text: string): QrOperativo {
   }
 
   if (data.t === 'DE' && data.p && data.pr && data.u && assertCantidadValida(data.q)) {
-    if (!data.e || !data.d) throw appError('El QR de donacion no incluye codigo de entrega', 400)
+    if (!data.e || !data.d) throw appError('El QR de donación no incluye código de entrega', 400)
 
     return {
       type: 'DONACION_ENTREGA',
@@ -124,12 +124,12 @@ function parseQrOperativo(text: string): QrOperativo {
 
   if (data.type === 'SOLICITUD_CIUDADANO' && data.puestoId && Array.isArray(data.productos)) {
     if (!data.requestId) {
-      throw appError('Este QR de solicitud es antiguo y no tiene codigo de un solo uso. Genera un QR nuevo.', 400)
+      throw appError('Este QR de solicitud es antiguo y no tiene código de un solo uso. Genera un QR nuevo.', 400)
     }
     const productos = data.productos.filter((item) =>
       item.nombre && item.unidad && assertCantidadValida(item.cantidad)
     )
-    if (productos.length === 0) throw appError('El QR no incluye productos validos', 400)
+    if (productos.length === 0) throw appError('El QR no incluye productos válidos', 400)
     return { ...data, productos } as QrOperativo
   }
 
@@ -445,7 +445,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     })
 
     if (!donacion) {
-      throw appError('Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.', 409)
+      throw appError('Este QR de donación no se puede confirmar: no existe, ya fue usado o la donación no está en camino.', 409)
     }
 
     const cantidadAConfirmar = input.cantidadOverride ?? qr.cantidad
@@ -459,7 +459,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
     }
 
     if (donacion.cantidad !== cantidadAConfirmar || donacion.unidad !== qr.unidad) {
-      throw appError('El contenido del QR no coincide con la donacion registrada', 400)
+      throw appError('El contenido del QR no coincide con la donación registrada', 400)
     }
 
     const claimed = await tx.donacion.updateMany({
@@ -471,7 +471,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
       data: { estado: 'ENTREGADA' },
     })
     if (claimed.count !== 1) {
-      throw appError('Este QR de donacion no se puede confirmar: no existe, ya fue usado o la donacion no esta en camino.', 409)
+      throw appError('Este QR de donación no se puede confirmar: no existe, ya fue usado o la donación no está en camino.', 409)
     }
 
     const necesidad = await tx.inventario.findUnique({

@@ -13,14 +13,10 @@ const { prismaMock } = vi.hoisted(() => {
     solicitudPuesto: {
       create: vi.fn(),
     },
-    accountVerificationToken: {
-      create: vi.fn(),
-    },
     $transaction: vi.fn((cb) =>
       cb({
         usuario: prismaMock.usuario,
         voluntario: prismaMock.voluntario,
-        accountVerificationToken: prismaMock.accountVerificationToken,
       }),
     ),
   }
@@ -71,7 +67,6 @@ describe('registerUser - registro unificado', () => {
     })
 
     expect(result.user.roles).toEqual(['CIUDADANO', 'VOLUNTARIO'])
-    expect(result.verificationToken).toEqual(expect.any(String))
     expect(mp.usuario.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         email: 'maria@example.com',
@@ -79,17 +74,12 @@ describe('registerUser - registro unificado', () => {
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
+        emailVerified: false,
+        emailVerifiedAt: null,
       }),
     }))
     expect(mp.voluntario.create).toHaveBeenCalledWith({
       data: { usuarioId: 'user-1' },
-    })
-    expect(mp.accountVerificationToken.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        usuarioId: 'user-1',
-        tokenHash: expect.any(String),
-        expiresAt: expect.any(Date),
-      }),
     })
   })
 
@@ -153,7 +143,7 @@ describe('registerUser - registro unificado', () => {
     }))
   })
 
-  it('lanza error 400 si el email ya esta registrado', async () => {
+  it('lanza error 400 si el email ya está registrado', async () => {
     mp.usuario.findUnique.mockResolvedValue({ id: 'existing-user' })
 
     await expect(registerUser({
@@ -165,7 +155,7 @@ describe('registerUser - registro unificado', () => {
     })).rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/email/) })
   })
 
-  it('lanza error 400 si el DNI ya esta registrado', async () => {
+  it('lanza error 400 si el DNI ya está registrado', async () => {
     mp.usuario.findUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 'existing-user' })
@@ -196,7 +186,7 @@ describe('loginUser', () => {
     vi.clearAllMocks()
   })
 
-  it('permite iniciar sesion con email correcto', async () => {
+  it('permite iniciar sesión con email correcto', async () => {
     mockCompare.mockResolvedValue(true)
     mp.usuario.findUnique.mockResolvedValue(usuarioBase)
 
@@ -211,7 +201,7 @@ describe('loginUser', () => {
     expect(user).toMatchObject({ id: 'user-1', email: 'maria@example.com' })
   })
 
-  it('permite iniciar sesion con DNI convertido a mayusculas', async () => {
+  it('permite iniciar sesión con DNI convertido a mayusculas', async () => {
     mockCompare.mockResolvedValue(true)
     mp.usuario.findUnique.mockResolvedValue(usuarioBase)
 

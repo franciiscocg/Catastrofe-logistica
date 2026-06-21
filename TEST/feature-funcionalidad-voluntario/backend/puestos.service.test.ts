@@ -45,7 +45,7 @@ async function asignarVoluntarioAPuesto(voluntarioId: string, puestoId: string) 
       select: { id: true },
     })
     if (donacionActiva) {
-      throw Object.assign(new Error('Ya tienes una donacion activa. Finalizala o cancelala antes de ayudar en un puesto.'), { statusCode: 400 })
+      throw Object.assign(new Error('Ya tienes una donación activa. Finalízala o cancélala antes de ayudar en un puesto.'), { statusCode: 400 })
     }
 
     const asignacionActiva = await tx.asignacionPuesto.findFirst({
@@ -65,7 +65,7 @@ async function asignarVoluntarioAPuesto(voluntarioId: string, puestoId: string) 
 
     const trabajando = await tx.asignacionPuesto.count({ where: { puestoId, estado: 'ACTIVA' } })
     if (trabajando >= puesto.capacidadTrabajo) {
-      throw Object.assign(new Error('Este puesto esta lleno ahora mismo.'), { statusCode: 400 })
+      throw Object.assign(new Error('Este puesto está lleno ahora mismo.'), { statusCode: 400 })
     }
 
     return tx.asignacionPuesto.create({
@@ -119,7 +119,7 @@ describe('asignarVoluntarioAPuesto', () => {
     expect(mp.asignacionPuesto.create).toHaveBeenCalledOnce()
   })
 
-  it('bloquea si el puesto esta lleno — se muestra la ocupacion al voluntario', async () => {
+  it('bloquea si el puesto está lleno — se muestra la ocupacion al voluntario', async () => {
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
     mp.puestoEmergencia.findFirst.mockResolvedValue({ id: PUESTO_ID, capacidadTrabajo: 3 })
@@ -127,21 +127,21 @@ describe('asignarVoluntarioAPuesto', () => {
 
     await expect(asignarVoluntarioAPuesto(VOLUNTARIO_ID, PUESTO_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: 'Este puesto esta lleno ahora mismo.',
+      message: 'Este puesto está lleno ahora mismo.',
     })
     expect(mp.asignacionPuesto.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 400 si el voluntario tiene una donacion activa (solo 1 actividad operativa a la vez)', async () => {
+  it('lanza 400 si el voluntario tiene una donación activa (solo 1 actividad operativa a la vez)', async () => {
     mp.donacion.findFirst.mockResolvedValue({ id: 'don-activa' })
 
     await expect(asignarVoluntarioAPuesto(VOLUNTARIO_ID, PUESTO_ID)).rejects.toMatchObject({
       statusCode: 400,
-      message: expect.stringContaining('donacion activa'),
+      message: expect.stringContaining('donación activa'),
     })
   })
 
-  it('lanza 400 si el voluntario ya esta en otro puesto diferente', async () => {
+  it('lanza 400 si el voluntario ya está en otro puesto diferente', async () => {
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue({
       id: 'asig-otro', puestoId: 'puesto-otro', estado: 'ACTIVA',
@@ -154,7 +154,7 @@ describe('asignarVoluntarioAPuesto', () => {
     })
   })
 
-  it('es idempotente si el voluntario ya esta asignado al mismo puesto', async () => {
+  it('es idempotente si el voluntario ya está asignado al mismo puesto', async () => {
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue({
       id: ASIGNACION_ID, puestoId: PUESTO_ID, estado: 'ACTIVA',
@@ -167,7 +167,7 @@ describe('asignarVoluntarioAPuesto', () => {
     expect(mp.asignacionPuesto.create).not.toHaveBeenCalled()
   })
 
-  it('lanza 404 si el puesto no existe o no esta activo', async () => {
+  it('lanza 404 si el puesto no existe o no está activo', async () => {
     mp.donacion.findFirst.mockResolvedValue(null)
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
     mp.puestoEmergencia.findFirst.mockResolvedValue(null)
@@ -183,7 +183,7 @@ describe('asignarVoluntarioAPuesto', () => {
 describe('finalizarAsignacionPuesto', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('finaliza la asignacion activa registrando la hora de fin', async () => {
+  it('finaliza la asignación activa registrando la hora de fin', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.asignacionPuesto.findFirst.mockResolvedValue({ id: ASIGNACION_ID })
     mp.asignacionPuesto.update.mockResolvedValue({
@@ -201,7 +201,7 @@ describe('finalizarAsignacionPuesto', () => {
     expect(finalizada.puesto.nombre).toBe('Puesto Valencia Norte')
   })
 
-  it('lanza 404 si el voluntario no tiene asignacion activa en ese puesto', async () => {
+  it('lanza 404 si el voluntario no tiene asignación activa en ese puesto', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.asignacionPuesto.findFirst.mockResolvedValue(null)
 

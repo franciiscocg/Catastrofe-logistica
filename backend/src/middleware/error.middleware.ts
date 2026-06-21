@@ -4,13 +4,13 @@ function getPrismaErrorMessage(error: FastifyError) {
   const code = (error as { code?: string }).code
 
   if (code === 'P2002') return 'Ya existe un registro con esos datos.'
-  if (code === 'P2003') return 'La operacion hace referencia a datos que no existen.'
-  if (code === 'P2011') return 'La base de datos tiene una restriccion obligatoria incompatible con el modelo actual.'
-  if (code === 'P2025') return 'No se encontro el registro solicitado.'
-  if (code === 'P2022') return 'La base de datos no esta actualizada. Ejecuta las migraciones pendientes.'
+  if (code === 'P2003') return 'La operación hace referencia a datos que no existen.'
+  if (code === 'P2011') return 'La base de datos tiene una restricción obligatoria incompatible con el modelo actual.'
+  if (code === 'P2025') return 'No se encontró el registro solicitado.'
+  if (code === 'P2022') return 'La base de datos no está actualizada. Ejecuta las migraciones pendientes.'
 
   if (error.name?.startsWith('PrismaClient')) {
-    return 'No se pudo completar la operacion en la base de datos.'
+    return 'No se pudo completar la operación en la base de datos.'
   }
 
   return null
@@ -47,7 +47,7 @@ export function errorHandler(
   }
 
   if (error.statusCode === 429) {
-    return reply.status(429).send({ error: 'Demasiadas peticiones. Intentalo mas tarde.' })
+    return reply.status(429).send({ error: 'Demasiadas peticiones. Inténtalo más tarde.' })
   }
 
   if (error.statusCode && error.statusCode < 500) {

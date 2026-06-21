@@ -51,19 +51,19 @@ test.describe('Solicitud ciudadana de productos por QR', () => {
     await expect(page.getByRole('button', { name: /🗺 Ver mapa/ })).toBeVisible({ timeout: 8000 })
   })
 
-  test('existe la accion de busqueda de productos en el menu', async ({ page }) => {
+  test('existe la accion de búsqueda de productos en el menu', async ({ page }) => {
     // El panel de acciones incluye la tarjeta de busqueda de productos
     await expect(page.getByRole('button', { name: /🔍 Buscar producto/ })).toBeVisible({ timeout: 8000 })
   })
 
-  test('abrir busqueda de producto muestra el panel correcto', async ({ page }) => {
+  test('abrir búsqueda de producto muestra el panel correcto', async ({ page }) => {
     // Click en la tarjeta de accion "Buscar producto" (primer boton visible con ese texto)
     await page.getByRole('button', { name: /🔍 Buscar producto/ }).first().click()
     await expect(page.getByText('Disponibilidad por puesto')).toBeVisible({ timeout: 5000 })
     await expect(page.getByPlaceholder('Escribe o elige un producto')).toBeVisible()
   })
 
-  test('el campo de busqueda acepta texto y retiene el valor introducido', async ({ page }) => {
+  test('el campo de búsqueda acepta texto y retiene el valor introducido', async ({ page }) => {
     await page.getByRole('button', { name: /🔍 Buscar producto/ }).first().click()
     const input = page.getByPlaceholder('Escribe o elige un producto')
     await input.fill('Agua embotellada')
@@ -91,7 +91,7 @@ test.describe('Acceso al flujo de donaciones del voluntario', () => {
     await expect(page.getByText('Quiero ayudar y contribuir')).toBeVisible()
   })
 
-  test('la seleccion de rol muestra informacion sobre QR para voluntarios', async ({ page }) => {
+  test('la seleccion de rol muestra información sobre QR para voluntarios', async ({ page }) => {
     // El card de Voluntario describe la funcionalidad QR de entregas
     await expect(page.getByText('Voluntario')).toBeVisible({ timeout: 8000 })
   })
@@ -121,7 +121,7 @@ test.describe('Acceso al flujo QR del puesto de emergencia', () => {
     await expect(page).toHaveURL(/\/auth\/registro-puesto/, { timeout: 8000 })
   })
 
-  test('con sesion de puesto aprobado la ruta /puesto no redirige al login', async ({ page }) => {
+  test('con sesión de puesto aprobado la ruta /puesto no redirige al login', async ({ page }) => {
     await injectAuth(page, 'PUESTO', 'puesto-e2e-1')
     await page.goto('/puesto')
     // El AuthGuard y RoleGuard permiten el acceso — la URL debe ser /puesto

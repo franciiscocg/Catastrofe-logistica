@@ -15,7 +15,7 @@ describe('auth store persistente', () => {
     vi.resetModules()
   })
 
-  it('no escribe tokens ni datos de usuario al persistir una sesion', async () => {
+  it('no escribe tokens ni datos de usuario al persistir una sesión', async () => {
     const { useAuthStore } = await import('../../../frontend/src/store/auth.store')
 
     useAuthStore.getState().login(user, 'access-token', 'puesto-1', '2030-01-01T00:00:00.000Z')

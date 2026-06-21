@@ -32,7 +32,7 @@ async function buildTestApp() {
 describe('inventarioRouter confirmar QR', () => {
   beforeEach(() => vi.resetAllMocks())
 
-  it('confirma un QR autenticado y pasa puesto, codigo y usuario al servicio', async () => {
+  it('confirma un QR autenticado y pasa puesto, código y usuario al servicio', async () => {
     const app = await buildTestApp()
     const token = app.jwt.sign({ id: 'user-1' })
     confirmarQrInventarioMock.mockResolvedValue({
@@ -57,7 +57,7 @@ describe('inventarioRouter confirmar QR', () => {
     await app.close()
   })
 
-  it('rechaza confirmacion QR sin autenticacion', async () => {
+  it('rechaza confirmación QR sin autenticacion', async () => {
     const app = await buildTestApp()
 
     const response = await app.inject({
@@ -92,7 +92,7 @@ describe('inventarioRouter confirmar QR', () => {
     await app.close()
   })
 
-  it('devuelve detalles claros si falta el codigo del QR', async () => {
+  it('devuelve detalles claros si falta el código del QR', async () => {
     const app = await buildTestApp()
     const token = app.jwt.sign({ id: 'user-1' })
 

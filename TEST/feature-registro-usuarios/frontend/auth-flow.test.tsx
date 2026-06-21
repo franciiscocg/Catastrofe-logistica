@@ -122,7 +122,7 @@ describe('entrada publica', () => {
   })
 })
 
-describe('registro e inicio de sesion', () => {
+describe('registro e inicio de sesión', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAuthState.isAuthenticated = false
@@ -138,6 +138,7 @@ describe('registro e inicio de sesion', () => {
           roles: ['CIUDADANO', 'VOLUNTARIO'],
         },
         accessToken: 'token-123',
+        recoveryCode: 'codigo-recuperacion-seguro',
       },
     })
   })
@@ -162,6 +163,8 @@ describe('registro e inicio de sesion', () => {
         dni: '12345678A',
       })
     })
+    expect(screen.getByText('codigo-recuperacion-seguro')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /He guardado el código/i }))
     expect(mockLogin).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'maria@example.com' }),
       'token-123',
@@ -172,7 +175,7 @@ describe('registro e inicio de sesion', () => {
   })
 
   it.each(['maria@example.com', '12345678A'])(
-    'permite iniciar sesion con %s y redirige a seleccionar rol',
+    'permite iniciar sesión con %s y redirige a seleccionar rol',
     async (identifier) => {
       renderWithRouter(<Login />)
 
@@ -196,6 +199,10 @@ describe('seleccion de rol y solicitud de puesto', () => {
     vi.clearAllMocks()
     authenticatedUser()
     mockApiGet.mockResolvedValue({ data: { solicitud: null } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ display_name: 'Calle Mayor 12' }),
+    }))
   })
 
   it('deja entrar como ciudadano y voluntario, pero ofrece formulario para puesto', () => {
@@ -253,9 +260,8 @@ describe('seleccion de rol y solicitud de puesto', () => {
     fireEvent.click(screen.getByRole('button', { name: /Enviar nueva solicitud/i }))
     fireEvent.change(screen.getByPlaceholderText(/CEIP La Paz/), { target: { value: 'CEIP La Paz' } })
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'colegio' } })
-    fireEvent.change(screen.getByPlaceholderText(/Calle Mayor 12/), { target: { value: 'Calle Mayor 12' } })
-    fireEvent.change(screen.getByPlaceholderText('39.4254'), { target: { value: '39.4254' } })
-    fireEvent.change(screen.getByPlaceholderText('-0.4178'), { target: { value: '-0.4178' } })
+    fireEvent.click(screen.getByRole('button', { name: /Usar mi ubicación actual/i }))
+    expect(await screen.findByText('Ubicación seleccionada correctamente')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /^Enviar solicitud$/i }))
 
     await waitFor(() => {
@@ -345,7 +351,7 @@ describe('coordinador', () => {
     await abrirSolicitudesPendientes()
     await screen.findByText('CEIP La Paz')
     fireEvent.click(screen.getByRole('button', { name: /^Rechazar$/i }))
-    fireEvent.change(screen.getByPlaceholderText(/Falta informacion/i), {
+    fireEvent.change(screen.getByPlaceholderText(/Falta información/i), {
       target: { value: 'Falta documentacion' },
     })
     const rechazarButtons = screen.getAllByRole('button', { name: /^Rechazar$/i })

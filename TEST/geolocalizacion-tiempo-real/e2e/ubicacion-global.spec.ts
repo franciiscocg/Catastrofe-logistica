@@ -21,14 +21,14 @@ test.describe('Aviso persistente de ubicación bloqueada', () => {
 
   test('el banner aparece cuando los permisos de geolocalización están denegados', async ({ page }) => {
     await page.goto('/ciudadano')
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).toBeVisible({ timeout: 5000 })
   })
 
   test('el banner muestra un título de aviso de ubicación', async ({ page }) => {
     await page.goto('/ciudadano')
     // El título exacto depende del estado de permisos reportado por el navegador
     await expect(
-      page.getByText('Ubicacion bloqueada').or(page.getByText('Ubicacion desactivada'))
+      page.getByText('Ubicación bloqueada').or(page.getByText('Ubicación desactivada'))
     ).toBeVisible({ timeout: 5000 })
   })
 
@@ -42,15 +42,15 @@ test.describe('Aviso persistente de ubicación bloqueada', () => {
 
   test('el banner permanece visible después de interacciones en la página', async ({ page }) => {
     await page.goto('/ciudadano')
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).toBeVisible({ timeout: 5000 })
     await page.mouse.move(400, 300)
     await page.mouse.click(400, 300)
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).toBeVisible()
   })
 
   test('el banner está presente en móvil', async ({ page }) => {
     await page.goto('/ciudadano')
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).toBeVisible({ timeout: 5000 })
   })
 })
 
@@ -61,7 +61,7 @@ test.describe('Proveedor global — ubicación concedida', () => {
     await grantGeolocation(context)
     await page.goto('/ciudadano')
     await page.waitForTimeout(1500)
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).not.toBeVisible()
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).not.toBeVisible()
   })
 
   test('la posición se persiste en sessionStorage durante la sesión', async ({ page, context }) => {
@@ -101,7 +101,7 @@ test.describe('Ubicación compartida en todas las pantallas', () => {
     await grantGeolocation(context)
     await page.goto('/ciudadano')
     await page.waitForTimeout(1500)
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).not.toBeVisible()
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).not.toBeVisible()
   })
 
   test('la posición del sessionStorage se reutiliza al recargar la página', async ({ page, context }) => {
@@ -162,6 +162,6 @@ test.describe('Botón Localizarme en el mapa de Ciudadano', () => {
     await page.waitForTimeout(1500)
 
     await expect(page.locator('.leaflet-container')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Activar ubicacion' })).not.toBeVisible()
+    await expect(page.getByRole('button', { name: 'Activar ubicación' })).not.toBeVisible()
   })
 })

@@ -31,7 +31,7 @@ function getErrorMessage(error: unknown) {
     const message = (payload as { error?: string; message?: string }).error ?? (payload as { error?: string; message?: string }).message
     if (message) return message
   }
-  return error instanceof Error ? error.message : 'Error de sincronizacion'
+  return error instanceof Error ? error.message : 'Error de sincronización'
 }
 
 function classifySyncError(error: unknown): SyncErrorKind {

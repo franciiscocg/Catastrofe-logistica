@@ -68,7 +68,7 @@ describe('sortByDistance', () => {
     expect(sorted[0]).toHaveProperty('estado')
   })
 
-  it('ordena correctamente puestos de donacion para la ruta multiparada', () => {
+  it('ordena correctamente puestos de donación para la ruta multiparada', () => {
     const puestos = [
       { id: 'puesto-norte', nombre: 'Puesto Norte', latitud: 39.50, longitud: -0.37 },
       { id: 'puesto-sur',   nombre: 'Puesto Sur',   latitud: 39.40, longitud: -0.42 },

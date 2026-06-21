@@ -208,19 +208,19 @@ function formatPuestoCoordinador(puesto: {
 
 function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
   if (!body.nombre?.trim()) throw badRequest('El nombre del puesto es obligatorio')
-  if (!body.direccion?.trim()) throw badRequest('La direccion del puesto es obligatoria')
+  if (!body.direccion?.trim()) throw badRequest('La dirección del puesto es obligatoria')
   if (!body.tipo?.trim()) throw badRequest('El tipo de instalacion es obligatorio')
   if (body.nombre.trim().length > 100) throw badRequest('El nombre del puesto no puede superar 100 caracteres')
-  if (body.direccion.trim().length > 180) throw badRequest('La direccion del puesto no puede superar 180 caracteres')
+  if (body.direccion.trim().length > 180) throw badRequest('La dirección del puesto no puede superar 180 caracteres')
   if (body.tipo.trim().length > 60) throw badRequest('El tipo de instalacion no puede superar 60 caracteres')
   if (body.descripcion && body.descripcion.trim().length > 500) {
-    throw badRequest('La descripcion no puede superar 500 caracteres')
+    throw badRequest('La descripción no puede superar 500 caracteres')
   }
   if (typeof body.latitud !== 'number' || body.latitud < -90 || body.latitud > 90) {
-    throw badRequest('La latitud no es valida')
+    throw badRequest('La latitud no es válida')
   }
   if (typeof body.longitud !== 'number' || body.longitud < -180 || body.longitud > 180) {
-    throw badRequest('La longitud no es valida')
+    throw badRequest('La longitud no es válida')
   }
 
   return {
@@ -261,7 +261,7 @@ function validatePuestoUpdate(body: PuestoUpdateInput) {
     data.nombre = body.nombre.trim()
   }
   if (body.direccion !== undefined) {
-    if (!body.direccion.trim()) throw badRequest('La direccion del puesto es obligatoria')
+    if (!body.direccion.trim()) throw badRequest('La dirección del puesto es obligatoria')
     data.direccion = body.direccion.trim()
   }
   if (body.tipo !== undefined) {
@@ -273,13 +273,13 @@ function validatePuestoUpdate(body: PuestoUpdateInput) {
   }
   if (body.latitud !== undefined) {
     if (typeof body.latitud !== 'number' || body.latitud < -90 || body.latitud > 90) {
-      throw badRequest('La latitud no es valida')
+      throw badRequest('La latitud no es válida')
     }
     data.latitud = body.latitud
   }
   if (body.longitud !== undefined) {
     if (typeof body.longitud !== 'number' || body.longitud < -180 || body.longitud > 180) {
-      throw badRequest('La longitud no es valida')
+      throw badRequest('La longitud no es válida')
     }
     data.longitud = body.longitud
   }
@@ -289,13 +289,13 @@ function validatePuestoUpdate(body: PuestoUpdateInput) {
   }
   if (body.capacidadTrabajo !== undefined) {
     if (!Number.isInteger(body.capacidadTrabajo) || body.capacidadTrabajo < 1 || body.capacidadTrabajo > 500) {
-      throw badRequest('La capacidad debe ser un numero entero entre 1 y 500')
+      throw badRequest('La capacidad debe ser un número entero entre 1 y 500')
     }
     data.capacidadTrabajo = body.capacidadTrabajo
   }
   if (body.estadoSolicitud !== undefined) {
     if (!['PENDIENTE', 'APROBADO', 'RECHAZADO'].includes(body.estadoSolicitud)) {
-      throw badRequest('El estado del puesto no es valido')
+      throw badRequest('El estado del puesto no es válido')
     }
     data.estadoSolicitud = body.estadoSolicitud
   }
@@ -547,7 +547,7 @@ export async function puestosRouter(app: FastifyInstance) {
     if (!body.adminEmail?.trim()) throw badRequest('El email del responsable es obligatorio')
     const capacidadTrabajo = body.capacidadTrabajo ?? 6
     if (!Number.isInteger(capacidadTrabajo) || capacidadTrabajo < 1 || capacidadTrabajo > 500) {
-      throw badRequest('La capacidad debe ser un numero entero entre 1 y 500')
+      throw badRequest('La capacidad debe ser un número entero entre 1 y 500')
     }
 
     const puestoId = await prisma.$transaction(async (tx) => {
@@ -640,7 +640,7 @@ export async function puestosRouter(app: FastifyInstance) {
         where: { puestoId: id, estado: 'PENDIENTE' },
         data: {
           estado: 'RECHAZADA',
-          motivoRechazo: 'Puesto eliminado por coordinacion',
+          motivoRechazo: 'Puesto eliminado por coordinación',
           decidedAt: new Date(),
         },
       })
@@ -648,7 +648,7 @@ export async function puestosRouter(app: FastifyInstance) {
         where: { id },
         data: {
           activo: false,
-          motivoRechazo: 'Puesto eliminado por coordinacion',
+          motivoRechazo: 'Puesto eliminado por coordinación',
         },
       })
       await tx.auditLog.create({
@@ -821,9 +821,9 @@ export async function puestosRouter(app: FastifyInstance) {
         create: { usuarioId: usuario.id },
       })
       const activa = await tx.asignacionPuesto.findFirst({ where: { voluntarioId: voluntario.id, estado: 'ACTIVA' } })
-      if (activa?.puestoId === id) throw badRequest('El voluntario ya esta asignado a este puesto')
+      if (activa?.puestoId === id) throw badRequest('El voluntario ya está asignado a este puesto')
       const ocupacion = await tx.asignacionPuesto.count({ where: { puestoId: id, estado: 'ACTIVA' } })
-      if (ocupacion >= puesto.capacidadTrabajo) throw badRequest('Este puesto esta lleno ahora mismo')
+      if (ocupacion >= puesto.capacidadTrabajo) throw badRequest('Este puesto está lleno ahora mismo')
       if (activa) {
         await tx.asignacionPuesto.update({
           where: { id: activa.id },
@@ -863,9 +863,9 @@ export async function puestosRouter(app: FastifyInstance) {
         where: { id: solicitudId },
         include: { puesto: { select: { id: true, capacidadTrabajo: true, activo: true } } },
       })
-      if (!solicitud) throw notFound('Solicitud de participacion no encontrada')
-      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
-      if (!solicitud.puesto.activo) throw badRequest('El puesto no esta activo')
+      if (!solicitud) throw notFound('Solicitud de participación no encontrada')
+      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya está revisada')
+      if (!solicitud.puesto.activo) throw badRequest('El puesto no está activo')
 
       const voluntario = await tx.voluntario.findUnique({ where: { usuarioId: solicitud.usuarioId }, select: { id: true } })
       if (!voluntario) throw badRequest('El usuario ya no tiene perfil de voluntario')
@@ -880,7 +880,7 @@ export async function puestosRouter(app: FastifyInstance) {
       })
       const yaEstaEnEstePuesto = activa?.puestoId === solicitud.puestoId
       if (!yaEstaEnEstePuesto && trabajando >= solicitud.puesto.capacidadTrabajo) {
-        throw badRequest('Este puesto esta lleno ahora mismo.')
+        throw badRequest('Este puesto está lleno ahora mismo.')
       }
 
       if (activa && !yaEstaEnEstePuesto) {
@@ -956,8 +956,8 @@ export async function puestosRouter(app: FastifyInstance) {
       where: { id: solicitudId },
       select: { estado: true },
     })
-    if (!actual) throw notFound('Solicitud de participacion no encontrada')
-    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+    if (!actual) throw notFound('Solicitud de participación no encontrada')
+    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya está revisada')
     const motivoRechazo = validateMotivoRechazo(motivo)
 
     const solicitud = await prisma.$transaction(async (tx) => {
@@ -1005,7 +1005,7 @@ export async function puestosRouter(app: FastifyInstance) {
     const result = await prisma.$transaction(async (tx) => {
       const solicitud = await tx.solicitudPuesto.findUnique({ where: { id } })
       if (!solicitud) throw notFound('Solicitud no encontrada')
-      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya está revisada')
 
       const puestoExistente = await tx.puestoEmergencia.findFirst({
         where: {
@@ -1095,7 +1095,7 @@ export async function puestosRouter(app: FastifyInstance) {
 
     const actual = await prisma.solicitudPuesto.findUnique({ where: { id }, select: { estado: true } })
     if (!actual) throw notFound('Solicitud no encontrada')
-    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya está revisada')
     const motivoRechazo = validateMotivoRechazo(motivo)
 
     const solicitud = await prisma.$transaction(async (tx) => {
@@ -1158,7 +1158,7 @@ export async function puestosRouter(app: FastifyInstance) {
         select: { id: true },
       })
       if (donacionActiva) {
-        throw badRequest('Ya tienes una donacion activa. Finalizala o cancelala antes de ayudar en un puesto.')
+        throw badRequest('Ya tienes una donación activa. Finalízala o cancélala antes de ayudar en un puesto.')
       }
 
       const asignacionActiva = await tx.asignacionPuesto.findFirst({
@@ -1171,7 +1171,7 @@ export async function puestosRouter(app: FastifyInstance) {
       }
 
       const trabajando = await tx.asignacionPuesto.count({ where: { puestoId, estado: 'ACTIVA' } })
-      if (trabajando >= puesto.capacidadTrabajo) throw badRequest('Este puesto esta lleno ahora mismo.')
+      if (trabajando >= puesto.capacidadTrabajo) throw badRequest('Este puesto está lleno ahora mismo.')
 
       const pendiente = await tx.solicitudParticipacionPuesto.findFirst({
         where: { puestoId, usuarioId, estado: 'PENDIENTE' },
@@ -1241,8 +1241,8 @@ export async function puestosRouter(app: FastifyInstance) {
         where: { id: solicitudId },
         include: { puesto: { select: { id: true, capacidadTrabajo: true, adminId: true } } },
       })
-      if (!solicitud) throw notFound('Solicitud de participacion no encontrada')
-      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+      if (!solicitud) throw notFound('Solicitud de participación no encontrada')
+      if (solicitud.estado !== 'PENDIENTE') throw badRequest('La solicitud ya está revisada')
 
       const puestoAcceso = await tx.puestoEmergencia.findUnique({
         where: { id: solicitud.puestoId },
@@ -1274,7 +1274,7 @@ export async function puestosRouter(app: FastifyInstance) {
         where: { puestoId: solicitud.puestoId, estado: 'ACTIVA' },
       })
       if (trabajando >= solicitud.puesto.capacidadTrabajo) {
-        throw badRequest('Este puesto esta lleno ahora mismo.')
+        throw badRequest('Este puesto está lleno ahora mismo.')
       }
 
       const asignacion = await tx.asignacionPuesto.create({
@@ -1321,8 +1321,8 @@ export async function puestosRouter(app: FastifyInstance) {
       where: { id: solicitudId },
       select: { estado: true, puestoId: true },
     })
-    if (!actual) throw notFound('Solicitud de participacion no encontrada')
-    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya esta revisada')
+    if (!actual) throw notFound('Solicitud de participación no encontrada')
+    if (actual.estado !== 'PENDIENTE') throw badRequest('La solicitud ya está revisada')
 
     await assertPuestoResponsable(actual.puestoId, responsableId)
 
@@ -1419,7 +1419,7 @@ export async function puestosRouter(app: FastifyInstance) {
     preHandler: [requireAuth, requireRole('VOLUNTARIO')],
   }, async (_request, _reply) => {
     throw Object.assign(
-      new Error('La incorporacion directa a puestos ya no esta disponible. Envia una solicitud de participacion.'),
+      new Error('La incorporación directa a puestos ya no está disponible. Envía una solicitud de participación.'),
       { statusCode: 410 },
     )
   })
@@ -1438,7 +1438,7 @@ export async function puestosRouter(app: FastifyInstance) {
       select: { id: true },
     })
 
-    if (!asignacion) throw notFound('No tienes una asignacion activa en este puesto')
+    if (!asignacion) throw notFound('No tienes una asignación activa en este puesto')
 
     const finalizada = await prisma.asignacionPuesto.update({
       where: { id: asignacion.id },
@@ -1467,7 +1467,10 @@ export async function puestosRouter(app: FastifyInstance) {
     preHandler: [requireAuth],
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const trabajadores = await listTrabajadores(id)
+    const user = req.user as { id?: string; sub?: string; roles?: string[] }
+    const requesterId = user.sub ?? user.id
+    if (!requesterId) return reply.status(401).send({ error: 'No autenticado' })
+    const trabajadores = await listTrabajadores(id, requesterId, user.roles ?? [])
     return reply.send({ trabajadores })
   })
 

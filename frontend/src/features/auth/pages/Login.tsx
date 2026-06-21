@@ -6,6 +6,17 @@ import { apiClient } from '@/lib/api/client'
 import Button from '@/components/ui/Button'
 import { getApiErrorMessage } from '@/utils/errors'
 
+function getLoginErrorMessage(err: unknown) {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const code = (err as { code?: string }).code
+    if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') {
+      return 'El servidor está tardando en responder. Espera unos segundos y vuelve a intentarlo.'
+    }
+  }
+
+  return getApiErrorMessage(err, 'Credenciales incorrectas. Comprueba tu email, DNI y contraseña.')
+}
+
 export default function Login() {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
@@ -54,7 +65,7 @@ export default function Login() {
         navigate('/')
       }
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Credenciales incorrectas. Comprueba tu email, DNI y contraseña.'))
+      setError(getLoginErrorMessage(err))
     } finally {
       setLoading(false)
     }

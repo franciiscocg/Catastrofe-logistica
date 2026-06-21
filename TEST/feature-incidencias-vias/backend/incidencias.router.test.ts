@@ -36,7 +36,7 @@ describe('incidenciasRouter comentarios', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/incidencias/inc-1/comentarios',
-      payload: { estado: 'TRANSITABLE', comentario: 'La calle esta despejada' },
+      payload: { estado: 'TRANSITABLE', comentario: 'La calle está despejada' },
     })
 
     expect(response.statusCode).toBe(401)
@@ -53,7 +53,7 @@ describe('incidenciasRouter comentarios', () => {
       roles: ['CIUDADANO'],
     })
     createComentarioIncidenciaMock.mockResolvedValue({
-      comentario: { id: 'com-1', estado: 'TRANSITABLE', comentario: 'La calle esta despejada' },
+      comentario: { id: 'com-1', estado: 'TRANSITABLE', comentario: 'La calle está despejada' },
       incidencia: { id: 'inc-1', estado: 'TRANSITABLE' },
     })
 
@@ -61,13 +61,13 @@ describe('incidenciasRouter comentarios', () => {
       method: 'POST',
       url: '/api/incidencias/inc-1/comentarios',
       headers: { authorization: `Bearer ${token}` },
-      payload: { estado: 'TRANSITABLE', comentario: 'La calle esta despejada' },
+      payload: { estado: 'TRANSITABLE', comentario: 'La calle está despejada' },
     })
 
     expect(response.statusCode).toBe(201)
     expect(createComentarioIncidenciaMock).toHaveBeenCalledWith(
       'inc-1',
-      { estado: 'TRANSITABLE', comentario: 'La calle esta despejada' },
+      { estado: 'TRANSITABLE', comentario: 'La calle está despejada' },
       'user-1',
     )
     await app.close()

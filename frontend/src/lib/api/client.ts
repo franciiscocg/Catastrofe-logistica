@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/auth.store'
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  timeout: 10000,
+  timeout: 30000,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
@@ -48,8 +48,12 @@ async function refreshAccessToken() {
 }
 
 export async function restoreSession() {
-  await clearSensitiveApiCaches()
-  await refreshAccessToken()
+  try {
+    await clearSensitiveApiCaches()
+    await refreshAccessToken()
+  } catch {
+    useAuthStore.getState().logout()
+  }
 }
 
 export async function endSession() {

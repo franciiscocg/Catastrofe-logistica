@@ -2,24 +2,18 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
 import {
   loginSchema,
   registerSchema,
-  resendVerificationSchema,
   requestPasswordResetSchema,
-  resetPasswordSchema,
-  verifyAccountSchema,
 } from './auth.schema.js'
 import {
   issueRefreshToken,
   loginUser,
-  requestAccountVerification,
   registerUser,
+  regenerateRecoveryCode,
   requestPasswordReset,
-  resetPassword,
   revokeRefreshToken,
   rotateRefreshToken,
-  verifyAccount,
 } from './auth.service.js'
 import { ACCESS_TOKEN_EXPIRES_IN, ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS } from '../../lib/security.js'
-import { sendAccountVerificationEmail, sendPasswordResetEmail } from '../../lib/email.js'
 
 const REFRESH_COOKIE_NAME = 'catlogistica_refresh'
 const REFRESH_COOKIE_PATH = '/api/auth'
@@ -48,7 +42,7 @@ function readRefreshCookie(request: FastifyRequest, reply: FastifyReply) {
   if (refreshToken) return refreshToken
 
   clearRefreshCookie(reply)
-  throw Object.assign(new Error('Sesion expirada'), { statusCode: 401 })
+  throw Object.assign(new Error('Sesión expirada'), { statusCode: 401 })
 }
 
 async function signAccessToken(reply: FastifyReply, user: { id: string; email: string; roles: string[] }) {
@@ -73,26 +67,13 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const input = registerSchema.parse(request.body)
-  const { user, verificationToken } = await registerUser(input)
-
-  if (!user.emailVerified) {
-    await sendAccountVerificationEmail({
-      to: user.email,
-      nombre: user.nombre,
-      token: verificationToken,
-    })
-
-    return reply.status(201).send({
-      user,
-      requiresEmailVerification: true,
-    })
-  }
+  const { user, recoveryCode } = await registerUser(input)
 
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
   setRefreshCookie(reply, refreshToken)
 
-  return reply.status(201).send({ user, ...tokenPayload })
+  return reply.status(201).send({ user, recoveryCode, ...tokenPayload })
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
@@ -114,45 +95,14 @@ export async function logout(request: FastifyRequest, reply: FastifyReply) {
   return reply.status(204).send()
 }
 
-export async function verify(request: FastifyRequest, reply: FastifyReply) {
-  const input = verifyAccountSchema.parse(request.body)
-  const user = await verifyAccount(input.token)
-  return reply.send({ user })
-}
-
-export async function resendVerification(request: FastifyRequest, reply: FastifyReply) {
-  const input = resendVerificationSchema.parse(request.body)
-  const result = await requestAccountVerification(input)
-
-  if (result.verificationToken && result.user) {
-    await sendAccountVerificationEmail({
-      to: result.user.email,
-      nombre: result.user.nombre,
-      token: result.verificationToken,
-    })
-  }
-
-  return reply.send({ sent: true })
-}
-
 export async function requestReset(request: FastifyRequest, reply: FastifyReply) {
   const input = requestPasswordResetSchema.parse(request.body)
-  const result = await requestPasswordReset(input)
-
-  if (result.resetToken && result.user) {
-    await sendPasswordResetEmail({
-      to: result.user.email,
-      nombre: result.user.nombre,
-      token: result.resetToken,
-    })
-  }
-
-  return reply.send({ sent: true })
+  return reply.send(await requestPasswordReset(input))
 }
 
-export async function reset(request: FastifyRequest, reply: FastifyReply) {
-  const input = resetPasswordSchema.parse(request.body)
-  return reply.send(await resetPassword(input))
+export async function generateRecoveryCode(request: FastifyRequest, reply: FastifyReply) {
+  const userId = (request.user as { id: string }).id
+  return reply.send(await regenerateRecoveryCode(userId))
 }
 
 export async function me(request: FastifyRequest, reply: FastifyReply) {

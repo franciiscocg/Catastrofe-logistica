@@ -324,7 +324,7 @@ export async function createAsignacionIncidencia(usuarioId: string, incidenciaId
     })
 
     if (donacionActiva) {
-      throw badRequest('Ya tienes una donacion activa. Finalizala o cancelala antes de ayudar en una incidencia.')
+      throw badRequest('Ya tienes una donación activa. Finalízala o cancélala antes de ayudar en una incidencia.')
     }
 
     const puestoActivo = await tx.asignacionPuesto.findFirst({
@@ -370,7 +370,7 @@ export async function finalizarAsignacionIncidencia(usuarioId: string, incidenci
     select: { id: true },
   })
 
-  if (!asignacion) throw notFound('No tienes una asignacion activa en esta incidencia')
+  if (!asignacion) throw notFound('No tienes una asignación activa en esta incidencia')
 
   return prisma.asignacionIncidencia.update({
     where: { id: asignacion.id },

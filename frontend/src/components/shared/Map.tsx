@@ -58,6 +58,7 @@ interface MapProps {
   zoom?: number
   userPosition?: [number, number] | null
   reportPoint?: [number, number] | null
+  reportPointKind?: 'incidence' | 'emergency-post'
   selectingReportPoint?: boolean
   puestos?: PuestoMarker[]
   incidencias?: IncidenciaMarker[]
@@ -65,6 +66,7 @@ interface MapProps {
   onPuestoSelect?: (id: string) => void
   onVerInventarioPuesto?: (id: string) => void
   onComoLlegarPuesto?: (id: string) => void
+  onComoLlegarIncidencia?: (incidencia: IncidenciaMarker) => void
   onUserLocated?: (pos: [number, number]) => void
   onReportPointSelect?: (pos: [number, number]) => void
   onIncidenciaAction?: (incidencia: IncidenciaMarker, action: IncidenciaAction) => void
@@ -117,18 +119,19 @@ function userIcon() {
   })
 }
 
-function reportIcon() {
+function reportIcon(kind: 'incidence' | 'emergency-post') {
+  const isEmergencyPost = kind === 'emergency-post'
   return L.divIcon({
     html: `<div style="
-      width:24px;height:24px;background:#0f172a;
+      width:30px;height:30px;background:${isEmergencyPost ? '#d97706' : '#0f172a'};
       border:3px solid white;border-radius:50%;
-      box-shadow:0 0 0 7px rgba(15,23,42,0.15),0 4px 12px rgba(0,0,0,0.35);
+      box-shadow:0 0 0 7px ${isEmergencyPost ? 'rgba(217,119,6,0.18)' : 'rgba(15,23,42,0.15)'},0 4px 12px rgba(0,0,0,0.35);
       animation:pulse-report 1.6s ease-in-out infinite;
       display:flex;align-items:center;justify-content:center;
-      color:white;font-size:11px;font-weight:700;
-    "></div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
+      color:white;font-size:15px;font-weight:700;
+    ">${isEmergencyPost ? '✚' : ''}</div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
     className: '',
   })
 }
@@ -228,6 +231,7 @@ export default function Map({
   zoom = 13,
   userPosition,
   reportPoint,
+  reportPointKind = 'incidence',
   selectingReportPoint = false,
   puestos = [],
   incidencias = [],
@@ -235,6 +239,7 @@ export default function Map({
   onPuestoSelect,
   onVerInventarioPuesto,
   onComoLlegarPuesto,
+  onComoLlegarIncidencia,
   onReportPointSelect,
   onIncidenciaAction,
   onIncidenciaCommentsOpen,
@@ -295,14 +300,20 @@ export default function Map({
 
         {/* Punto de incidencia seleccionado */}
         {safeReportPoint && (
-          <Marker position={safeReportPoint} icon={reportIcon()}>
+          <Marker position={safeReportPoint} icon={reportIcon(reportPointKind)}>
             <Tooltip permanent direction="top" offset={[0, -12]} opacity={1}>
-              Punto de incidencia
+              {reportPointKind === 'emergency-post' ? 'Puesto de emergencia' : 'Punto de incidencia'}
             </Tooltip>
             <Popup>
               <div style={{ minWidth: 190, maxWidth: 230 }}>
-                <p style={{ fontWeight: 700, marginBottom: 4 }}>Nuevo reporte</p>
-                <p style={{ fontSize: 12, color: '#6b7280' }}>Este punto se enviará como ubicación de la incidencia.</p>
+                <p style={{ fontWeight: 700, marginBottom: 4 }}>
+                  {reportPointKind === 'emergency-post' ? 'Nuevo puesto de emergencia' : 'Nuevo reporte'}
+                </p>
+                <p style={{ fontSize: 12, color: '#6b7280' }}>
+                  {reportPointKind === 'emergency-post'
+                    ? 'Este punto se enviará como ubicación del puesto.'
+                    : 'Este punto se enviará como ubicación de la incidencia.'}
+                </p>
               </div>
             </Popup>
           </Marker>
@@ -341,6 +352,16 @@ export default function Map({
                       >
                         <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" />
                         Comentarios
+                      </button>
+                    )}
+                    {onComoLlegarIncidencia && (
+                      <button
+                        type="button"
+                        onClick={() => onComoLlegarIncidencia(inc)}
+                        className="col-span-2 inline-flex items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
+                        Cómo llegar
                       </button>
                     )}
                   </div>

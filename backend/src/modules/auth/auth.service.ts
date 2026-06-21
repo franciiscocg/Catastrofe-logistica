@@ -2,8 +2,8 @@ import bcrypt from 'bcryptjs'
 import { RolUsuario } from '@prisma/client'
 import { createHash, randomBytes } from 'node:crypto'
 import { prisma } from '../../lib/prisma.js'
-import { EMAIL_VERIFICATION_REQUIRED, REFRESH_TOKEN_TTL_DAYS, RESET_TOKEN_TTL_MINUTES, VERIFY_TOKEN_TTL_HOURS } from '../../lib/security.js'
-import type { LoginInput, RegisterInput, ResendVerificationInput, RequestPasswordResetInput, ResetPasswordInput } from './auth.schema.js'
+import { REFRESH_TOKEN_TTL_DAYS } from '../../lib/security.js'
+import type { LoginInput, RegisterInput, RequestPasswordResetInput } from './auth.schema.js'
 
 function appError(message: string, statusCode: number) {
   return Object.assign(new Error(message), { statusCode })
@@ -21,6 +21,10 @@ function hashToken(token: string) {
 
 function createPlainToken() {
   return randomBytes(32).toString('base64url')
+}
+
+function createRecoveryCode() {
+  return randomBytes(18).toString('base64url')
 }
 
 function addMs(ms: number) {
@@ -43,15 +47,16 @@ export function sanitizeUser(user: {
     apellidos: user.apellidos,
     telefono: user.telefono,
     roles: user.roles,
-    emailVerified: user.emailVerified ?? true,
+    emailVerified: user.emailVerified ?? false,
   }
 }
 
 export async function loginUser({ identifier, password }: LoginInput) {
-  const isEmail = emailRegex.test(identifier)
+  const normalizedIdentifier = identifier.trim()
+  const isEmail = emailRegex.test(normalizedIdentifier)
   const user = isEmail
-    ? await prisma.usuario.findUnique({ where: { email: identifier.toLowerCase() } })
-    : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
+    ? await prisma.usuario.findUnique({ where: { email: normalizedIdentifier.toLowerCase() } })
+    : await prisma.usuario.findUnique({ where: { dni: normalizedIdentifier.toUpperCase() } })
 
   if (!user) throw appError('Credenciales incorrectas', 401)
 
@@ -59,10 +64,6 @@ export async function loginUser({ identifier, password }: LoginInput) {
   if (!valid) throw appError('Credenciales incorrectas', 401)
 
   if (!user.activo) throw appError('Cuenta desactivada', 403)
-  if (EMAIL_VERIFICATION_REQUIRED && !user.emailVerified) {
-    throw appError('Verifica tu cuenta antes de iniciar sesion', 403)
-  }
-
   if (user.roles.includes(RolUsuario.VOLUNTARIO)) {
     await prisma.voluntario.upsert({
       where: { usuarioId: user.id },
@@ -94,7 +95,7 @@ export async function rotateRefreshToken(refreshToken: string) {
   })
 
   if (!record || record.revokedAt || record.expiresAt <= new Date() || !record.usuario.activo) {
-    throw appError('Sesion expirada', 401)
+    throw appError('Sesión expirada', 401)
   }
 
   await prisma.refreshToken.update({
@@ -115,20 +116,21 @@ export async function revokeRefreshToken(refreshToken?: string) {
 }
 
 export async function registerUser(input: RegisterInput) {
-  const normalizedEmail = input.email.toLowerCase()
-  const exists = await prisma.usuario.findUnique({ where: { email: normalizedEmail } })
-  if (exists) throw badRequest('Este email ya esta registrado')
+  const email = input.email.trim().toLowerCase()
+  const exists = await prisma.usuario.findUnique({ where: { email } })
+  if (exists) throw badRequest('Este email ya está registrado')
 
   const dniExists = await prisma.usuario.findUnique({ where: { dni: input.dni.toUpperCase() } })
-  if (dniExists) throw badRequest('Este DNI/NIE ya esta registrado')
+  if (dniExists) throw badRequest('Este DNI/NIE ya está registrado')
 
   const hashed = await bcrypt.hash(input.password, 12)
+  const recoveryCode = createRecoveryCode()
   const roles = [RolUsuario.CIUDADANO, RolUsuario.VOLUNTARIO]
 
-  const result = await prisma.$transaction(async (tx) => {
+  const user = await prisma.$transaction(async (tx) => {
     const created = await tx.usuario.create({
       data: {
-        email: normalizedEmail,
+        email,
         password: hashed,
         nombre: input.nombre,
         apellidos: input.apellidos,
@@ -136,8 +138,9 @@ export async function registerUser(input: RegisterInput) {
         dni: input.dni.toUpperCase(),
         roles,
         activo: true,
-        emailVerified: !EMAIL_VERIFICATION_REQUIRED,
-        emailVerifiedAt: !EMAIL_VERIFICATION_REQUIRED ? new Date() : undefined,
+        emailVerified: false,
+        emailVerifiedAt: null,
+        recoveryCodeHash: hashToken(recoveryCode),
       },
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true, emailVerified: true },
     })
@@ -145,102 +148,44 @@ export async function registerUser(input: RegisterInput) {
     await tx.voluntario.create({
       data: { usuarioId: created.id },
     })
-
-    const verificationToken = createPlainToken()
-    await tx.accountVerificationToken.create({
-      data: {
-        usuarioId: created.id,
-        tokenHash: hashToken(verificationToken),
-        expiresAt: addMs(VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000),
-      },
-    })
-
-    return { user: created, verificationToken }
+    return created
   })
 
-  return result
+  return { user, recoveryCode }
 }
 
-export async function verifyAccount(token: string) {
-  const record = await prisma.accountVerificationToken.findUnique({
-    where: { tokenHash: hashToken(token) },
-  })
-  if (!record || record.usedAt || record.expiresAt <= new Date()) throw badRequest('Token de verificación inválido o caducado')
-
-  const user = await prisma.usuario.update({
-    where: { id: record.usuarioId },
-    data: { emailVerified: true, emailVerifiedAt: new Date() },
-  })
-  await prisma.accountVerificationToken.update({ where: { id: record.id }, data: { usedAt: new Date() } })
-  return sanitizeUser(user)
-}
-
-export async function requestAccountVerification({ identifier }: ResendVerificationInput) {
-  const isEmail = emailRegex.test(identifier)
-  const user = isEmail
-    ? await prisma.usuario.findUnique({ where: { email: identifier.toLowerCase() } })
-    : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
-
-  if (!user || user.emailVerified) return { sent: true }
-
-  const token = createPlainToken()
-  await prisma.accountVerificationToken.create({
-    data: {
-      usuarioId: user.id,
-      tokenHash: hashToken(token),
-      expiresAt: addMs(VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000),
+export async function requestPasswordReset({ email, dni, recoveryCode, password }: RequestPasswordResetInput) {
+  const user = await prisma.usuario.findFirst({
+    where: {
+      email: email.trim().toLowerCase(),
+      dni: dni.trim().toUpperCase(),
+      activo: true,
     },
   })
-
-  return {
-    sent: true,
-    verificationToken: token,
-    user: {
-      email: user.email,
-      nombre: user.nombre,
-    },
+  if (!user || !user.recoveryCodeHash || hashToken(recoveryCode.trim()) !== user.recoveryCodeHash) {
+    throw badRequest('Los datos o el código de recuperación no son válidos')
   }
-}
-
-export async function requestPasswordReset({ identifier }: RequestPasswordResetInput) {
-  const isEmail = emailRegex.test(identifier)
-  const user = isEmail
-    ? await prisma.usuario.findUnique({ where: { email: identifier.toLowerCase() } })
-    : await prisma.usuario.findUnique({ where: { dni: identifier.toUpperCase() } })
-
-  if (!user) return { sent: true }
-
-  const token = createPlainToken()
-  await prisma.passwordResetToken.create({
-    data: {
-      usuarioId: user.id,
-      tokenHash: hashToken(token),
-      expiresAt: addMs(RESET_TOKEN_TTL_MINUTES * 60 * 1000),
-    },
-  })
-
-  return {
-    sent: true,
-    resetToken: token,
-    user: {
-      email: user.email,
-      nombre: user.nombre,
-    },
-  }
-}
-
-export async function resetPassword({ token, password }: ResetPasswordInput) {
-  const record = await prisma.passwordResetToken.findUnique({
-    where: { tokenHash: hashToken(token) },
-  })
-  if (!record || record.usedAt || record.expiresAt <= new Date()) throw badRequest('Token de recuperación inválido o caducado')
 
   const hashed = await bcrypt.hash(password, 12)
   await prisma.$transaction([
-    prisma.usuario.update({ where: { id: record.usuarioId }, data: { password: hashed } }),
-    prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
-    prisma.refreshToken.updateMany({ where: { usuarioId: record.usuarioId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    prisma.usuario.update({
+      where: { id: user.id },
+      data: { password: hashed },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { usuarioId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
   ])
 
   return { ok: true }
+}
+
+export async function regenerateRecoveryCode(usuarioId: string) {
+  const recoveryCode = createRecoveryCode()
+  await prisma.usuario.update({
+    where: { id: usuarioId },
+    data: { recoveryCodeHash: hashToken(recoveryCode) },
+  })
+  return { recoveryCode }
 }

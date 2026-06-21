@@ -42,6 +42,7 @@ interface StatsResponse {
 interface VerifyResponse {
   valid: boolean
   totalEvents: number
+  verifiedAt?: string
   brokenAt?: number
   brokenEventId?: string
 }
@@ -175,8 +176,8 @@ export default function Verificar() {
         <div className="max-w-2xl mx-auto">
           <h1 className="text-xl font-bold text-gray-900">Registro público de ayuda humanitaria</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Consulta el historial verificable de cualquier donación. Todos los registros están
-            protegidos criptográficamente y sellados por una Autoridad de Sellado de Tiempo (RFC 3161).
+            Consulta el historial verificable de cualquier donación. Los eventos se enlazan con SHA-256;
+            los que muestran la insignia RFC 3161 cuentan además con un sello de tiempo externo.
           </p>
         </div>
       </div>
@@ -187,7 +188,7 @@ export default function Verificar() {
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'Eventos registrados', value: stats.total },
-              { label: 'Sellados RFC 3161', value: stats.withTSA },
+              { label: 'Con sello externo RFC 3161', value: stats.withTSA },
               { label: 'Último nº de secuencia', value: stats.latestSequence },
             ].map((s) => (
               <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-3 text-center shadow-sm">
@@ -239,7 +240,7 @@ export default function Verificar() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-700">Verificar integridad de la cadena</p>
-              <p className="text-xs text-gray-400">Recomputa todos los hashes y detecta cualquier manipulación</p>
+              <p className="text-xs text-gray-400">Comprueba los hashes; el resultado puede reutilizarse durante 30 segundos</p>
             </div>
             <button
               onClick={() => runVerify()}
@@ -254,12 +255,17 @@ export default function Verificar() {
               {verifyData.valid
                 ? `✓ Cadena íntegra — ${verifyData.totalEvents} eventos verificados correctamente`
                 : `✗ Cadena comprometida en el evento #${verifyData.brokenAt} (ID: ${verifyData.brokenEventId})`}
+              {verifyData.verifiedAt && (
+                <span className="mt-1 block text-xs opacity-75">
+                  Comprobación: {new Date(verifyData.verifiedAt).toLocaleString('es-ES')}
+                </span>
+              )}
             </div>
           )}
         </div>
 
         <p className="text-center text-xs text-gray-400">
-          Sistema de trazabilidad basado en hash-chain SHA-256 con sellado de tiempo RFC 3161 (eIDAS) ·{' '}
+          Cadena SHA-256 verificable con sellado RFC 3161 opcional por evento ·{' '}
           <a href="/api/public/audit/stats" target="_blank" className="underline hover:text-gray-600">API pública</a>
         </p>
       </div>

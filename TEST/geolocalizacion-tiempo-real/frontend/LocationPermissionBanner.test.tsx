@@ -59,7 +59,7 @@ describe('LocationPermissionBanner — visibilidad', () => {
   })
 
   it('se renderiza cuando hay error, no hay posición y no está cargando', () => {
-    setup({ error: 'La ubicacion esta bloqueada en el navegador', permissionState: 'denied' })
+    setup({ error: 'La ubicación está bloqueada en el navegador', permissionState: 'denied' })
     render(<LocationPermissionBanner />)
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
   })
@@ -70,22 +70,22 @@ describe('LocationPermissionBanner — visibilidad', () => {
 describe('LocationPermissionBanner — mensajes de estado', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('muestra "Ubicacion bloqueada" cuando permissionState es "denied"', () => {
-    setup({ error: 'La ubicacion esta bloqueada en el navegador', permissionState: 'denied' })
+  it('muestra "Ubicación bloqueada" cuando permissionState es "denied"', () => {
+    setup({ error: 'La ubicación está bloqueada en el navegador', permissionState: 'denied' })
     render(<LocationPermissionBanner />)
-    expect(screen.getByText('Ubicacion bloqueada')).toBeInTheDocument()
+    expect(screen.getByText('Ubicación bloqueada')).toBeInTheDocument()
   })
 
-  it('muestra "Ubicacion desactivada" cuando permissionState no es "denied"', () => {
+  it('muestra "Ubicación desactivada" cuando permissionState no es "denied"', () => {
     setup({ error: 'Geolocalizacion no disponible en este dispositivo', permissionState: 'unsupported' })
     render(<LocationPermissionBanner />)
-    expect(screen.getByText('Ubicacion desactivada')).toBeInTheDocument()
+    expect(screen.getByText('Ubicación desactivada')).toBeInTheDocument()
   })
 
-  it('muestra "Ubicacion desactivada" cuando permissionState es null', () => {
+  it('muestra "Ubicación desactivada" cuando permissionState es null', () => {
     setup({ error: 'Error generico', permissionState: null })
     render(<LocationPermissionBanner />)
-    expect(screen.getByText('Ubicacion desactivada')).toBeInTheDocument()
+    expect(screen.getByText('Ubicación desactivada')).toBeInTheDocument()
   })
 
   it('incluye instrucciones para activar el permiso desde el icono del navegador cuando está bloqueada', () => {

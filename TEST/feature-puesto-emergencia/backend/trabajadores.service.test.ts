@@ -7,14 +7,17 @@ vi.mock('../../../backend/src/lib/prisma.js', () => ({
       create: vi.fn(),
       findUnique: vi.fn(),
       delete: vi.fn(),
+      count: vi.fn(),
     },
     puestoEmergencia: {
       findUnique: vi.fn(),
+      count: vi.fn(),
     },
     usuario: {
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }))
 
@@ -42,9 +45,10 @@ describe('listTrabajadores', () => {
 
   it('lista trabajadores ordenados por fecha de alta', async () => {
     const trabajadores = [{ id: 'rel-1', usuario: USUARIO }]
+    mp.puestoEmergencia.findUnique.mockResolvedValue(PUESTO)
     mp.puestoTrabajador.findMany.mockResolvedValue(trabajadores)
 
-    const result = await listTrabajadores('puesto-1')
+    const result = await listTrabajadores('puesto-1', 'admin-1', ['PUESTO_EMERGENCIA'])
 
     expect(result).toEqual(trabajadores)
     expect(mp.puestoTrabajador.findMany).toHaveBeenCalledWith({
@@ -54,6 +58,21 @@ describe('listTrabajadores', () => {
       },
       orderBy: { addedAt: 'asc' },
     })
+  })
+
+  it('impide consultar emails a usuarios ajenos al puesto', async () => {
+    mp.puestoEmergencia.findUnique.mockResolvedValue(PUESTO)
+
+    await expect(listTrabajadores('puesto-1', 'user-ajeno', ['CIUDADANO']))
+      .rejects.toMatchObject({ statusCode: 403 })
+    expect(mp.puestoTrabajador.findMany).not.toHaveBeenCalled()
+  })
+
+  it('permite consultar trabajadores a coordinadores', async () => {
+    mp.puestoEmergencia.findUnique.mockResolvedValue(PUESTO)
+    mp.puestoTrabajador.findMany.mockResolvedValue([])
+
+    await expect(listTrabajadores('puesto-1', 'coord-1', ['COORDINADOR'])).resolves.toEqual([])
   })
 })
 
@@ -130,12 +149,33 @@ describe('removeTrabajador', () => {
     mp.puestoEmergencia.findUnique.mockResolvedValue(PUESTO)
     mp.puestoTrabajador.findUnique.mockResolvedValue({ id: 'rel-1' })
     mp.puestoTrabajador.delete.mockResolvedValue({ id: 'rel-1' })
+    mp.$transaction.mockImplementation((callback: (tx: typeof mp) => unknown) => callback(mp))
+    mp.puestoTrabajador.count.mockResolvedValue(0)
+    mp.puestoEmergencia.count.mockResolvedValue(0)
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'PUESTO_EMERGENCIA'] })
 
     await removeTrabajador('puesto-1', 'user-2', 'admin-1')
 
     expect(mp.puestoTrabajador.delete).toHaveBeenCalledWith({
       where: { puestoId_usuarioId: { puestoId: 'puesto-1', usuarioId: 'user-2' } },
     })
+    expect(mp.usuario.update).toHaveBeenCalledWith({
+      where: { id: 'user-2' },
+      data: { roles: { set: ['CIUDADANO'] } },
+    })
+  })
+
+  it('conserva el rol si el usuario sigue asignado a otro puesto', async () => {
+    mp.puestoEmergencia.findUnique.mockResolvedValue(PUESTO)
+    mp.puestoTrabajador.findUnique.mockResolvedValue({ id: 'rel-1' })
+    mp.$transaction.mockImplementation((callback: (tx: typeof mp) => unknown) => callback(mp))
+    mp.puestoTrabajador.count.mockResolvedValue(1)
+    mp.puestoEmergencia.count.mockResolvedValue(0)
+    mp.usuario.findUnique.mockResolvedValue({ roles: ['CIUDADANO', 'PUESTO_EMERGENCIA'] })
+
+    await removeTrabajador('puesto-1', 'user-2', 'admin-1')
+
+    expect(mp.usuario.update).not.toHaveBeenCalled()
   })
 
   it('lanza 403 si quien elimina no es admin', async () => {

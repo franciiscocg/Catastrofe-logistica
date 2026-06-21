@@ -34,10 +34,10 @@ export default function ConnectivityBanner() {
         }`}
       >
         {hasBlockedItems && (
-          `${conflictCount} conflicto${conflictCount !== 1 ? 's' : ''} y ${errorCount} error${errorCount !== 1 ? 'es' : ''} de sincronizacion requieren revision`
+          `${conflictCount} conflicto${conflictCount !== 1 ? 's' : ''} y ${errorCount} error${errorCount !== 1 ? 'es' : ''} de sincronización requieren revisión`
         )}
-        {!hasBlockedItems && mode === 'offline' && 'Sin conexion - trabajando en modo offline'}
-        {!hasBlockedItems && mode === 'slow' && 'Conexion lenta - descarga de imagenes desactivada'}
+        {!hasBlockedItems && mode === 'offline' && 'Sin conexión - mostrando la última información guardada; algunos cambios se sincronizarán al volver'}
+        {!hasBlockedItems && mode === 'slow' && 'Conexión lenta - descarga de imágenes desactivada'}
         {!hasBlockedItems && mode === 'online' && pendingCount > 0 && (
           isSyncing
             ? `Sincronizando ${pendingCount} cambio${pendingCount > 1 ? 's' : ''}...`
@@ -55,7 +55,7 @@ export default function ConnectivityBanner() {
                     {op.method} {op.url}
                   </p>
                   <p className="truncate text-xs text-rose-700">
-                    {op.error ?? 'No se pudo sincronizar la operacion'}
+                    {op.error ?? 'No se pudo sincronizar la operación'}
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 gap-2">

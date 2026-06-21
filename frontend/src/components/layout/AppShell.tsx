@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { ChevronDown, Repeat2 } from 'lucide-react'
+import LocationPermissionBanner from '@/components/layout/LocationPermissionBanner'
 import { useAuthStore } from '@/store/auth.store'
 import { ROLE_LABELS, Role } from '@/types/auth.types'
 
@@ -85,11 +86,11 @@ export default function AppShell() {
   const sessionExpiry = accessTokenExpiresAt
     ? new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(new Date(accessTokenExpiresAt))
     : null
-  const displayName = user ? `${user.nombre} ${user.apellidos}`.trim() : 'Sesion activa'
+  const displayName = user ? `${user.nombre} ${user.apellidos}`.trim() : 'Sesión activa'
   const initials = user
     ? `${user.nombre?.[0] ?? ''}${user.apellidos?.[0] ?? ''}`.toUpperCase() || 'U'
     : 'U'
-  const phoneStatus = user?.telefono ? user.telefono : 'Telefono pendiente'
+  const phoneStatus = user?.telefono ? user.telefono : 'Teléfono pendiente'
 
   useEffect(() => {
     if (!profileOpen) return
@@ -120,7 +121,7 @@ export default function AppShell() {
             <div className="flex min-w-0 items-center gap-2">
               <span className={`h-2 w-2 flex-shrink-0 rounded-full ${accent.dot}`} />
               <p className={`truncate text-xs font-semibold uppercase tracking-wide ${accent.eyebrow}`}>
-                {roleLabel || 'Sesion'}
+                {roleLabel || 'Sesión'}
               </p>
             </div>
             <p className="mt-0.5 truncate text-sm font-semibold text-slate-950">
@@ -168,7 +169,7 @@ export default function AppShell() {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-950">{displayName}</p>
-                      <p className="truncate text-xs text-slate-500">{user?.email ?? 'Sesion activa'}</p>
+                      <p className="truncate text-xs text-slate-500">{user?.email ?? 'Sesión activa'}</p>
                     </div>
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -177,7 +178,7 @@ export default function AppShell() {
                       <dd className="mt-0.5 truncate font-semibold text-slate-900">{roleLabel || 'Activo'}</dd>
                     </div>
                     <div className="rounded-md bg-slate-50 px-2 py-1.5">
-                      <dt className="font-medium text-slate-500">Sesion</dt>
+                      <dt className="font-medium text-slate-500">Sesión</dt>
                       <dd className="mt-0.5 truncate font-semibold text-slate-900">{sessionExpiry ?? 'Activa'}</dd>
                     </div>
                     <div className="col-span-2 rounded-md bg-slate-50 px-2 py-1.5">
@@ -230,6 +231,7 @@ export default function AppShell() {
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
         <Outlet />
       </main>
+      <LocationPermissionBanner />
     </div>
   )
 }

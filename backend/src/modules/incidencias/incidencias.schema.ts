@@ -32,7 +32,7 @@ export const updateIncidenciaSchema = z.object({
   descripcion: z.string().trim().max(500).nullable().optional(),
   estado: estadoViaSchema.optional(),
 }).strict().refine((input) => Object.keys(input).length > 0, {
-  message: 'Debes indicar algun cambio',
+  message: 'Debes indicar algún cambio',
 })
 
 export const createComentarioIncidenciaSchema = z.object({

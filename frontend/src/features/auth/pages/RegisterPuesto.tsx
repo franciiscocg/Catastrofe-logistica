@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { apiClient } from '@/lib/api/client'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
+import Map from '@/components/shared/Map'
 
 interface SolicitudPuesto {
   id: string
@@ -52,15 +53,15 @@ function validate(f: PuestoForm): Record<string, string> {
   const errors: Record<string, string> = {}
   if (!f.nombrePuesto.trim()) errors.nombrePuesto = 'El nombre del puesto es obligatorio'
   if (!f.tipo) errors.tipo = 'Selecciona el tipo de instalacion'
-  if (!f.direccion.trim()) errors.direccion = 'La direccion es obligatoria'
+  if (!f.direccion.trim()) errors.direccion = 'La dirección es obligatoria'
 
   const lat = Number.parseFloat(f.latitud)
   const lng = Number.parseFloat(f.longitud)
   if (!f.latitud || Number.isNaN(lat) || lat < -90 || lat > 90) {
-    errors.latitud = 'Latitud invalida (entre -90 y 90)'
+    errors.ubicacion = 'Busca la dirección o selecciona el punto en el mapa'
   }
   if (!f.longitud || Number.isNaN(lng) || lng < -180 || lng > 180) {
-    errors.longitud = 'Longitud invalida (entre -180 y 180)'
+    errors.ubicacion = 'Busca la dirección o selecciona el punto en el mapa'
   }
 
   return errors
@@ -100,13 +101,13 @@ function EstadoPendiente({ solicitud, onVolver }: { solicitud: SolicitudPuesto; 
     <div className="min-h-screen bg-amber-50 flex flex-col justify-center px-4">
       <div className="max-w-sm mx-auto w-full text-center">
         <div className="text-5xl mb-4">...</div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">En espera de aprobacion</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">En espera de aprobación</h1>
         <p className="text-sm text-gray-500 mb-6">
-          Tu solicitud para <strong>{solicitud.nombre}</strong> esta siendo revisada por el coordinador.
+          Tu solicitud para <strong>{solicitud.nombre}</strong> está siendo revisada por el coordinador.
         </p>
         <div className="bg-white border border-amber-200 rounded-xl px-4 py-3 text-xs text-gray-500 text-left space-y-1 mb-6">
           <p><span className="font-medium">Puesto:</span> {solicitud.nombre}</p>
-          <p><span className="font-medium">Direccion:</span> {solicitud.direccion}</p>
+          <p><span className="font-medium">Dirección:</span> {solicitud.direccion}</p>
           <p><span className="font-medium">Enviada:</span> {new Date(solicitud.createdAt).toLocaleDateString('es-ES')}</p>
         </div>
         <button onClick={onVolver} className="text-sm text-amber-700 hover:text-amber-900 underline">
@@ -163,17 +164,59 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
   const [submitError, setSubmitError] = useState('')
   const [loading, setLoading] = useState(false)
   const { position, loading: geoLoading, request: requestGeo } = useGeolocation()
-  const [locationRequested, setLocationRequested] = useState(false)
+  const [selectCurrentWhenReady, setSelectCurrentWhenReady] = useState(false)
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const [mapCenter, setMapCenter] = useState<[number, number]>([39.425, -0.4])
+  const currentLat = position?.lat
+  const currentLng = position?.lng
 
-  useEffect(() => {
-    if (!locationRequested || !position) return
+  const selectedPosition: [number, number] | null = form.latitud && form.longitud
+    ? [Number.parseFloat(form.latitud), Number.parseFloat(form.longitud)]
+    : null
+
+  const applySelectedLocation = useCallback(async ([lat, lng]: [number, number], recenter = false) => {
     setForm((prev) => ({
       ...prev,
-      latitud: position.lat.toFixed(6),
-      longitud: position.lng.toFixed(6),
+      direccion: '',
+      latitud: lat.toFixed(6),
+      longitud: lng.toFixed(6),
     }))
-    setLocationRequested(false)
-  }, [locationRequested, position])
+    if (recenter) setMapCenter([lat, lng])
+    setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    setLocationLoading(true)
+    setLocationError('')
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`,
+        { headers: { Accept: 'application/json', 'Accept-Language': 'es' } },
+      )
+      if (!response.ok) throw new Error('reverse-failed')
+      const result = await response.json() as { display_name?: string }
+      if (!result.display_name) throw new Error('address-not-found')
+      setForm((prev) => ({ ...prev, direccion: result.display_name ?? '' }))
+    } catch {
+      setLocationError('No se ha podido obtener la calle. Puedes escribirla manualmente sin perder el punto seleccionado.')
+    } finally {
+      setLocationLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (currentLat === undefined || currentLng === undefined) {
+      requestGeo()
+      return
+    }
+    if (selectCurrentWhenReady) {
+      setSelectCurrentWhenReady(false)
+      void applySelectedLocation([currentLat, currentLng], true)
+      return
+    }
+    setMapCenter((current) => current[0] === currentLat && current[1] === currentLng
+      ? current
+      : [currentLat, currentLng])
+  }, [applySelectedLocation, currentLat, currentLng, requestGeo, selectCurrentWhenReady])
 
   const set = (field: keyof PuestoForm) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -183,16 +226,63 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
 
   const handleUseMyLocation = () => {
     if (position) {
-      setForm((prev) => ({
-        ...prev,
-        latitud: position.lat.toFixed(6),
-        longitud: position.lng.toFixed(6),
-      }))
+      void applySelectedLocation([position.lat, position.lng], true)
     } else {
-      setLocationRequested(true)
+      setSelectCurrentWhenReady(true)
       requestGeo()
     }
   }
+
+  const handleAddressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({
+      ...prev,
+      direccion: e.target.value,
+      latitud: '',
+      longitud: '',
+    }))
+    setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    setLocationError('')
+  }
+
+  const searchAddress = async () => {
+    const query = form.direccion.trim()
+    if (!query) {
+      setErrors((prev) => ({ ...prev, direccion: 'Escribe una calle o dirección' }))
+      return
+    }
+
+    setLocationLoading(true)
+    setLocationError('')
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=es&q=${encodeURIComponent(query)}`,
+        { headers: { Accept: 'application/json', 'Accept-Language': 'es' } },
+      )
+      if (!response.ok) throw new Error('search-failed')
+      const results = await response.json() as Array<{ lat: string; lon: string; display_name: string }>
+      const result = results[0]
+      if (!result) {
+        setLocationError('No hemos encontrado esa dirección. Añade el municipio o el código postal.')
+        return
+      }
+      const lat = Number.parseFloat(result.lat)
+      const lng = Number.parseFloat(result.lon)
+      setForm((prev) => ({
+        ...prev,
+        direccion: result.display_name,
+        latitud: lat.toFixed(6),
+        longitud: lng.toFixed(6),
+      }))
+      setMapCenter([lat, lng])
+      setErrors((prev) => ({ ...prev, direccion: '', ubicacion: '' }))
+    } catch {
+      setLocationError('No se ha podido buscar la dirección. Comprueba tu conexión e inténtalo de nuevo.')
+    } finally {
+      setLocationLoading(false)
+    }
+  }
+
+  const selectMapPoint = (point: [number, number]) => void applySelectedLocation(point)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -217,7 +307,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       onSuccess()
     } catch (err: unknown) {
       const response = (err as { response?: { data?: { error?: string } } })?.response
-      setSubmitError(response?.data?.error ?? 'Error al enviar la solicitud. Intentalo de nuevo.')
+      setSubmitError(response?.data?.error ?? 'Error al enviar la solicitud. Inténtalo de nuevo.')
     } finally {
       setLoading(false)
     }
@@ -248,13 +338,8 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div>
-        <Label required>Direccion completa</Label>
-        <Input value={form.direccion} onChange={set('direccion')} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta, Valencia" />
-      </div>
-
-      <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          Descripcion <span className="text-gray-400 font-normal">(opcional)</span>
+          Descripción <span className="text-gray-400 font-normal">(opcional)</span>
         </label>
         <textarea
           value={form.descripcion}
@@ -267,29 +352,46 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
 
       <div className="border-t border-gray-100 pt-4">
         <p className="text-sm font-medium text-gray-700 mb-3">
-          Ubicacion del puesto <span className="text-red-500">*</span>
+          Ubicación del puesto <span className="text-red-500">*</span>
         </p>
-        <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation} className="mb-3">
-          {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
-        </Button>
+        <div className="space-y-3">
+          <div>
+            <Label required>Calle o dirección</Label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input value={form.direccion} onChange={handleAddressChange} error={errors.direccion} placeholder="Calle Mayor 12, Paiporta" />
+              </div>
+              <Button type="button" variant="secondary" loading={locationLoading} onClick={searchAddress}>
+                Buscar dirección
+              </Button>
+            </div>
+          </div>
 
-        {form.latitud && form.longitud && (
-          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 mb-3">
-            Ubicacion capturada: {Number.parseFloat(form.latitud).toFixed(4)}, {Number.parseFloat(form.longitud).toFixed(4)}
+          <p className="text-xs text-gray-500">También puedes pulsar sobre el mapa para marcar la entrada del puesto.</p>
+          <Map
+            key={`${mapCenter[0]}-${mapCenter[1]}`}
+            center={mapCenter}
+            zoom={16}
+            userPosition={position ? [position.lat, position.lng] : null}
+            reportPoint={selectedPosition}
+            reportPointKind="emergency-post"
+            selectingReportPoint
+            onReportPointSelect={selectMapPoint}
+            className="h-64 rounded-xl overflow-hidden border border-gray-200"
+          />
+          <Button type="button" variant="secondary" fullWidth loading={geoLoading} onClick={handleUseMyLocation}>
+            {geoLoading ? 'Obteniendo ubicación...' : 'Usar mi ubicación actual'}
+          </Button>
+        </div>
+
+        {locationLoading && <p className="text-xs text-gray-500">Completando la ubicación...</p>}
+        {locationError && <p className="text-xs text-red-600">{locationError}</p>}
+        <FieldError msg={errors.ubicacion} />
+        {selectedPosition && !errors.ubicacion && (
+          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 mt-3">
+            Ubicación seleccionada correctamente
           </div>
         )}
-
-        <p className="text-xs text-gray-400 text-center mb-2">o introduce las coordenadas manualmente</p>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label required>Latitud</Label>
-            <Input type="number" step="0.000001" value={form.latitud} onChange={set('latitud')} error={errors.latitud} placeholder="39.4254" />
-          </div>
-          <div>
-            <Label required>Longitud</Label>
-            <Input type="number" step="0.000001" value={form.longitud} onChange={set('longitud')} error={errors.longitud} placeholder="-0.4178" />
-          </div>
-        </div>
       </div>
 
       {submitError && (
@@ -299,7 +401,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       )}
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-        <strong>Pendiente de aprobacion:</strong> Tu solicitud sera revisada por un coordinador. El puesto se activara cuando sea aceptada.
+        <strong>Pendiente de aprobación:</strong> Tu solicitud será revisada por un coordinador. El puesto se activará cuando sea aceptada.
       </div>
 
       <Button type="submit" fullWidth loading={loading} className="bg-amber-500 hover:bg-amber-600 focus-visible:ring-amber-500">
@@ -397,7 +499,7 @@ export default function RegisterPuesto() {
             Volver
           </button>
           <h1 className="text-2xl font-bold text-gray-900">Registrar puesto de emergencia</h1>
-          <p className="text-sm text-gray-500 mt-1">Tu solicitud sera verificada antes de activarse.</p>
+          <p className="text-sm text-gray-500 mt-1">Tu solicitud será verificada antes de activarse.</p>
         </div>
 
         <FormularioPuesto

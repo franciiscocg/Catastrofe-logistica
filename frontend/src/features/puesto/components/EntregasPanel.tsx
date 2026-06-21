@@ -60,12 +60,12 @@ export default function EntregasPanel({ donaciones, loading, visible, onToggle }
         className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
       >
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recepcion</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recepción</p>
           <h2 className="mt-0.5 text-sm font-semibold text-slate-950">Entregas activas</h2>
           <p className="mt-1 truncate text-xs text-slate-500">
             {donaciones.length === 0
               ? 'Sin entradas pendientes'
-              : `${donaciones.length} en seguimiento${proximaEntrega ? `, proxima: ${proximaEntrega.producto.nombre}` : ''}`}
+              : `${donaciones.length} en seguimiento${proximaEntrega ? `, próxima: ${proximaEntrega.producto.nombre}` : ''}`}
           </p>
         </div>
         <Badge variant={donaciones.length ? 'info' : 'default'}>{visible ? 'Ocultar' : donaciones.length}</Badge>

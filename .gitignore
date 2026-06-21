@@ -66,6 +66,8 @@ backend/prisma/migrations/*
 !backend/prisma/migrations/20260523102000_harden_auth_sessions/migration.sql
 !backend/prisma/migrations/20260526164000_add_qr_consumptions/
 !backend/prisma/migrations/20260526164000_add_qr_consumptions/migration.sql
+!backend/prisma/migrations/20260621183000_add_recovery_code/
+!backend/prisma/migrations/20260621183000_add_recovery_code/migration.sql
 
 # Coverage
 coverage/

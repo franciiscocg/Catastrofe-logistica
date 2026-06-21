@@ -17,6 +17,7 @@ export interface StepNavegacion {
   lng: number
   tipo: string
   icono: DireccionIcono
+  legIndex: number
 }
 
 // Degrees to rotate an ↑ arrow to represent each maneuver visually
@@ -108,7 +109,7 @@ interface OsrmRawStep {
 export function parsearStepsOsrm(
   legs: { steps: OsrmRawStep[] }[],
 ): StepNavegacion[] {
-  return legs.flatMap((leg) =>
+  return legs.flatMap((leg, legIndex) =>
     leg.steps.map((step) => {
       const tipo     = step.maneuver.type
       const modifier = step.maneuver.modifier ?? 'straight'
@@ -126,9 +127,58 @@ export function parsearStepsOsrm(
         lng:         step.maneuver.location[0],
         tipo,
         icono,
+        legIndex,
       }
     }),
   )
+}
+
+function puntoAMetros(lat: number, lng: number, origenLat: number) {
+  const rad = Math.PI / 180
+  return {
+    x: lng * 111_320 * Math.cos(origenLat * rad),
+    y: lat * 110_540,
+  }
+}
+
+export function distanciaAPolilinea(
+  userLat: number,
+  userLng: number,
+  points: [number, number][],
+): number {
+  if (points.length === 0) return Number.POSITIVE_INFINITY
+  if (points.length === 1) return haversineKm(userLat, userLng, points[0][0], points[0][1]) * 1000
+
+  const p = puntoAMetros(userLat, userLng, userLat)
+  let min = Number.POSITIVE_INFINITY
+  for (let index = 1; index < points.length; index += 1) {
+    const a = puntoAMetros(points[index - 1][0], points[index - 1][1], userLat)
+    const b = puntoAMetros(points[index][0], points[index][1], userLat)
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const lengthSquared = dx * dx + dy * dy
+    const projection = lengthSquared === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared))
+    min = Math.min(min, Math.hypot(p.x - (a.x + projection * dx), p.y - (a.y + projection * dy)))
+  }
+  return min
+}
+
+export function pasoAlcanzadoPorPosicion(
+  userLat: number,
+  userLng: number,
+  steps: StepNavegacion[],
+  currentIdx: number,
+  radiusM = 40,
+): number {
+  const lastCandidate = Math.min(steps.length - 1, currentIdx + 3)
+  for (let index = lastCandidate; index >= currentIdx; index -= 1) {
+    if (distanciaAlStep(userLat, userLng, steps[index]) <= radiusM) {
+      return steps[index].tipo === 'arrive' ? index : Math.min(index + 1, steps.length - 1)
+    }
+  }
+  return currentIdx
 }
 
 export function formatearDistanciaNav(metros: number): string {

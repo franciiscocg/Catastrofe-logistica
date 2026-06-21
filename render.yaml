@@ -6,6 +6,7 @@ services:
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:render
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
@@ -13,39 +14,25 @@ services:
         value: 0.0.0.0
       - key: COOKIE_SAME_SITE
         value: none
-      - key: EMAIL_VERIFICATION_REQUIRED
-        value: "false"
       - key: JWT_EXPIRES_IN
         value: 15m
       - key: JWT_EXPIRES_SECONDS
         value: "900"
       - key: REFRESH_TOKEN_TTL_DAYS
         value: "14"
-      - key: RESET_TOKEN_TTL_MINUTES
-        value: "30"
-      - key: VERIFY_TOKEN_TTL_HOURS
-        value: "24"
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
       - key: DIRECT_URL
-        sync: false
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
       - key: JWT_SECRET
-        sync: false
+        generateValue: true
       - key: FRONTEND_URL
         sync: false
       - key: APP_PUBLIC_URL
-        sync: false
-      - key: MAIL_FROM
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_SECURE
-        value: "false"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
         sync: false
 
   - type: web
@@ -61,3 +48,10 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false
+
+databases:
+  - name: catastrofe-logistica-db
+    databaseName: catastrofe_logistica
+    user: catastrofe_logistica
+    region: oregon
+    plan: free

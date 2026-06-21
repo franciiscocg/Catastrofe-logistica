@@ -65,7 +65,7 @@ export async function registerIdempotency(app: FastifyInstance) {
     }
 
     if (existing.method !== method || existing.url !== url || existing.bodyHash !== bodyHash) {
-      return sendConflict(reply, 'La clave de idempotencia ya se uso con otra operacion')
+      return sendConflict(reply, 'La clave de idempotencia ya se usó con otra operación')
     }
 
     if (existing.status === 'COMPLETED' && existing.statusCode && existing.response !== null) {
@@ -73,7 +73,7 @@ export async function registerIdempotency(app: FastifyInstance) {
       return reply.status(existing.statusCode).send(existing.response)
     }
 
-    return sendConflict(reply, 'La operacion ya esta en proceso; reintentalo en unos segundos')
+    return sendConflict(reply, 'La operación ya está en proceso; reinténtalo en unos segundos')
   })
 
   app.addHook('onSend', async (request: IdempotentRequest, _reply, payload) => {

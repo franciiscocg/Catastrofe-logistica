@@ -75,6 +75,10 @@ function renderRegister() {
 describe('RegisterPuesto', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ lat: '39.4254', lon: '-0.4178', display_name: 'Calle Mayor 12, Paiporta, Valencia' }],
+    }))
     mockApiGet.mockResolvedValue({ data: { solicitud: null } })
     mockApiPost.mockResolvedValue({ data: { solicitud: { id: 'solicitud-1', estado: 'PENDIENTE' } } })
   })
@@ -96,12 +100,8 @@ describe('RegisterPuesto', () => {
     fireEvent.change(screen.getByPlaceholderText(/Horario de apertura/), {
       target: { value: 'Aula de apoyo escolar' },
     })
-    fireEvent.change(screen.getByPlaceholderText('39.4254'), {
-      target: { value: '39.4254' },
-    })
-    fireEvent.change(screen.getByPlaceholderText('-0.4178'), {
-      target: { value: '-0.4178' },
-    })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar dirección' }))
+    await screen.findByText('Ubicación seleccionada correctamente')
 
     fireEvent.click(screen.getByText('Enviar solicitud'))
 
@@ -120,7 +120,33 @@ describe('RegisterPuesto', () => {
     })
   })
 
-  it('muestra el estado pendiente si ya existe una solicitud en revision', async () => {
+  it('completa la dirección y las coordenadas al usar la ubicación actual', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ display_name: 'Calle de la Paz 4, Paiporta, Valencia' }),
+    } as Response)
+    renderRegister()
+
+    await screen.findByText('Registrar puesto de emergencia')
+    fireEvent.change(screen.getByPlaceholderText(/CEIP La Paz/), { target: { value: 'CEIP La Paz' } })
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'colegio' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Usar mi ubicación actual' }))
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Calle Mayor 12/)).toHaveValue('Calle de la Paz 4, Paiporta, Valencia')
+    })
+    fireEvent.click(screen.getByText('Enviar solicitud'))
+
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenCalledWith('/api/puestos/solicitudes', expect.objectContaining({
+        direccion: 'Calle de la Paz 4, Paiporta, Valencia',
+        latitud: 39.4254,
+        longitud: -0.4178,
+      }))
+    })
+  })
+
+  it('muestra el estado pendiente si ya existe una solicitud en revisión', async () => {
     mockApiGet.mockResolvedValue({
       data: {
         solicitud: {
@@ -138,7 +164,7 @@ describe('RegisterPuesto', () => {
 
     renderRegister()
 
-    expect(await screen.findByText('En espera de aprobacion')).toBeInTheDocument()
+    expect(await screen.findByText('En espera de aprobación')).toBeInTheDocument()
     expect(screen.getAllByText(/CEIP La Paz/).length).toBeGreaterThan(0)
     expect(screen.queryByText('Enviar solicitud')).not.toBeInTheDocument()
   })

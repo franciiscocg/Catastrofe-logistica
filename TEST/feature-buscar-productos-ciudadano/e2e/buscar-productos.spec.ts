@@ -56,21 +56,28 @@ async function prepararCiudadano(page: Page, conUbicacion = true) {
   await page.addInitScript(() => {
     window.localStorage.setItem('catlogistica-auth', JSON.stringify({
       state: {
-        user: {
-          id: 'user-e2e',
-          email: 'ciudadano@example.com',
-          nombre: 'Maria',
-          apellidos: 'Garcia',
-          roles: ['CIUDADANO'],
-        },
-        accessToken: 'e2e-token',
         selectedRole: 'ciudadano',
-        isAuthenticated: true,
         puestoId: null,
       },
-      version: 0,
+      version: 2,
     }))
   })
+
+  await page.route('**/api/auth/refresh', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      user: {
+        id: 'user-e2e',
+        email: 'ciudadano@example.com',
+        nombre: 'Maria',
+        apellidos: 'Garcia',
+        roles: ['CIUDADANO'],
+      },
+      accessToken: 'e2e-token',
+      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+    }),
+  }))
 
   if (conUbicacion) {
     await page.context().grantPermissions(['geolocation'])
@@ -89,10 +96,16 @@ async function prepararCiudadano(page: Page, conUbicacion = true) {
     body: JSON.stringify({ incidencias: [] }),
   }))
 
-  await page.route('**/api/inventario/puesto/**', (route) => route.fulfill({
+  await page.route('**/api/inventario', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ inventario: [] }),
+    body: JSON.stringify({ inventario: [{
+      id: 'inv-1',
+      puestoId: '1',
+      tipo: 'DISPONIBLE',
+      cantidad: 20,
+      producto: { id: 'prod-1', nombre: 'Agua embotellada', categoria: 'Agua', unidad: 'litros' },
+    }] }),
   }))
 
   await page.route('**/route/v1/**', (route) => route.fulfill({
@@ -107,7 +120,7 @@ async function abrirBusqueda(page: Page) {
   await page.getByRole('button', { name: /Buscar producto Encuentra/i }).click()
 }
 
-test.describe('Panel de busqueda de productos', () => {
+test.describe('Panel de búsqueda de productos', () => {
   test.beforeEach(async ({ page }) => {
     await prepararCiudadano(page)
     await abrirBusqueda(page)
@@ -116,11 +129,11 @@ test.describe('Panel de busqueda de productos', () => {
   test('abre el selector de productos', async ({ page }) => {
     await expect(page.getByText('Recursos disponibles')).toBeVisible()
     await expect(page.getByText('Buscar productos')).toBeVisible()
-    await expect(page.getByPlaceholder('Buscar producto o categoria...')).toBeVisible()
+    await expect(page.getByPlaceholder('Buscar producto o categoría...')).toBeVisible()
   })
 
   test('permite buscar y anadir productos a la lista', async ({ page }) => {
-    const input = page.getByPlaceholder('Buscar producto o categoria...')
+    const input = page.getByPlaceholder('Buscar producto o categoría...')
     await input.click()
     await input.fill('agua')
     await page.getByRole('button', { name: /Agua embotellada/i }).first().click()

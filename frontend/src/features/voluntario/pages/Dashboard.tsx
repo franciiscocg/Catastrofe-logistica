@@ -133,7 +133,7 @@ const CATEGORIAS_INCIDENCIA: Record<string, CategoriaIncidenciaConfig> = {
     keywords: ['agua', 'inundacion', 'inundado', 'lluvia', 'barro', 'balsa'],
   },
   obstaculos_via: {
-    label: 'Obstaculos en via',
+    label: 'Obstáculos en vía',
     equipment: ['Guantes', 'Palanca o herramienta de carga', 'Carretilla', 'Chaleco reflectante'],
     keywords: ['obstaculo', 'escombro', 'arbol', 'rama', 'coche', 'bloqueo', 'cortada', 'calle'],
   },
@@ -144,7 +144,7 @@ const CATEGORIAS_INCIDENCIA: Record<string, CategoriaIncidenciaConfig> = {
   },
   asistencia: {
     label: 'Asistencia a personas',
-    equipment: ['Botiquin basico', 'Agua', 'Manta termica', 'Telefono con bateria'],
+    equipment: ['Botiquín básico', 'Agua', 'Manta térmica', 'Teléfono con batería'],
     keywords: ['persona', 'herido', 'ayuda', 'asistencia', 'vecino', 'mayor'],
   },
 }
@@ -221,7 +221,7 @@ function getIncidenciaTitulo(incidencia: Incidencia) {
 }
 
 function getIncidenciaResumen(incidencia: Incidencia) {
-  return incidencia.descripcion?.trim() || 'Sin descripcion disponible.'
+  return incidencia.descripcion?.trim() || 'Sin descripción disponible.'
 }
 
 function normalizeTipoInventario(tipo: string): 'disponible' | 'necesario' {
@@ -570,7 +570,7 @@ export default function VoluntarioDashboard() {
         })
 
         if (donacionesConCodigo.some((donacionId) => idsCerradas.has(donacionId))) {
-          setMensajeDonacion('Donacion cerrada por el puesto.')
+          setMensajeDonacion('Donación cerrada por el puesto.')
         }
       } catch {
         // La pantalla seguira mostrando el QR; se reintenta en la siguiente comprobacion.
@@ -803,7 +803,7 @@ export default function VoluntarioDashboard() {
       setMensajeDonacion(
         isOnline
           ? `Solicitud enviada a ${puesto.nombre}. El responsable debe aceptarla para que puedas entrar al equipo.`
-          : 'Sin conexion: solicitud de participacion guardada para sincronizar.',
+          : 'Sin conexión: solicitud de participación guardada para sincronizar.',
       )
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
@@ -829,7 +829,7 @@ export default function VoluntarioDashboard() {
             url: `/api/puestos/${actividadManualActiva.id}/asignaciones/finalizar`,
             priority: 'high',
           })
-          setMensajeDonacion('Sin conexion: finalizacion guardada para sincronizar.')
+          setMensajeDonacion('Sin conexión: finalización guardada para sincronizar.')
         }
       } catch (err: unknown) {
         const message = err && typeof err === 'object' && 'response' in err
@@ -898,7 +898,7 @@ export default function VoluntarioDashboard() {
             ? { ...incidencia, estado: estadoIncidenciaFinal }
             : incidencia
         )))
-        setMensajeDonacion('Sin conexion: actualizacion y finalizacion guardadas para sincronizar.')
+        setMensajeDonacion('Sin conexión: actualización y finalización guardadas para sincronizar.')
       } else {
         const { data: comentarioData } = await apiClient.post(`/api/incidencias/${incidenciaFinalizacion.id}/comentarios`, {
           estado: estadoIncidenciaFinal,
@@ -955,7 +955,7 @@ export default function VoluntarioDashboard() {
       })
       setIncidenciaConfirmacion(null)
       setRecomendacionesLeidas(false)
-      if (!isOnline) setMensajeDonacion('Sin conexion: asignacion a incidencia guardada para sincronizar.')
+      if (!isOnline) setMensajeDonacion('Sin conexión: asignación a incidencia guardada para sincronizar.')
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
@@ -973,7 +973,7 @@ export default function VoluntarioDashboard() {
     if (!userPosition) {
       setRutaPendiente({ puesto, donacionId, excluirIncidenciaId })
       requestGeo()
-      setRutaError('Comparte tu ubicacion y calcularemos la ruta automaticamente.')
+      setRutaError('Comparte tu ubicación y calcularemos la ruta automáticamente.')
       setRutaErrorDonacionId(donacionId ?? puesto.id)
       return
     }
@@ -1358,7 +1358,7 @@ export default function VoluntarioDashboard() {
 
     if (!userPosition) {
       requestGeo()
-      setErrorDonacion('Comparte tu ubicacion para calcular la ruta completa de entrega.')
+      setErrorDonacion('Comparte tu ubicación para calcular la ruta completa de entrega.')
       return
     }
 
@@ -1419,7 +1419,7 @@ export default function VoluntarioDashboard() {
         const cantidadMaxima = necesidad.cantidadPendiente ?? necesidad.item.cantidad
 
         if (!Number.isFinite(parsedCantidad) || parsedCantidad <= 0 || !Number.isInteger(parsedCantidad)) {
-          throw new Error(`Introduce una cantidad valida para ${necesidad.item.producto.nombre}.`)
+          throw new Error(`Introduce una cantidad válida para ${necesidad.item.producto.nombre}.`)
         }
         if (parsedCantidad > cantidadMaxima) {
           throw new Error(`No puedes comprometer mas de ${cantidadMaxima} ${necesidad.item.producto.unidad} de ${necesidad.item.producto.nombre}.`)
@@ -1488,7 +1488,7 @@ export default function VoluntarioDashboard() {
 
     const parsedCantidad = Number(cantidad.replace(',', '.'))
     if (!Number.isFinite(parsedCantidad) || parsedCantidad <= 0) {
-      setCantidadError('Introduce una cantidad valida mayor que 0.')
+      setCantidadError('Introduce una cantidad válida mayor que 0.')
       return
     }
 
@@ -1598,7 +1598,7 @@ export default function VoluntarioDashboard() {
       setMisDonaciones((current) => current.map((item) => (
         item.id === donacion.id ? { ...item, estado } : item
       )))
-      setMensajeDonacion('Sin conexion: cambio guardado y pendiente de sincronizar.')
+      setMensajeDonacion('Sin conexión: cambio guardado y pendiente de sincronizar.')
       return
     }
 
@@ -1609,10 +1609,10 @@ export default function VoluntarioDashboard() {
         item.id === donacion.id ? data.donacion : item
       )))
       if (estado === 'ENTREGADA') {
-        setMensajeDonacion('Donacion marcada como entregada. Ya puedes elegir otra actividad.')
+        setMensajeDonacion('Donación marcada como entregada. Ya puedes elegir otra actividad.')
       }
       if (estado === 'CANCELADA') {
-        setMensajeDonacion('Donacion cancelada. Ya puedes elegir otra actividad.')
+        setMensajeDonacion('Donación cancelada. Ya puedes elegir otra actividad.')
         setNecesidadesApi((current) => current.map((necesidad) => {
           if (necesidad.puesto.id !== donacion.puesto.id || necesidad.item.producto.id !== donacion.producto.id) {
             return necesidad
@@ -1648,7 +1648,7 @@ export default function VoluntarioDashboard() {
         ...current,
         [donacion.id]: current[donacion.id] ?? createCodigoEntregaPayload(donacion, donacion.entregaCodigo!),
       }))
-      setMensajeDonacion('Codigo de entrega listo. Enseñalo en el puesto para confirmar la llegada.')
+      setMensajeDonacion('Código de entrega listo. Enséñalo en el puesto para confirmar la llegada.')
       return
     }
 
@@ -1674,7 +1674,7 @@ export default function VoluntarioDashboard() {
         ...current,
         [donacion.id]: createCodigoEntregaPayload(donacionConCodigo, entregaCodigo),
       }))
-      setMensajeDonacion('Sin conexion: codigo temporal generado y solicitud pendiente de sincronizar.')
+      setMensajeDonacion('Sin conexión: código temporal generado y solicitud pendiente de sincronizar.')
       return
     }
 
@@ -1692,7 +1692,7 @@ export default function VoluntarioDashboard() {
           [donacion.id]: createCodigoEntregaPayload(donacionActualizada, entregaCodigo),
         }))
       }
-      setMensajeDonacion('Codigo de entrega generado. Enseñalo en el puesto para confirmar la llegada.')
+      setMensajeDonacion('Código de entrega generado. Enséñalo en el puesto para confirmar la llegada.')
     } catch (err: unknown) {
       setErrorDonacion(getApiErrorMessage(err, 'No se pudo generar el código de entrega.'))
     } finally {
@@ -1958,8 +1958,8 @@ export default function VoluntarioDashboard() {
               <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-cyan-100 bg-cyan-50 p-4 sm:flex-row">
                 <ReadableQrCode value={codigoEntregaActividad} className="border-cyan-100" />
                 <div className="text-center sm:text-left">
-                  <p className="text-sm font-semibold text-cyan-950">Codigo de entrega activo</p>
-                  <p className="mt-1 text-sm text-cyan-900">Enseña este QR en el puesto para confirmar la recepcion.</p>
+                  <p className="text-sm font-semibold text-cyan-950">Código de entrega activo</p>
+                  <p className="mt-1 text-sm text-cyan-900">Enseña este QR en el puesto para confirmar la recepción.</p>
                 </div>
               </div>
             )}
@@ -1968,7 +1968,7 @@ export default function VoluntarioDashboard() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-950">Inventario del puesto</p>
-                    <p className="mt-1 text-xs text-slate-500">Actualiza stock, registra necesidades y escanea codigos QR mientras sigas aceptado en el equipo.</p>
+                    <p className="mt-1 text-xs text-slate-500">Actualiza stock, registra necesidades y escanea códigos QR mientras sigas aceptado en el equipo.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:flex">
                     <Button type="button" size="sm" variant="secondary" onClick={() => setShowPuestoQr(true)}>
@@ -1994,14 +1994,14 @@ export default function VoluntarioDashboard() {
                     value={inventarioPuestoQuery}
                     onChange={(event) => setInventarioPuestoQuery(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-600"
-                    placeholder="Buscar producto, categoria o unidad"
+                    placeholder="Buscar producto, categoría o unidad"
                   />
                   <div className="grid grid-cols-4 gap-1 rounded-lg border border-slate-200 bg-white p-1">
                     {([
                       ['todos', 'Todos'],
                       ['disponible', 'Disp.'],
                       ['necesario', 'Neces.'],
-                      ['critico', 'Critico'],
+                      ['critico', 'Crítico'],
                     ] as const).map(([value, label]) => (
                       <button
                         key={value}
@@ -2029,7 +2029,7 @@ export default function VoluntarioDashboard() {
                     {inventarioPuestoFiltrado.map((card) => {
                       const nivel = card.disponible ? getNivelInventario(card.disponible) : card.estado === 'sin-stock' ? 'critico' : 'necesario'
                       const badgeVariant = card.estado === 'necesario' ? 'warning' : card.estado === 'sin-stock' || nivel === 'critico' ? 'danger' : 'success'
-                      const badgeText = card.estado === 'necesario' ? 'Necesario' : card.estado === 'sin-stock' ? 'Sin stock' : nivel === 'critico' ? 'Critico' : 'Disponible'
+                      const badgeText = card.estado === 'necesario' ? 'Necesario' : card.estado === 'sin-stock' ? 'Sin stock' : nivel === 'critico' ? 'Crítico' : 'Disponible'
                       const cantidadPrincipal = card.estado === 'necesario' ? card.cantidadNecesaria : card.cantidadDisponible
                       const labelPrincipal = card.estado === 'necesario' ? 'Cantidad necesaria' : 'Cantidad disponible'
 
@@ -2058,7 +2058,7 @@ export default function VoluntarioDashboard() {
                           </span>
                           {card.estado === 'necesario' && card.cantidadDisponible > 0 && (
                             <span className="mt-1 block text-xs text-slate-500">
-                              Tambien hay {card.cantidadDisponible} {card.producto.unidad} disponibles.
+                              También hay {card.cantidadDisponible} {card.producto.unidad} disponibles.
                             </span>
                           )}
                           {card.estado === 'disponible' && card.cantidadNecesaria > 0 && (
@@ -2075,7 +2075,7 @@ export default function VoluntarioDashboard() {
                               disabled={card.estado !== 'necesario' && card.cantidadDisponible <= 0}
                               onClick={() => setOperacionInventarioPuesto({ card, operacion: 'salida' })}
                             >
-                              {card.estado === 'necesario' ? 'Falta mas' : 'Salida'}
+                              {card.estado === 'necesario' ? 'Falta más' : 'Salida'}
                             </Button>
                             <Button
                               type="button"
@@ -2133,7 +2133,7 @@ export default function VoluntarioDashboard() {
                       else if (puestoActividad) void handleComoLlegar(puestoActividad, `puesto:${puestoActividad.id}`)
                     }}
                   >
-                    Compartir ubicacion
+                    Compartir ubicación
                   </Button>
                 )}
               </div>
@@ -2607,9 +2607,9 @@ export default function VoluntarioDashboard() {
                 {!userPosition && (
                   <Notice tone="info">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <span>Comparte tu ubicacion para ordenar las calles cortadas por cercania.</span>
+                      <span>Comparte tu ubicación para ordenar las calles cortadas por cercanía.</span>
                       <Button type="button" size="sm" variant="secondary" onClick={requestGeo}>
-                        Usar mi ubicacion
+                        Usar mi ubicación
                       </Button>
                     </div>
                   </Notice>
@@ -2640,7 +2640,7 @@ export default function VoluntarioDashboard() {
                                 <p className="mt-1 text-xs font-medium text-amber-700">{categoria.label}</p>
                                 {incidencia.distanciaKm !== undefined && (
                                   <p className="mt-1 text-xs font-medium text-cyan-700">
-                                    {incidencia.distanciaKm.toFixed(1)} km de tu ubicacion
+                                    {incidencia.distanciaKm.toFixed(1)} km de tu ubicación
                                   </p>
                                 )}
                                 {incidencia._count?.asignacionesVoluntarios !== undefined && (
@@ -2664,11 +2664,11 @@ export default function VoluntarioDashboard() {
                               <p className="mt-1 text-sm text-slate-600">{resumen}</p>
                               <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
                                 <div className="rounded-md bg-white px-3 py-2 ring-1 ring-slate-200">
-                                  <p className="font-medium text-slate-500">Categoria</p>
+                                  <p className="font-medium text-slate-500">Categoría</p>
                                   <p className="mt-1 font-semibold text-slate-800">{categoria.label}</p>
                                 </div>
                                 <div className="rounded-md bg-white px-3 py-2 ring-1 ring-slate-200">
-                                  <p className="font-medium text-slate-500">Ubicacion</p>
+                                  <p className="font-medium text-slate-500">Ubicación</p>
                                   <p className="mt-1 font-semibold text-slate-800">
                                     {incidencia.latitud.toFixed(5)}, {incidencia.longitud.toFixed(5)}
                                   </p>
@@ -2690,7 +2690,7 @@ export default function VoluntarioDashboard() {
                                 className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800"
                                 disabled={rutaLoading}
                               >
-                                {rutaLoadingId === `incidencia:${incidencia.id}` ? 'Calculando ruta...' : 'Como llegar'}
+                                {rutaLoadingId === `incidencia:${incidencia.id}` ? 'Calculando ruta...' : 'Cómo llegar'}
                               </button>
                               {rutaError && rutaErrorDonacionId === `incidencia:${incidencia.id}` && (
                                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
@@ -2703,7 +2703,7 @@ export default function VoluntarioDashboard() {
                                       className="mt-2 w-full sm:w-auto"
                                       onClick={() => handleComoLlegarIncidencia(incidencia)}
                                     >
-                                      Compartir ubicacion
+                                      Compartir ubicación
                                     </Button>
                                   )}
                                 </div>
@@ -2785,7 +2785,7 @@ export default function VoluntarioDashboard() {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold text-slate-800">
-                                {asignacion.incidencia.descripcion || 'Incidencia sin descripcion'}
+                                {asignacion.incidencia.descripcion || 'Incidencia sin descripción'}
                               </p>
                               <p className="mt-1 text-xs text-slate-500">
                                 Inicio: {formatDateTime(asignacion.startedAt)}
@@ -2867,11 +2867,11 @@ export default function VoluntarioDashboard() {
                             <div className="border-t border-slate-200 bg-slate-50 p-4">
                               <p className={`text-xs ${lleno ? 'text-red-600' : 'text-slate-600'}`}>
                                 {solicitudPendiente
-                                  ? 'Tu solicitud esta pendiente de revision por el responsable del puesto.'
+                                  ? 'Tu solicitud está pendiente de revisión por el responsable del puesto.'
                                   : solicitudParticipacion?.estado === 'RECHAZADA'
                                     ? `Solicitud rechazada${solicitudParticipacion.motivoRechazo ? `: ${solicitudParticipacion.motivoRechazo}` : '.'}`
                                     : lleno
-                                  ? 'Este puesto esta lleno ahora mismo.'
+                                  ? 'Este puesto está lleno ahora mismo.'
                                   : `Quedan ${huecosLibres} hueco${huecosLibres === 1 ? '' : 's'} disponible${huecosLibres === 1 ? '' : 's'}.`}
                               </p>
                               <button
@@ -2880,7 +2880,7 @@ export default function VoluntarioDashboard() {
                                 className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-800 disabled:opacity-60"
                                 disabled={rutaLoading}
                               >
-                                {rutaLoadingId === `puesto:${puesto.id}` ? 'Calculando ruta...' : 'Como llegar'}
+                                {rutaLoadingId === `puesto:${puesto.id}` ? 'Calculando ruta...' : 'Cómo llegar'}
                               </button>
                               {rutaError && rutaErrorDonacionId === `puesto:${puesto.id}` && (
                                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
@@ -2893,7 +2893,7 @@ export default function VoluntarioDashboard() {
                                       className="mt-2 w-full sm:w-auto"
                                       onClick={() => handleComoLlegar(puesto, `puesto:${puesto.id}`)}
                                     >
-                                      Compartir ubicacion
+                                      Compartir ubicación
                                     </Button>
                                   )}
                                 </div>
@@ -3025,7 +3025,7 @@ export default function VoluntarioDashboard() {
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-sm text-slate-700">{resumen}</p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Ubicacion: {incidenciaConfirmacion.latitud.toFixed(5)}, {incidenciaConfirmacion.longitud.toFixed(5)}
+                  Ubicación: {incidenciaConfirmacion.latitud.toFixed(5)}, {incidenciaConfirmacion.longitud.toFixed(5)}
                 </p>
               </div>
 
@@ -3093,7 +3093,7 @@ export default function VoluntarioDashboard() {
                 <p className="text-xs font-semibold uppercase text-cyan-700">Actualizar incidencia</p>
                 <h2 className="mt-1 text-lg font-semibold text-slate-950">Estado actual de la calle</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {incidenciaFinalizacion.descripcion || 'Incidencia sin descripcion'}
+                  {incidenciaFinalizacion.descripcion || 'Incidencia sin descripción'}
                 </p>
               </div>
               <button
@@ -3143,7 +3143,7 @@ export default function VoluntarioDashboard() {
               rows={4}
               required
               maxLength={500}
-              placeholder="Describe lo que has encontrado al llegar: obstaculos, agua, escombros, paso parcial, senalizacion..."
+              placeholder="Describe lo que has encontrado al llegar: obstáculos, agua, escombros, paso parcial, señalización..."
               className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
             />
             <p className="mt-1 text-xs text-slate-400">{comentarioIncidenciaFinal.trim().length}/500</p>

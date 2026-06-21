@@ -82,7 +82,7 @@ afterEach(async () => {
 })
 
 describe('realtime autorizado', () => {
-  it('rechaza una conexion sin token de acceso', async () => {
+  it('rechaza una conexión sin token de acceso', async () => {
     const url = await startRealtime()
     const socket = client(url)
 
@@ -92,7 +92,7 @@ describe('realtime autorizado', () => {
     expect(socket.connected).toBe(false)
   })
 
-  it('envia solicitudes solo al interesado y a coordinacion', async () => {
+  it('envia solicitudes solo al interesado y a coordinación', async () => {
     const url = await startRealtime()
     const solicitante = client(url, 'solicitante')
     const coordinador = client(url, 'coordinador')

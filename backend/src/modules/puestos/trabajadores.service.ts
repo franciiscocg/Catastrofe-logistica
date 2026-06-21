@@ -1,6 +1,15 @@
 import { prisma } from '../../lib/prisma.js'
 
-export async function listTrabajadores(puestoId: string) {
+export async function listTrabajadores(puestoId: string, requesterId: string, requesterRoles: string[]) {
+  const puesto = await prisma.puestoEmergencia.findUnique({
+    where: { id: puestoId },
+    select: { adminId: true },
+  })
+  if (!puesto) throw Object.assign(new Error('Puesto no encontrado'), { statusCode: 404 })
+  if (puesto.adminId !== requesterId && !requesterRoles.includes('COORDINADOR')) {
+    throw Object.assign(new Error('Solo el responsable o un coordinador puede consultar los trabajadores'), { statusCode: 403 })
+  }
+
   return prisma.puestoTrabajador.findMany({
     where: { puestoId },
     include: {
@@ -52,7 +61,22 @@ export async function removeTrabajador(puestoId: string, userId: string, adminId
   })
   if (!registro) throw Object.assign(new Error('Trabajador no encontrado en este puesto'), { statusCode: 404 })
 
-  await prisma.puestoTrabajador.delete({
-    where: { puestoId_usuarioId: { puestoId, usuarioId: userId } },
+  await prisma.$transaction(async (tx) => {
+    await tx.puestoTrabajador.delete({
+      where: { puestoId_usuarioId: { puestoId, usuarioId: userId } },
+    })
+
+    const [otrosPuestos, puestosAdministrados, usuario] = await Promise.all([
+      tx.puestoTrabajador.count({ where: { usuarioId: userId } }),
+      tx.puestoEmergencia.count({ where: { adminId: userId } }),
+      tx.usuario.findUnique({ where: { id: userId }, select: { roles: true } }),
+    ])
+
+    if (otrosPuestos === 0 && puestosAdministrados === 0 && usuario?.roles.includes('PUESTO_EMERGENCIA')) {
+      await tx.usuario.update({
+        where: { id: userId },
+        data: { roles: { set: usuario.roles.filter((rol) => rol !== 'PUESTO_EMERGENCIA') } },
+      })
+    }
   })
 }

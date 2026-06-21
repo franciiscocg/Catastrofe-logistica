@@ -92,7 +92,7 @@ export function SelectorProductosSheet({
             </div>
             <div className="rounded-lg border border-slate-200 px-3 py-1.5">
               <p className="text-sm font-semibold text-slate-950">{categoriasDisponibles.length}</p>
-              <p className="text-[11px] text-slate-500">categorias</p>
+              <p className="text-[11px] text-slate-500">categorías</p>
             </div>
             <div className="rounded-lg border border-slate-200 px-3 py-1.5">
               <p className="text-sm font-semibold text-slate-950">{Math.round(unidadesTotales)}</p>
@@ -103,7 +103,7 @@ export function SelectorProductosSheet({
           type="button"
           onClick={onClose}
           className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50"
-          aria-label="Cerrar busqueda"
+          aria-label="Cerrar búsqueda"
         >
           x
         </button>
@@ -115,7 +115,7 @@ export function SelectorProductosSheet({
           <main className="min-w-0 space-y-4">
             <section className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="relative">
-                <label className="sr-only">Buscar producto o categoria</label>
+                <label className="sr-only">Buscar producto o categoría</label>
                 <input
                   type="search"
                   value={textoBusqueda}
@@ -170,7 +170,7 @@ export function SelectorProductosSheet({
               {sugerenciasVisibles.length === 0 ? (
                 <div className="px-4 py-10 text-center">
                   <p className="text-sm font-semibold text-slate-950">No hay productos disponibles</p>
-                  <p className="mt-1 text-xs text-slate-500">Prueba con otra categoria o un termino mas general.</p>
+                  <p className="mt-1 text-xs text-slate-500">Prueba con otra categoría o un término más general.</p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
@@ -203,7 +203,7 @@ export function SelectorProductosSheet({
                           <span className={`flex h-8 min-w-24 items-center justify-center rounded-md px-3 text-xs font-semibold ${
                             selected ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-950 text-white'
                           }`}>
-                            {selected ? 'Anadido' : 'Anadir'}
+                            {selected ? 'Añadido' : 'Anadir'}
                           </span>
                         </div>
                       </button>
@@ -214,7 +214,7 @@ export function SelectorProductosSheet({
 
               {sugerencias.length > sugerenciasVisibles.length && (
                 <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-                  Mostrando los primeros {sugerenciasVisibles.length}. Usa la busqueda para afinar.
+                  Mostrando los primeros {sugerenciasVisibles.length}. Usa la búsqueda para afinar.
                 </p>
               )}
             </section>
@@ -274,8 +274,8 @@ export function SelectorProductosSheet({
 
             {!userPosition && productosSeleccionados.length > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
-                <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para ordenar por cercania y calcular rutas reales.</p>
+                <p className="text-xs font-semibold text-amber-900">Ubicación pendiente</p>
+                <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicación para ordenar por cercanía y calcular rutas reales.</p>
               </div>
             )}
 
@@ -429,8 +429,8 @@ export function OpcionesRutaProductosPanel({
 
         {!userPosition && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-            <p className="text-xs font-semibold text-amber-900">Ubicacion pendiente</p>
-            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicacion para mostrar la ruta exacta sobre el mapa.</p>
+            <p className="text-xs font-semibold text-amber-900">Ubicación pendiente</p>
+            <p className="mt-0.5 text-xs text-amber-700">Activa tu ubicación para mostrar la ruta exacta sobre el mapa.</p>
           </div>
         )}
 
@@ -453,9 +453,9 @@ export function OpcionesRutaProductosPanel({
             ? tiempoEstimadoMin(distanciaEstimada, modo)
             : null
           const titulo = idx === 0
-            ? 'Opcion recomendada'
+            ? 'Opción recomendada'
             : opcion.tipo === 'multi'
-              ? 'Opcion completa'
+              ? 'Opción completa'
               : 'Alternativa cercana'
 
           return (
@@ -539,7 +539,7 @@ export function OpcionesRutaProductosPanel({
           >
             {navLoading
               ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Preparando guia...</>
-              : 'Iniciar navegacion'
+              : 'Iniciar navegación'
             }
           </button>
         )}
@@ -549,7 +549,7 @@ export function OpcionesRutaProductosPanel({
           onClick={onVolver}
           className="flex h-10 w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-6 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
-          Volver a la busqueda
+          Volver a la búsqueda
         </button>
       </div>
     </div>

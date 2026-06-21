@@ -6,7 +6,7 @@ const apellidosSchema = z.string().trim().min(2, 'Los apellidos deben tener al m
 const telefonoSchema = z.string()
   .trim()
   .transform((value) => value.replace(/[\s-]/g, ''))
-  .refine((value) => /^(?:\+34)?[6789]\d{8}$/.test(value), 'El telefono debe ser un numero espanol valido')
+  .refine((value) => /^(?:\+34)?[6789]\d{8}$/.test(value), 'El teléfono debe ser un número español válido')
 
 export const updateUserProfileSchema = z.object({
   nombre: nombreSchema.optional(),

@@ -33,7 +33,7 @@ const DONACION_TRANSITIONS: Record<EstadoDonacion, EstadoDonacion[]> = {
 function assertEstadoTransition(actual: EstadoDonacion, siguiente: EstadoDonacion) {
   if (actual === siguiente) return
   if (!DONACION_TRANSITIONS[actual].includes(siguiente)) {
-    throw badRequest(`No se puede cambiar una donacion de ${actual} a ${siguiente}.`)
+    throw badRequest(`No se puede cambiar una donación de ${actual} a ${siguiente}.`)
   }
 }
 
@@ -145,7 +145,7 @@ export async function createDonacion(usuarioId: string, input: CreateDonacionInp
     const cantidadPendiente = Math.max(necesidad.cantidad - cantidadComprometida, 0)
 
     if (cantidadPendiente <= 0) {
-      throw badRequest('Esta necesidad ya esta cubierta por otras donaciones en camino')
+      throw badRequest('Esta necesidad ya está cubierta por otras donaciones en camino')
     }
 
     if (input.cantidad > cantidadPendiente) {
@@ -216,7 +216,7 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
     },
   })
 
-  if (!donacion) throw notFound('Donacion no encontrada')
+  if (!donacion) throw notFound('Donación no encontrada')
   assertEstadoTransition(donacion.estado, estado)
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -372,9 +372,9 @@ export async function generarCodigoEntrega(usuarioId: string, donacionId: string
     },
   })
 
-  if (!donacion) throw notFound('Donacion no encontrada')
+  if (!donacion) throw notFound('Donación no encontrada')
   if (donacion.estado !== 'PENDIENTE' && donacion.estado !== 'EN_CAMINO') {
-    throw badRequest('Solo puedes generar el codigo cuando la donacion esta pendiente o en camino')
+    throw badRequest('Solo puedes generar el código cuando la donación está pendiente o en camino')
   }
 
   if (donacion.entregaCodigo) {
@@ -403,7 +403,7 @@ export async function updateDonacionCantidad(usuarioId: string, donacionId: stri
     select: { id: true, estado: true, puestoId: true, cantidad: true },
   })
 
-  if (!donacion) throw notFound('Donacion no encontrada')
+  if (!donacion) throw notFound('Donación no encontrada')
   if (donacion.estado !== 'PENDIENTE' && donacion.estado !== 'EN_CAMINO') {
     throw badRequest('Solo se puede modificar la cantidad de donaciones pendientes o en camino')
   }
