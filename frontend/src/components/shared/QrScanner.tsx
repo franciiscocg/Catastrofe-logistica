@@ -189,7 +189,6 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
       cancelled = true
       void stopScanner()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryKey])
 
   const isLoading = status === 'starting'

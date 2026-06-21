@@ -1208,7 +1208,6 @@ export default function CiudadanoDashboard() {
     }
     anunciosRef.current = new Set()
   // Only re-run when step index or vozActiva changes (not on every render)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepActualIdx, vista])
 
   return (

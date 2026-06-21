@@ -47,6 +47,30 @@ jobs:
         working-directory: frontend
         run: npm test
 
-# Nota: los E2E (Playwright) necesitan el stack completo levantado (frontend en
-# :5173 + backend + BD) y no encajan en este job de unitarios. Se ejecutan en
-# local con `npm run test:e2e` desde frontend/ tras levantar docker-compose.
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Auditar dependencias de producción
+        run: |
+          npm audit --omit=dev --prefix backend
+          npm audit --omit=dev --prefix frontend
+
+      - name: Instalar Chromium para smoke E2E
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke E2E de búsqueda y navegación
+        working-directory: frontend
+        run: npm run test:e2e:smoke
+
+# El smoke E2E usa respuestas API deterministas y levanta Vite automáticamente.
+# La suite E2E completa sigue disponible con `npm run test:e2e` contra el stack.
