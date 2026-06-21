@@ -18,6 +18,7 @@ import {
   type OpcionRutaProductos,
 } from '@/utils/productos'
 import { apiClient } from '@/lib/api/client'
+import { readPublicSnapshot, savePublicSnapshot } from '@/lib/db/publicSnapshots'
 import { useSyncStore } from '@/store/sync.store'
 import { fetchRutaEvitandoIncidencias as fetchRutaSegura, fetchRutaMultiParada, fetchRutaConPasos, type ModoTransporte } from '@/utils/routing'
 import {
@@ -505,9 +506,11 @@ export default function CiudadanoDashboard() {
     const loadIncidencias = async () => {
       try {
         const { data } = await apiClient.get('/api/incidencias')
-        setIncidencias(data.incidencias ?? [])
+        const loaded = data.incidencias ?? []
+        setIncidencias(loaded)
+        await savePublicSnapshot('public:incidencias', loaded)
       } catch {
-        // Si falla, mantenemos estado local vacío sin bloquear la UI.
+        setIncidencias(await readPublicSnapshot<IncidenciaMarker[]>('public:incidencias', []))
       }
     }
 
@@ -1003,10 +1006,14 @@ export default function CiudadanoDashboard() {
 
   const { data: puestosApiData, isLoading: loadingPuestos } = useQuery({
     queryKey: ['puestos-ciudadano'],
-    queryFn: () =>
-      apiClient
-        .get<{ puestos: Omit<PuestoMarker, 'distanciaKm'>[] }>('/api/puestos')
-        .then((r) => r.data.puestos),
+    queryFn: async () => {
+      try {
+        const response = await apiClient.get<{ puestos: Omit<PuestoMarker, 'distanciaKm'>[] }>('/api/puestos')
+        return await savePublicSnapshot('public:puestos', response.data.puestos)
+      } catch {
+        return readPublicSnapshot<Omit<PuestoMarker, 'distanciaKm'>[]>('public:puestos', [])
+      }
+    },
     staleTime: 1000 * 30,
     retry: false,     // no reintentar en offline
     placeholderData: [], // evitar parpadeo mientras carga
@@ -1044,9 +1051,10 @@ export default function CiudadanoDashboard() {
           const items = grouped[puesto.id] ?? []
           return [puesto.id, normalizeApiInventario(items)] as const
         })
-        return Object.fromEntries(entries) as InventarioPorPuesto
+        const groupedInventory = Object.fromEntries(entries) as InventarioPorPuesto
+        return await savePublicSnapshot('public:inventario', groupedInventory)
       } catch {
-        return {} as InventarioPorPuesto
+        return readPublicSnapshot<InventarioPorPuesto>('public:inventario', {})
       }
     },
     enabled: puestosBase.length > 0,

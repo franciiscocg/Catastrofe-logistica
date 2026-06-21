@@ -9,11 +9,18 @@ interface MapTile {
   cachedAt: number
 }
 
+export interface PublicSnapshot {
+  key: string
+  value: unknown
+  updatedAt: number
+}
+
 class CatLogisticaDB extends Dexie {
   syncQueue!: Table<SyncOperation, string>
   puestos!: Table<PuestoEmergencia, string>
   inventario!: Table<ItemInventario, string>
   mapTiles!: Table<MapTile, string>
+  publicSnapshots!: Table<PublicSnapshot, string>
 
   constructor() {
     super('CatLogisticaDB')
@@ -30,6 +37,14 @@ class CatLogisticaDB extends Dexie {
       puestos: 'id, activo',
       inventario: 'id, puestoId, tipo',
       mapTiles: 'key, cachedAt',
+    })
+
+    this.version(4).stores({
+      syncQueue: 'id, status, priority, createdAt, nextRunAt, entity, idempotencyKey',
+      puestos: 'id, activo',
+      inventario: 'id, puestoId, tipo',
+      mapTiles: 'key, cachedAt',
+      publicSnapshots: 'key, updatedAt',
     })
   }
 }

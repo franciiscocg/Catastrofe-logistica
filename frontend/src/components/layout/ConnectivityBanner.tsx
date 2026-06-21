@@ -36,7 +36,7 @@ export default function ConnectivityBanner() {
         {hasBlockedItems && (
           `${conflictCount} conflicto${conflictCount !== 1 ? 's' : ''} y ${errorCount} error${errorCount !== 1 ? 'es' : ''} de sincronización requieren revisión`
         )}
-        {!hasBlockedItems && mode === 'offline' && 'Sin conexión - trabajando en modo offline'}
+        {!hasBlockedItems && mode === 'offline' && 'Sin conexión - mostrando la última información guardada; algunos cambios se sincronizarán al volver'}
         {!hasBlockedItems && mode === 'slow' && 'Conexión lenta - descarga de imágenes desactivada'}
         {!hasBlockedItems && mode === 'online' && pendingCount > 0 && (
           isSyncing
