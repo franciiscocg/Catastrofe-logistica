@@ -24,6 +24,8 @@ import {
   parsearStepsOsrm,
   formatearDistanciaNav,
   distanciaAlStep,
+  distanciaAPolilinea,
+  pasoAlcanzadoPorPosicion,
   type StepNavegacion,
 } from '@/utils/navegacion'
 import CiudadanoInicio from '../components/CiudadanoInicio'
@@ -356,9 +358,14 @@ export default function CiudadanoDashboard() {
   const [stepsNavegacion, setStepsNavegacion] = useState<StepNavegacion[]>([])
   const [stepActualIdx, setStepActualIdx] = useState(0)
   const [navLoading, setNavLoading] = useState(false)
+  const [recalculandoRuta, setRecalculandoRuta] = useState(false)
+  const [navError, setNavError] = useState<string | null>(null)
   const [vozActiva, setVozActiva] = useState(true)
   const [headingDispositivo, setHeadingDispositivo] = useState<number | null>(null)
   const anunciosRef = useRef<Set<string>>(new Set())
+  const muestrasFueraRutaRef = useRef(0)
+  const ultimaMuestraPosicionRef = useRef('')
+  const ultimoRecalculoRef = useRef(0)
   const [focusUserPositionKey, setFocusUserPositionKey] = useState(0)
   const [pendingUserPositionFocus, setPendingUserPositionFocus] = useState(false)
 
@@ -835,6 +842,9 @@ export default function CiudadanoDashboard() {
       setRoute(resultado.points)
       setStepsNavegacion(steps)
       setStepActualIdx(0)
+      setNavError(null)
+      muestrasFueraRutaRef.current = 0
+      ultimaMuestraPosicionRef.current = ''
       anunciosRef.current = new Set()
       setVista('navegacion')
       // Request compass permission on iOS 13+
@@ -1041,12 +1051,59 @@ export default function CiudadanoDashboard() {
   useEffect(() => {
     if (vista !== 'navegacion' || !currentUserPosition || stepsNavegacion.length === 0) return
     const step = stepsNavegacion[stepActualIdx]
-    if (!step || step.tipo === 'arrive') return
+    if (!step) return
     const distM = distanciaAlStep(currentUserPosition[0], currentUserPosition[1], step)
-    // Auto-advance when within 20 m of the maneuver point
-    if (distM < 20 && stepActualIdx < stepsNavegacion.length - 1) {
-      setStepActualIdx((prev) => prev + 1)
+    const reachedIdx = pasoAlcanzadoPorPosicion(
+      currentUserPosition[0],
+      currentUserPosition[1],
+      stepsNavegacion,
+      stepActualIdx,
+    )
+    if (reachedIdx > stepActualIdx) {
+      setStepActualIdx(reachedIdx)
+      muestrasFueraRutaRef.current = 0
       return
+    }
+    if (step.tipo === 'arrive') return
+
+    const distanciaRutaM = route
+      ? distanciaAPolilinea(currentUserPosition[0], currentUserPosition[1], route)
+      : 0
+    const positionSample = `${currentUserPosition[0].toFixed(6)},${currentUserPosition[1].toFixed(6)}`
+    if (positionSample !== ultimaMuestraPosicionRef.current) {
+      ultimaMuestraPosicionRef.current = positionSample
+      muestrasFueraRutaRef.current = distanciaRutaM > 60 ? muestrasFueraRutaRef.current + 1 : 0
+    }
+
+    const opcionActiva = opcionesRutaProductos?.[opcionRutaIdx]
+    const puedeRecalcular =
+      muestrasFueraRutaRef.current >= 3 &&
+      !recalculandoRuta &&
+      opcionActiva &&
+      Date.now() - ultimoRecalculoRef.current > 20_000
+
+    if (puedeRecalcular) {
+      const paradasRestantes = opcionActiva.paradas.slice(step.legIndex ?? 0)
+      if (paradasRestantes.length > 0) {
+        ultimoRecalculoRef.current = Date.now()
+        muestrasFueraRutaRef.current = 0
+        setRecalculandoRuta(true)
+        setNavError(null)
+        const waypoints: [number, number][] = [
+          currentUserPosition,
+          ...paradasRestantes.map((parada) => [parada.puesto.latitud, parada.puesto.longitud] as [number, number]),
+        ]
+        void fetchRutaConPasos(waypoints, modoTransporte, incidencias)
+          .then((resultado) => {
+            const nextSteps = parsearStepsOsrm(resultado.legs as Parameters<typeof parsearStepsOsrm>[0])
+            setRoute(resultado.points)
+            setStepsNavegacion(nextSteps)
+            setStepActualIdx(0)
+            anunciosRef.current = new Set()
+          })
+          .catch(() => setNavError('No se pudo recalcular la ruta. Continúa con precaución o inténtalo de nuevo.'))
+          .finally(() => setRecalculandoRuta(false))
+      }
     }
     // Voice pre-announcements: 200 m and 50 m thresholds
     for (const threshold of [200, 50] as const) {
@@ -1066,7 +1123,7 @@ export default function CiudadanoDashboard() {
     }
     // Keep map centered on user during navigation
     setFocusUserPositionKey((k) => k + 1)
-  }, [currentUserPosition, stepActualIdx, stepsNavegacion, vista, vozActiva])
+  }, [currentUserPosition, incidencias, modoTransporte, opcionRutaIdx, opcionesRutaProductos, recalculandoRuta, route, stepActualIdx, stepsNavegacion, vista, vozActiva])
 
   // ── Announce step on change ───────────────────────────────────────────────
   useEffect(() => {
@@ -1198,6 +1255,11 @@ export default function CiudadanoDashboard() {
         {/* ── Overlay navegación paso a paso ────────────────────────────── */}
         {vista === 'navegacion' && (
           <>
+            {(recalculandoRuta || navError) && (
+              <div className={`absolute inset-x-3 top-3 z-[1300] rounded-xl px-4 py-3 text-sm font-semibold shadow-lg ${navError ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'}`}>
+                {navError ?? 'Te has alejado de la ruta. Recalculando indicaciones…'}
+              </div>
+            )}
             {navLoading && (
               <div className="absolute inset-0 z-[1300] flex items-center justify-center bg-white/70">
                 <div className="flex items-center gap-3 rounded-xl bg-white border border-gray-200 shadow-xl px-5 py-4">
