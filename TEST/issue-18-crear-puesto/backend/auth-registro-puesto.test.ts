@@ -74,7 +74,8 @@ describe('registerUser - registro unificado', () => {
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
-        emailVerified: true,
+        emailVerified: false,
+        emailVerifiedAt: null,
       }),
     }))
     expect(mp.voluntario.create).toHaveBeenCalledWith({

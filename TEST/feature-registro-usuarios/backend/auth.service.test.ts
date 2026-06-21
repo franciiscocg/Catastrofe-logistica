@@ -118,7 +118,8 @@ describe('auth.service', () => {
         dni: '12345678A',
         roles: ['CIUDADANO', 'VOLUNTARIO'],
         activo: true,
-        emailVerified: true,
+        emailVerified: false,
+        emailVerifiedAt: null,
         recoveryCodeHash: expect.any(String),
       }),
     }))

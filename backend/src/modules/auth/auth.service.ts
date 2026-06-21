@@ -47,7 +47,7 @@ export function sanitizeUser(user: {
     apellidos: user.apellidos,
     telefono: user.telefono,
     roles: user.roles,
-    emailVerified: user.emailVerified ?? true,
+    emailVerified: user.emailVerified ?? false,
   }
 }
 
@@ -138,8 +138,8 @@ export async function registerUser(input: RegisterInput) {
         dni: input.dni.toUpperCase(),
         roles,
         activo: true,
-        emailVerified: true,
-        emailVerifiedAt: new Date(),
+        emailVerified: false,
+        emailVerifiedAt: null,
         recoveryCodeHash: hashToken(recoveryCode),
       },
       select: { id: true, email: true, nombre: true, apellidos: true, telefono: true, roles: true, emailVerified: true },
@@ -170,7 +170,7 @@ export async function requestPasswordReset({ email, dni, recoveryCode, password 
   await prisma.$transaction([
     prisma.usuario.update({
       where: { id: user.id },
-      data: { password: hashed, emailVerified: true, emailVerifiedAt: new Date() },
+      data: { password: hashed },
     }),
     prisma.refreshToken.updateMany({
       where: { usuarioId: user.id, revokedAt: null },
