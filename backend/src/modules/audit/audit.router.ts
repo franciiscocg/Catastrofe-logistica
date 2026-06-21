@@ -15,7 +15,7 @@ export async function auditRouter(app: FastifyInstance) {
     return reply.send(stats)
   })
 
-  // GET /api/public/audit/verify  — full chain integrity check
+  // GET /api/public/audit/verify  — full chain integrity check, coalesced and cached briefly
   app.get('/verify', async (_req, reply) => {
     const result = await verifyChain()
     return reply.send(result)
