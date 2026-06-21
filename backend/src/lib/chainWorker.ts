@@ -20,6 +20,7 @@ async function tick() {
 export function startChainWorker() {
   if (timer) return
   timer = setInterval(tick, INTERVALO_MS)
+  timer.unref?.()
   // Ejecutar inmediatamente al arrancar para procesar cualquier pendiente
   tick()
   console.log('[chainWorker] Iniciado — procesando cola cada', INTERVALO_MS / 1000, 's')
