@@ -299,6 +299,7 @@ function getProductoOptions(disponibles: ProductoDisponible[]): ProductoOption[]
 type Vista = 'inicio' | 'default' | 'ruta' | 'inventario' | 'reportar' | 'buscar' | 'ruta-productos' | 'navegacion'
 type PanelReturnVista = 'inicio' | 'default'
 type EstadoVia = 'CORTADA' | 'TRANSITABLE'
+type DestinoNavegacion = { id: string; nombre: string; latitud: number; longitud: number }
 
 type DuplicateIncidencia = {
   id: string
@@ -360,6 +361,7 @@ export default function CiudadanoDashboard() {
   const [navLoading, setNavLoading] = useState(false)
   const [recalculandoRuta, setRecalculandoRuta] = useState(false)
   const [navError, setNavError] = useState<string | null>(null)
+  const [destinoNavegacion, setDestinoNavegacion] = useState<DestinoNavegacion | null>(null)
   const [vozActiva, setVozActiva] = useState(true)
   const [headingDispositivo, setHeadingDispositivo] = useState<number | null>(null)
   const anunciosRef = useRef<Set<string>>(new Set())
@@ -547,8 +549,17 @@ export default function CiudadanoDashboard() {
 
     setRouteLoading(true)
     setRouteError(null)
+    setDestinoNavegacion({
+      id: puesto.id,
+      nombre: puesto.nombre,
+      latitud: puesto.latitud,
+      longitud: puesto.longitud,
+    })
     try {
-      const resultado = await fetchRutaSegura(currentUserPosition, [puesto.latitud, puesto.longitud], incidencias, controller.signal)
+      const incidenciasRuta = puesto.id.startsWith('incidencia:')
+        ? incidencias.filter((incidencia) => `incidencia:${incidencia.id}` !== puesto.id)
+        : incidencias
+      const resultado = await fetchRutaSegura(currentUserPosition, [puesto.latitud, puesto.longitud], incidenciasRuta, controller.signal)
       setRoute(resultado.points)
       setRouteInfo({
         distanciaKm: resultado.distanciaKm,
@@ -597,11 +608,50 @@ export default function CiudadanoDashboard() {
     await calcularRutaPuesto(puesto)
   }
 
+  const handleComoLlegarIncidencia = async (incidencia: IncidenciaMarker) => {
+    setSelectedId(null)
+    await calcularRutaPuesto({
+      id: `incidencia:${incidencia.id}`,
+      nombre: incidencia.titulo?.trim() || 'Incidencia',
+      direccion: incidencia.descripcion?.trim() || 'Punto de incidencia',
+      latitud: incidencia.latitud,
+      longitud: incidencia.longitud,
+      necesidades: 0,
+    })
+  }
+
+  const handleIniciarNavegacionDirecta = async () => {
+    if (!currentUserPosition || !destinoNavegacion) return
+    setNavLoading(true)
+    setNavError(null)
+    try {
+      const resultado = await fetchRutaConPasos([
+        currentUserPosition,
+        [destinoNavegacion.latitud, destinoNavegacion.longitud],
+      ], modoTransporte, destinoNavegacion.id.startsWith('incidencia:')
+        ? incidencias.filter((incidencia) => `incidencia:${incidencia.id}` !== destinoNavegacion.id)
+        : incidencias)
+      setRoute(resultado.points)
+      setStepsNavegacion(parsearStepsOsrm(resultado.legs as Parameters<typeof parsearStepsOsrm>[0]))
+      setStepActualIdx(0)
+      setOpcionesRutaProductos(null)
+      muestrasFueraRutaRef.current = 0
+      ultimaMuestraPosicionRef.current = ''
+      anunciosRef.current = new Set()
+      setVista('navegacion')
+    } catch (error) {
+      setRouteError(error instanceof Error ? error.message : 'No se pudo iniciar la navegación guiada')
+    } finally {
+      setNavLoading(false)
+    }
+  }
+
   const handleCancelarRuta = () => {
     setRoute(null)
     setRouteInfo(null)
     setVista('default')
     setRouteError(null)
+    setDestinoNavegacion(null)
   }
 
   const volverInicioCiudadano = () => {
@@ -613,6 +663,7 @@ export default function CiudadanoDashboard() {
     setRouteInfo(null)
     setRouteError(null)
     setSelectedId(null)
+    setDestinoNavegacion(null)
     setProductosSeleccionados([])
     setTextoBusquedaProducto('')
     setRadioBusquedaProductos('todos')
@@ -1076,14 +1127,21 @@ export default function CiudadanoDashboard() {
     }
 
     const opcionActiva = opcionesRutaProductos?.[opcionRutaIdx]
+    const tieneDestinoRecalculable = Boolean(opcionActiva || destinoNavegacion)
     const puedeRecalcular =
       muestrasFueraRutaRef.current >= 3 &&
       !recalculandoRuta &&
-      opcionActiva &&
+      tieneDestinoRecalculable &&
       Date.now() - ultimoRecalculoRef.current > 20_000
 
     if (puedeRecalcular) {
-      const paradasRestantes = opcionActiva.paradas.slice(step.legIndex ?? 0)
+      const paradasRestantes: [number, number][] = opcionActiva
+        ? opcionActiva.paradas
+            .slice(step.legIndex ?? 0)
+            .map((parada) => [parada.puesto.latitud, parada.puesto.longitud] as [number, number])
+        : destinoNavegacion
+          ? [[destinoNavegacion.latitud, destinoNavegacion.longitud]]
+          : []
       if (paradasRestantes.length > 0) {
         ultimoRecalculoRef.current = Date.now()
         muestrasFueraRutaRef.current = 0
@@ -1091,9 +1149,12 @@ export default function CiudadanoDashboard() {
         setNavError(null)
         const waypoints: [number, number][] = [
           currentUserPosition,
-          ...paradasRestantes.map((parada) => [parada.puesto.latitud, parada.puesto.longitud] as [number, number]),
+          ...paradasRestantes,
         ]
-        void fetchRutaConPasos(waypoints, modoTransporte, incidencias)
+        const incidenciasRecalculo = destinoNavegacion?.id.startsWith('incidencia:')
+          ? incidencias.filter((incidencia) => `incidencia:${incidencia.id}` !== destinoNavegacion.id)
+          : incidencias
+        void fetchRutaConPasos(waypoints, modoTransporte, incidenciasRecalculo)
           .then((resultado) => {
             const nextSteps = parsearStepsOsrm(resultado.legs as Parameters<typeof parsearStepsOsrm>[0])
             setRoute(resultado.points)
@@ -1123,7 +1184,7 @@ export default function CiudadanoDashboard() {
     }
     // Keep map centered on user during navigation
     setFocusUserPositionKey((k) => k + 1)
-  }, [currentUserPosition, incidencias, modoTransporte, opcionRutaIdx, opcionesRutaProductos, recalculandoRuta, route, stepActualIdx, stepsNavegacion, vista, vozActiva])
+  }, [currentUserPosition, destinoNavegacion, incidencias, modoTransporte, opcionRutaIdx, opcionesRutaProductos, recalculandoRuta, route, stepActualIdx, stepsNavegacion, vista, vozActiva])
 
   // ── Announce step on change ───────────────────────────────────────────────
   useEffect(() => {
@@ -1156,12 +1217,21 @@ export default function CiudadanoDashboard() {
             {routeInfo.incidenciasEvitadas > 0 && ` · evita ${routeInfo.incidenciasEvitadas} corte${routeInfo.incidenciasEvitadas === 1 ? '' : 's'}`}
             {routeInfo.incidenciasCercanas > 0 && ` · ${routeInfo.incidenciasCercanas} corte${routeInfo.incidenciasCercanas === 1 ? '' : 's'} cerca`}
           </span>
-          <button
-            onClick={handleCancelarRuta}
-            className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg transition-colors"
-          >
-            ✕ Cancelar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleIniciarNavegacionDirecta()}
+              disabled={navLoading || !destinoNavegacion}
+              className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
+            >
+              Iniciar navegación
+            </button>
+            <button
+              onClick={handleCancelarRuta}
+              className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg transition-colors"
+            >
+              ✕ Cancelar
+            </button>
+          </div>
         </div>
       )}
 
@@ -1192,6 +1262,7 @@ export default function CiudadanoDashboard() {
           onPuestoSelect={handleSelectPuesto}
           onVerInventarioPuesto={(id) => { setSelectedId(id); setVista('inventario') }}
           onComoLlegarPuesto={(id) => { void handleComoLlegarPuesto(id) }}
+          onComoLlegarIncidencia={(incidencia) => { void handleComoLlegarIncidencia(incidencia) }}
           onUserLocated={setUserPosition}
           onReportPointSelect={(pos) => {
             setReportPosition(pos)

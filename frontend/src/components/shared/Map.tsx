@@ -66,6 +66,7 @@ interface MapProps {
   onPuestoSelect?: (id: string) => void
   onVerInventarioPuesto?: (id: string) => void
   onComoLlegarPuesto?: (id: string) => void
+  onComoLlegarIncidencia?: (incidencia: IncidenciaMarker) => void
   onUserLocated?: (pos: [number, number]) => void
   onReportPointSelect?: (pos: [number, number]) => void
   onIncidenciaAction?: (incidencia: IncidenciaMarker, action: IncidenciaAction) => void
@@ -238,6 +239,7 @@ export default function Map({
   onPuestoSelect,
   onVerInventarioPuesto,
   onComoLlegarPuesto,
+  onComoLlegarIncidencia,
   onReportPointSelect,
   onIncidenciaAction,
   onIncidenciaCommentsOpen,
@@ -350,6 +352,16 @@ export default function Map({
                       >
                         <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" />
                         Comentarios
+                      </button>
+                    )}
+                    {onComoLlegarIncidencia && (
+                      <button
+                        type="button"
+                        onClick={() => onComoLlegarIncidencia(inc)}
+                        className="col-span-2 inline-flex items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        <Navigation className="h-3.5 w-3.5" aria-hidden="true" />
+                        Cómo llegar
                       </button>
                     )}
                   </div>
