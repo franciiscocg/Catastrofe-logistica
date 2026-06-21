@@ -8,6 +8,7 @@ dist/
 dev-dist/
 build/
 .output/
+*.tsbuildinfo
 
 # Variables de entorno (NUNCA subir al repo)
 .env

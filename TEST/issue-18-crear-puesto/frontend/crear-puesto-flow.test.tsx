@@ -76,7 +76,7 @@ function renderWithQuery(ui: React.ReactElement) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <QueryClientProvider client={client}>{ui}</QueryClientProvider>
     </MemoryRouter>,
   )

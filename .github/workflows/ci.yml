@@ -47,6 +47,12 @@ jobs:
         working-directory: frontend
         run: npm test
 
+      # Banco de pruebas del enrutamiento (heurística vs grafo). Actúa como test
+      # de regresión del algoritmo y valida los invariantes de la evaluación.
+      - name: Benchmark de enrutamiento (regresión)
+        working-directory: frontend
+        run: npm run bench
+
       - name: Lint frontend
         working-directory: frontend
         run: npm run lint
@@ -72,5 +78,7 @@ jobs:
         working-directory: frontend
         run: npm run test:e2e:smoke
 
-# El smoke E2E usa respuestas API deterministas y levanta Vite automáticamente.
-# La suite E2E completa sigue disponible con `npm run test:e2e` contra el stack.
+# Nota: la suite E2E completa (Playwright) necesita el stack completo levantado
+# (frontend en :5173 + backend + BD) y no encaja en este job de unitarios. El
+# smoke E2E usa respuestas API deterministas y levanta Vite automáticamente. La
+# suite E2E completa sigue disponible con `npm run test:e2e` contra el stack.

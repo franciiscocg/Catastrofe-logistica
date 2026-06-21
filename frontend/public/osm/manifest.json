@@ -1,0 +1,14 @@
+{
+  "extractos": [
+    {
+      "id": "paiporta",
+      "nombre": "Paiporta",
+      "bbox": [
+        39.41,
+        -0.43,
+        39.44,
+        -0.4
+      ]
+    }
+  ]
+}

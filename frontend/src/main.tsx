@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import { GeolocationProvider } from './hooks/useGeolocation'
 import { registerSW } from './lib/sw/register'
+import { initLocalRouting } from './utils/osmGraphStore'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -20,6 +21,10 @@ const queryClient = new QueryClient({
 })
 
 registerSW()
+
+// Carga el grafo de calles local para enrutamiento offline (si hay extracto).
+// No bloquea el arranque: en segundo plano registra el enrutador local.
+void initLocalRouting()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

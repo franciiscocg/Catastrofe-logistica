@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="400" viewBox="0 0 680 400" font-family="system-ui, sans-serif">
+  <rect width="680" height="400" fill="#ffffff"/>
+  <text x="340" y="28" text-anchor="middle" font-size="16" font-weight="600" fill="#111827">Coste algorítmico: A* vs Dijkstra</text>
+  <line x1="70" y1="344.0" x2="656.0" y2="344.0" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="70" y1="285.2" x2="656.0" y2="285.2" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="70" y1="226.4" x2="656.0" y2="226.4" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="70" y1="167.6" x2="656.0" y2="167.6" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="70" y1="108.8" x2="656.0" y2="108.8" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="70" y1="50.0" x2="656.0" y2="50.0" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="70" y1="50" x2="70" y2="344" stroke="#9ca3af" stroke-width="1"/>
+  <line x1="70" y1="344" x2="656" y2="344" stroke="#9ca3af" stroke-width="1"/>
+  <text x="60" y="348.0" text-anchor="end" font-size="12" fill="#374151">0.0</text>
+  <text x="60" y="289.2" text-anchor="end" font-size="12" fill="#374151">109</text>
+  <text x="60" y="230.4" text-anchor="end" font-size="12" fill="#374151">217</text>
+  <text x="60" y="171.6" text-anchor="end" font-size="12" fill="#374151">326</text>
+  <text x="60" y="112.8" text-anchor="end" font-size="12" fill="#374151">434</text>
+  <text x="60" y="54.0" text-anchor="end" font-size="12" fill="#374151">543</text>
+  <text x="70.0" y="366.0" text-anchor="middle" font-size="12" fill="#374151">0</text>
+  <text x="216.5" y="366.0" text-anchor="middle" font-size="12" fill="#374151">1</text>
+  <text x="363.0" y="366.0" text-anchor="middle" font-size="12" fill="#374151">2</text>
+  <text x="509.5" y="366.0" text-anchor="middle" font-size="12" fill="#374151">3</text>
+  <text x="656.0" y="366.0" text-anchor="middle" font-size="12" fill="#374151">4</text>
+  <text x="340" y="368" text-anchor="middle" font-size="13" fill="#111827">Número de cortes en la ruta óptima</text>
+  <text x="18" y="197" text-anchor="middle" font-size="13" fill="#111827" transform="rotate(-90 18 197)">Nodos expandidos (media)</text>
+  <polyline points="70.0,76.7 216.5,87.2 363.0,80.2 509.5,77.5 656.0,87.0" fill="none" stroke="#7c3aed" stroke-width="2.5"/><circle cx="70.0" cy="76.7" r="3.5" fill="#7c3aed"/><circle cx="216.5" cy="87.2" r="3.5" fill="#7c3aed"/><circle cx="363.0" cy="80.2" r="3.5" fill="#7c3aed"/><circle cx="509.5" cy="77.5" r="3.5" fill="#7c3aed"/><circle cx="656.0" cy="87.0" r="3.5" fill="#7c3aed"/><polyline points="70.0,213.4 216.5,242.6 363.0,221.8 509.5,219.5 656.0,236.8" fill="none" stroke="#16a34a" stroke-width="2.5"/><circle cx="70.0" cy="213.4" r="3.5" fill="#16a34a"/><circle cx="216.5" cy="242.6" r="3.5" fill="#16a34a"/><circle cx="363.0" cy="221.8" r="3.5" fill="#16a34a"/><circle cx="509.5" cy="219.5" r="3.5" fill="#16a34a"/><circle cx="656.0" cy="236.8" r="3.5" fill="#16a34a"/>
+  <rect x="70" y="376" width="14" height="14" fill="#7c3aed" rx="2"/><text x="90" y="387" font-size="12" fill="#111827">Dijkstra</text><rect x="285" y="376" width="14" height="14" fill="#16a34a" rx="2"/><text x="305" y="387" font-size="12" fill="#111827">A*</text>
+</svg>

@@ -56,7 +56,7 @@ function renderRoleSelection() {
   })
 
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <QueryClientProvider client={queryClient}>
         <RoleSelection />
       </QueryClientProvider>

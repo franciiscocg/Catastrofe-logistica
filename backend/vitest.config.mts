@@ -1,8 +1,12 @@
 import { defineConfig } from 'vitest/config'
-import { resolve } from 'path'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 
 // Config unificada: corre los tests unitarios de backend de TODAS las features.
 // Los tests viven en TEST/<feature>/backend/ y mockean Prisma (no necesitan BD).
+// Extensión .mts: Vite la carga como ESM y evita el aviso de deprecación
+// "The CJS build of Vite's Node API is deprecated".
+const __dirname = dirname(fileURLToPath(import.meta.url))
 const TEST_ROOT = resolve(__dirname, '../TEST').replace(/\\/g, '/')
 
 export default defineConfig({

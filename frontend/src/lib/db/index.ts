@@ -9,6 +9,13 @@ interface MapTile {
   cachedAt: number
 }
 
+// Extracto OSM (grafo de calles de una zona) cacheado para enrutamiento offline.
+export interface OsmGraphRecord {
+  id: string
+  data: unknown // OsmGraphData serializado
+  cachedAt: number
+}
+
 export interface PublicSnapshot {
   key: string
   value: unknown
@@ -20,6 +27,7 @@ class CatLogisticaDB extends Dexie {
   puestos!: Table<PuestoEmergencia, string>
   inventario!: Table<ItemInventario, string>
   mapTiles!: Table<MapTile, string>
+  osmGraphs!: Table<OsmGraphRecord, string>
   publicSnapshots!: Table<PublicSnapshot, string>
 
   constructor() {
@@ -44,6 +52,7 @@ class CatLogisticaDB extends Dexie {
       puestos: 'id, activo',
       inventario: 'id, puestoId, tipo',
       mapTiles: 'key, cachedAt',
+      osmGraphs: 'id, cachedAt',
       publicSnapshots: 'key, updatedAt',
     })
   }
