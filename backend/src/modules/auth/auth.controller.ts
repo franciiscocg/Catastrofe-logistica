@@ -62,7 +62,10 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   const refreshToken = await issueRefreshToken(user.id)
   const tokenPayload = await signAccessToken(reply, user)
   setRefreshCookie(reply, refreshToken)
-  return reply.send({ user, ...tokenPayload })
+  // Tambien devolvemos el refresh token en el cuerpo: el frontend lo guarda y lo
+  // reenvia en /refresh. Necesario cuando front y back estan en sitios distintos
+  // (la cookie de refresh seria de terceros y el navegador la bloquea).
+  return reply.send({ user, ...tokenPayload, refreshToken })
 }
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
@@ -73,16 +76,24 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
   const tokenPayload = await signAccessToken(reply, user)
   setRefreshCookie(reply, refreshToken)
 
-  return reply.status(201).send({ user, recoveryCode, ...tokenPayload })
+  return reply.status(201).send({ user, recoveryCode, ...tokenPayload, refreshToken })
+}
+
+function readRefreshToken(request: FastifyRequest, reply: FastifyReply) {
+  // Prioriza el token del cuerpo (lo envia el frontend desde localStorage); cae a
+  // la cookie para entornos same-origin (local/dev) donde la cookie si viaja.
+  const bodyToken = (request.body as { refreshToken?: string } | undefined)?.refreshToken
+  if (bodyToken) return bodyToken
+  return readRefreshCookie(request, reply)
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
-  const currentRefreshToken = readRefreshCookie(request, reply)
+  const currentRefreshToken = readRefreshToken(request, reply)
   try {
     const { user, refreshToken } = await rotateRefreshToken(currentRefreshToken)
     const tokenPayload = await signAccessToken(reply, user)
     setRefreshCookie(reply, refreshToken)
-    return reply.send({ user, ...tokenPayload })
+    return reply.send({ user, ...tokenPayload, refreshToken })
   } catch (error) {
     clearRefreshCookie(reply)
     throw error
@@ -90,7 +101,8 @@ export async function refresh(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function logout(request: FastifyRequest, reply: FastifyReply) {
-  await revokeRefreshToken(request.cookies[REFRESH_COOKIE_NAME])
+  const bodyToken = (request.body as { refreshToken?: string } | undefined)?.refreshToken
+  await revokeRefreshToken(bodyToken ?? request.cookies[REFRESH_COOKIE_NAME])
   clearRefreshCookie(reply)
   return reply.status(204).send()
 }

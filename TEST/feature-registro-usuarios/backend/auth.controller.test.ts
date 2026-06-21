@@ -40,13 +40,13 @@ function makeReply() {
   return reply
 }
 
-describe('auth.controller cookies de sesión', () => {
+describe('auth.controller sesión (cookie + token en cuerpo)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubEnv('NODE_ENV', 'test')
   })
 
-  it('entrega el refresh token solo mediante cookie HttpOnly al iniciar sesión', async () => {
+  it('al iniciar sesión fija la cookie HttpOnly y devuelve el refresh token en el cuerpo', async () => {
     mocks.loginUser.mockResolvedValue(user)
     mocks.issueRefreshToken.mockResolvedValue('refresh-token-login')
     const reply = makeReply()
@@ -66,11 +66,11 @@ describe('auth.controller cookies de sesión', () => {
         path: '/api/auth',
       }),
     )
-    expect(result).toMatchObject({ user, accessToken: 'access-token' })
-    expect(result).not.toHaveProperty('refreshToken')
+    // El cuerpo lleva el token para clientes cross-site (la cookie seria de terceros).
+    expect(result).toMatchObject({ user, accessToken: 'access-token', refreshToken: 'refresh-token-login' })
   })
 
-  it('rota la cookie HttpOnly sin exponer el nuevo token en la respuesta', async () => {
+  it('rota la cookie HttpOnly y devuelve el nuevo token en el cuerpo', async () => {
     mocks.rotateRefreshToken.mockResolvedValue({ user, refreshToken: 'refresh-token-next' })
     const reply = makeReply()
 
@@ -85,10 +85,25 @@ describe('auth.controller cookies de sesión', () => {
       'refresh-token-next',
       expect.objectContaining({ httpOnly: true }),
     )
-    expect(result).not.toHaveProperty('refreshToken')
+    expect(result).toMatchObject({ refreshToken: 'refresh-token-next' })
   })
 
-  it('revoca y borra la cookie al cerrar sesión', async () => {
+  it('al refrescar prioriza el refresh token del cuerpo sobre la cookie', async () => {
+    mocks.rotateRefreshToken.mockResolvedValue({ user, refreshToken: 'refresh-token-next' })
+    const reply = makeReply()
+
+    await refresh(
+      {
+        body: { refreshToken: 'refresh-token-body' },
+        cookies: { catlogistica_refresh: 'refresh-token-cookie' },
+      } as never,
+      reply as never,
+    )
+
+    expect(mocks.rotateRefreshToken).toHaveBeenCalledWith('refresh-token-body')
+  })
+
+  it('revoca y borra la cookie al cerrar sesión (token desde la cookie)', async () => {
     const reply = makeReply()
 
     await logout(
@@ -101,6 +116,18 @@ describe('auth.controller cookies de sesión', () => {
       'catlogistica_refresh',
       expect.objectContaining({ httpOnly: true, path: '/api/auth' }),
     )
+    expect(reply.status).toHaveBeenCalledWith(204)
+  })
+
+  it('al cerrar sesión revoca el refresh token recibido en el cuerpo', async () => {
+    const reply = makeReply()
+
+    await logout(
+      { body: { refreshToken: 'refresh-token-body' }, cookies: {} } as never,
+      reply as never,
+    )
+
+    expect(mocks.revokeRefreshToken).toHaveBeenCalledWith('refresh-token-body')
     expect(reply.status).toHaveBeenCalledWith(204)
   })
 })
