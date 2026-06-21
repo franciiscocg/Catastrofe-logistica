@@ -10,6 +10,15 @@ test('un ciudadano busca un producto y abre una ruta segura', async ({ page, con
   await context.grantPermissions(['geolocation'])
   await context.setGeolocation({ latitude: 39.4254, longitude: -0.4178 })
 
+  // Forzamos el fallback a OSRM: sin grafo local, la ruta usa el mock de OSRM de
+  // abajo (de lo contrario el extract de Paiporta cubriría estas coordenadas y
+  // enrutaría en local, dando ~0 km al ser origen y destino el mismo punto).
+  await page.route('**/osm/manifest.json', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ extractos: [] }),
+  }))
+
   await page.route('**/api/auth/refresh', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
