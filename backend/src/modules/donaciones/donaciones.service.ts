@@ -388,7 +388,7 @@ export async function generarCodigoEntrega(usuarioId: string, donacionId: string
   return prisma.donacion.update({
     where: { id: donacionId },
     data: {
-      entregaCodigo: `DEL-${randomUUID()}`,
+      entregaCodigo: randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase(),
       entregaCodigoGeneradoAt: new Date(),
     },
     include: {

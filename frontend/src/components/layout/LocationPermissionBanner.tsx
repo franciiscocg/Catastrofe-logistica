@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useGeolocation } from '@/hooks/useGeolocation'
 
 function detectBrowser() {
@@ -34,9 +35,10 @@ function deniedInstructions(): string {
 
 export default function LocationPermissionBanner() {
   const { position, error, loading, permissionState, request } = useGeolocation()
+  const [dismissed, setDismissed] = useState(false)
   const isPublicVerificationPage = window.location.pathname.startsWith('/verificar')
 
-  if (isPublicVerificationPage || position || loading || !error) return null
+  if (isPublicVerificationPage || position || loading || !error || dismissed) return null
 
   const host = window.location.hostname
   const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
@@ -63,19 +65,31 @@ export default function LocationPermissionBanner() {
   return (
     <div className="fixed inset-x-0 bottom-0 z-[3000] border-t border-amber-300 bg-amber-50 px-4 py-3 shadow-2xl">
       <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="flex-1">
           <p className="text-sm font-semibold text-amber-950">{title}</p>
           <p className="mt-0.5 text-xs leading-5 text-amber-900">{description}</p>
         </div>
-        {!isInsecureContext && (
+        <div className="flex shrink-0 items-center gap-2">
+          {!isInsecureContext && (
+            <button
+              type="button"
+              onClick={request}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-amber-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2"
+            >
+              {isDenied ? 'Reintentar' : 'Activar ubicación'}
+            </button>
+          )}
           <button
             type="button"
-            onClick={request}
-            className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg bg-amber-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2"
+            onClick={() => setDismissed(true)}
+            aria-label="Cerrar aviso"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-amber-700 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
           >
-            {isDenied ? 'Reintentar' : 'Activar ubicación'}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
           </button>
-        )}
+        </div>
       </div>
     </div>
   )

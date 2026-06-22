@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Camera, CameraOff, Loader2, RotateCcw, X } from 'lucide-react'
+import { Camera, CameraOff, Keyboard, Loader2, RotateCcw, X } from 'lucide-react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats, type CameraDevice } from 'html5-qrcode'
 
 interface QrScannerProps {
@@ -76,6 +76,8 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
   const [errorDetail, setErrorDetail] = useState('')
   const [cameraLabel, setCameraLabel] = useState('')
   const [retryKey, setRetryKey] = useState(0)
+  const [manualMode, setManualMode] = useState(false)
+  const [manualCode, setManualCode] = useState('')
   const showSecureWarning = typeof window !== 'undefined'
     && !window.isSecureContext
     && window.location.hostname !== 'localhost'
@@ -285,6 +287,46 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
             <RotateCcw className="h-4 w-4" aria-hidden />
             Reintentar cámara
           </button>
+
+          <button
+            type="button"
+            onClick={() => { setManualMode((v) => !v); setManualCode('') }}
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Keyboard className="h-4 w-4" aria-hidden />
+            {manualMode ? 'Volver al escáner' : 'Introducir código manualmente'}
+          </button>
+
+          {manualMode && (
+            <form
+              className="mt-3 flex flex-col gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const code = manualCode.trim()
+                if (code) onResult(code)
+              }}
+            >
+              <label htmlFor="manual-qr-code" className="text-xs font-medium text-slate-600">
+                Código del QR
+              </label>
+              <input
+                id="manual-qr-code"
+                type="text"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value)}
+                placeholder="Escribe o pega el código aquí"
+                autoFocus
+                className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+              <button
+                type="submit"
+                disabled={!manualCode.trim()}
+                className="flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Confirmar código
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

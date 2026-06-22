@@ -195,34 +195,6 @@ export async function addItem(puestoId: string, input: AddItemInput, userId: str
     })
   }
 
-  const oppositeType = input.tipo === 'NECESARIO' ? 'DISPONIBLE' : 'NECESARIO'
-  const opposite = await prisma.inventario.findUnique({
-    where: { puestoId_productoId_tipo: { puestoId, productoId: producto.id, tipo: oppositeType } },
-    include: { producto: true },
-  })
-
-  const cantidadCompensada = Math.min(opposite?.cantidad ?? 0, input.cantidad)
-  const cantidadRestante = Math.max(input.cantidad - cantidadCompensada, 0)
-
-  if (opposite && cantidadCompensada > 0) {
-    const updatedOpposite = await prisma.inventario.update({
-      where: { id: opposite.id },
-      data: { cantidad: Math.max(opposite.cantidad - cantidadCompensada, 0) },
-      include: { producto: true },
-    })
-    await registrarMovimientoInventario(puestoId, userId, 'INVENTARIO_COMPENSADO', {
-      itemId: updatedOpposite.id,
-      producto: updatedOpposite.producto,
-      tipo: updatedOpposite.tipo,
-      cantidadAnterior: opposite.cantidad,
-      cantidadNueva: updatedOpposite.cantidad,
-      delta: updatedOpposite.cantidad - opposite.cantidad,
-      motivo: input.tipo,
-    })
-
-    if (cantidadRestante <= 0) return updatedOpposite
-  }
-
   const existing = await prisma.inventario.findUnique({
     where: { puestoId_productoId_tipo: { puestoId, productoId: producto.id, tipo: input.tipo } },
   })
@@ -230,7 +202,7 @@ export async function addItem(puestoId: string, input: AddItemInput, userId: str
   if (existing) {
     const item = await prisma.inventario.update({
       where: { id: existing.id },
-      data: { cantidad: existing.cantidad + cantidadRestante },
+      data: { cantidad: existing.cantidad + input.cantidad },
       include: { producto: true },
     })
     await registrarMovimientoInventario(puestoId, userId, 'INVENTARIO_INCREMENTADO', {
@@ -239,13 +211,13 @@ export async function addItem(puestoId: string, input: AddItemInput, userId: str
       tipo: item.tipo,
       cantidadAnterior: existing.cantidad,
       cantidadNueva: item.cantidad,
-      delta: cantidadRestante,
+      delta: input.cantidad,
     })
     return item
   }
 
   const item = await prisma.inventario.create({
-    data: { puestoId, productoId: producto.id, cantidad: cantidadRestante, tipo: input.tipo },
+    data: { puestoId, productoId: producto.id, cantidad: input.cantidad, tipo: input.tipo },
     include: { producto: true },
   })
   await registrarMovimientoInventario(puestoId, userId, 'INVENTARIO_CREADO', {
@@ -270,45 +242,9 @@ export async function updateCantidad(itemId: string, input: UpdateCantidadInput,
     : Math.max(0, item.cantidad + (input.delta ?? 0))
 
   return prisma.$transaction(async (tx) => {
-    let cantidadFinal = nuevaCantidad
-    const oppositeType = item.tipo === 'NECESARIO' ? 'DISPONIBLE' : 'NECESARIO'
-    const cantidadAnadida = Math.max(nuevaCantidad - item.cantidad, 0)
-
-    if (cantidadAnadida > 0) {
-      const opposite = await tx.inventario.findUnique({
-        where: {
-          puestoId_productoId_tipo: {
-            puestoId: item.puestoId,
-            productoId: item.productoId,
-            tipo: oppositeType,
-          },
-        },
-        include: { producto: true },
-      })
-
-      const cantidadCompensada = Math.min(opposite?.cantidad ?? 0, cantidadAnadida)
-      if (opposite && cantidadCompensada > 0) {
-        const updatedOpposite = await tx.inventario.update({
-          where: { id: opposite.id },
-          data: { cantidad: Math.max(opposite.cantidad - cantidadCompensada, 0) },
-          include: { producto: true },
-        })
-        await registrarMovimientoInventarioTx(tx, item.puestoId, userId, 'INVENTARIO_COMPENSADO', {
-          itemId: updatedOpposite.id,
-          producto: updatedOpposite.producto,
-          tipo: updatedOpposite.tipo,
-          cantidadAnterior: opposite.cantidad,
-          cantidadNueva: updatedOpposite.cantidad,
-          delta: updatedOpposite.cantidad - opposite.cantidad,
-          motivo: item.tipo,
-        })
-        cantidadFinal = nuevaCantidad - cantidadCompensada
-      }
-    }
-
     const updated = await tx.inventario.update({
       where: { id: itemId },
-      data: { cantidad: cantidadFinal },
+      data: { cantidad: nuevaCantidad },
       include: { producto: true },
     })
     await registrarMovimientoInventarioTx(tx, item.puestoId, userId, 'INVENTARIO_ACTUALIZADO', {
@@ -327,12 +263,57 @@ export async function updateCantidad(itemId: string, input: UpdateCantidadInput,
 export async function confirmarQrInventario(puestoId: string, input: ConfirmarQrInput, userId: string) {
   await assertPuestoAccess(puestoId, userId)
 
-  const qr = parseQrOperativo(input.codigo)
-  if (qr.puestoId !== puestoId) {
+  let qr: QrOperativo | null
+  try {
+    qr = parseQrOperativo(input.codigo)
+  } catch {
+    // No es JSON válido o formato no reconocido — intentar como código plano
+    qr = null
+  }
+
+  if (qr !== null && qr.puestoId !== puestoId) {
     throw appError('Este QR pertenece a otro puesto', 400)
   }
 
   const txResult = await runSerializableTransaction(async (tx) => {
+    // Rama de código plano: buscar la donación directamente por entregaCodigo
+    if (qr === null) {
+      const donacion = await tx.donacion.findFirst({
+        where: { entregaCodigo: input.codigo.trim(), puestoId, estado: 'EN_CAMINO' },
+        include: { producto: true, puesto: true },
+      })
+      if (!donacion) {
+        throw appError('Código no encontrado o la donación no está en camino.', 404)
+      }
+      const cantidadAConfirmar = input.cantidadOverride ?? donacion.cantidad
+      if (cantidadAConfirmar !== donacion.cantidad) {
+        await tx.donacion.update({ where: { id: donacion.id }, data: { cantidad: cantidadAConfirmar } })
+        donacion.cantidad = cantidadAConfirmar
+      }
+      const claimed = await tx.donacion.updateMany({
+        where: { id: donacion.id, estado: 'EN_CAMINO' },
+        data: { estado: 'ENTREGADA' },
+      })
+      if (claimed.count !== 1) {
+        throw appError('Este código ya fue usado o la donación no está en camino.', 409)
+      }
+      const necesidad = await tx.inventario.findUnique({
+        where: { puestoId_productoId_tipo: { puestoId, productoId: donacion.productoId, tipo: 'NECESARIO' } },
+        include: { producto: true },
+      })
+      if (necesidad && necesidad.cantidad > 0) {
+        const delta = Math.min(necesidad.cantidad, cantidadAConfirmar)
+        await tx.inventario.update({ where: { id: necesidad.id }, data: { cantidad: { decrement: delta } } })
+      }
+      const disponible = await tx.inventario.upsert({
+        where: { puestoId_productoId_tipo: { puestoId, productoId: donacion.productoId, tipo: 'DISPONIBLE' } },
+        update: { cantidad: { increment: cantidadAConfirmar } },
+        create: { puestoId, productoId: donacion.productoId, tipo: 'DISPONIBLE', cantidad: cantidadAConfirmar },
+        include: { producto: true },
+      })
+      return { tipo: 'DONACION_ENTREGA' as const, donacion, productos: [disponible] }
+    }
+
     if (qr.type === 'SOLICITUD_CIUDADANO') {
       const alreadyUsed = await tx.auditLog.findFirst({
         where: {
@@ -558,7 +539,7 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
   })
 
   // Registro en la cadena pública — fuera de la transacción, no bloqueante
-  if (txResult.tipo === 'SOLICITUD_CIUDADANO' && qr.type === 'SOLICITUD_CIUDADANO') {
+  if (txResult.tipo === 'SOLICITUD_CIUDADANO' && qr !== null && qr.type === 'SOLICITUD_CIUDADANO') {
     for (const item of txResult.productos) {
       const cantidadSalida = qr.productos
         .filter((producto) => normalizeProductoNombre(producto.nombre ?? '') === normalizeProductoNombre(item.producto.nombre))

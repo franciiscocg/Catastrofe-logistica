@@ -200,10 +200,6 @@ function formatFechaHistorial(value: string) {
   }).format(new Date(value))
 }
 
-function normalizeProductoNombre(nombre: string) {
-  return nombre.trim().toLocaleLowerCase('es')
-}
-
 function generatedAtFromTimestamp(timestamp?: number) {
   if (!timestamp || !Number.isFinite(timestamp)) return undefined
   const date = new Date(timestamp)
@@ -315,12 +311,10 @@ const SUGERENCIAS_PRODUCTOS = [
 
 function AddItemSheet({
   puestoId,
-  existingItems,
   onClose,
   onAdded,
 }: {
   puestoId: string
-  existingItems: ItemInventario[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -347,13 +341,6 @@ function AddItemSheet({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const cant = parseFloat(cantidad)
-    const existing = existingItems.find((item) => (
-      normalizeProductoNombre(item.producto.nombre) === normalizeProductoNombre(nombre)
-    ))
-    if (existing) {
-      setError(`"${existing.producto.nombre}" ya existe en el inventario. Edita la cantidad desde su tarjeta.`)
-      return
-    }
     if (!nombre.trim()) { setError('El nombre es obligatorio'); return }
     if (!categoria.trim()) { setError('La categoría es obligatoria'); return }
     if (!unidad.trim()) { setError('La unidad es obligatoria'); return }
@@ -1349,9 +1336,9 @@ export default function PuestoDashboard() {
   }, [mutDelete])
 
   const handleConfirmarQr = useCallback(async () => {
-    if (!qrResult?.parsed || !puesto?.id) return
+    if (!qrResult || !puesto?.id) return
     const qr = qrResult.parsed
-    if (qr.puestoId !== puesto.id) {
+    if (qr && qr.puestoId !== puesto.id) {
       setQrError('Este QR pertenece a otro puesto.')
       return
     }
@@ -1570,7 +1557,7 @@ export default function PuestoDashboard() {
                   ? 'Solicitud de ciudadano'
                   : qrResult.parsed?.type === 'DONACION_ENTREGA'
                     ? 'Donación entrante'
-                    : 'Formato no reconocido'}
+                    : 'Código de entrega'}
               </p>
             </div>
              <button onClick={() => { setQrResult(null); setQrCantidadOverride(''); }} className="flex-shrink-0 text-slate-400 hover:text-slate-700">x</button>
@@ -1622,9 +1609,19 @@ export default function PuestoDashboard() {
               </div>
             </div>
           ) : (
-            <p className="mt-2 break-all rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {qrResult.text}
-            </p>
+            <div className="mt-3 space-y-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs text-slate-500">Al confirmar, la donación se sumará al inventario disponible.</p>
+                <p className="mt-1 break-all font-mono text-sm font-semibold text-slate-800">{qrResult.text}</p>
+              </div>
+              {qrError && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{qrError}</p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="secondary" onClick={() => { setQrResult(null); setQrCantidadOverride(''); }}>Cancelar</Button>
+                <Button loading={qrConfirmando} onClick={() => void handleConfirmarQr()}>Confirmar</Button>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1664,7 +1661,6 @@ export default function PuestoDashboard() {
       {showAddSheet && puesto && (
         <AddItemSheet
           puestoId={puesto.id}
-          existingItems={inventario}
           onClose={() => setShowAddSheet(false)}
           onAdded={() => {
             qc.invalidateQueries({ queryKey: ['inventario', puesto.id] })
