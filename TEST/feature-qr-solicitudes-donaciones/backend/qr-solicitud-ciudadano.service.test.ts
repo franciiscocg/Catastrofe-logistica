@@ -202,12 +202,15 @@ describe('confirmarQrInventario — solicitud ciudadana (SC)', () => {
     })
   })
 
-  it('rechaza un QR con JSON invalido', async () => {
+  it('un texto no-JSON se trata como código de entrega manual (404 si no existe)', async () => {
     allowAccess()
+    mp.donacion.findFirst.mockResolvedValue(null)
 
+    // 'no-es-json!!!' no aparenta ser un QR ('{...}'), así que se busca como
+    // código de entrega plano; al no existir donación EN_CAMINO devuelve 404.
     await expect(
       confirmarQrInventario(PUESTO_ID, { codigo: 'no-es-json!!!' }, USER_ID),
-    ).rejects.toMatchObject({ statusCode: 400, message: 'El QR no tiene un formato válido' })
+    ).rejects.toMatchObject({ statusCode: 404, message: 'Código no encontrado o la donación no está en camino.' })
   })
 
   it('rechaza un QR con JSON válido pero formato desconocido', async () => {

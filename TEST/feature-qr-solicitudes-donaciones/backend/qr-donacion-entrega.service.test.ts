@@ -312,7 +312,7 @@ describe('confirmarQrInventario — entrega de donación (DE)', () => {
 describe('generarCodigoEntrega', () => {
   beforeEach(() => vi.resetAllMocks())
 
-  it('genera un código DEL-xxx cuando la donación está EN_CAMINO y no tiene código previo', async () => {
+  it('genera un código corto de 6 caracteres cuando la donación está EN_CAMINO y no tiene código previo', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
     mp.donacion.findFirst.mockResolvedValue({
       id: DONACION_ID,
@@ -324,20 +324,21 @@ describe('generarCodigoEntrega', () => {
     mp.donacion.update.mockResolvedValue({
       id: DONACION_ID,
       estado: 'EN_CAMINO',
-      entregaCodigo: 'DEL-generado-uuid',
+      entregaCodigo: 'A3F9B2',
       producto: PRODUCTO,
       puesto: PUESTO_DATA,
     })
 
     const result = await generarCodigoEntrega(USER_ID, DONACION_ID)
 
-    expect(result.entregaCodigo).toBe('DEL-generado-uuid')
+    expect(result.entregaCodigo).toBe('A3F9B2')
     expect(mp.donacion.update).toHaveBeenCalledOnce()
     expect(mp.donacion.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: DONACION_ID },
         data: expect.objectContaining({
-          entregaCodigo: expect.stringMatching(/^DEL-/),
+          // Código corto, alfanumérico en mayúsculas, fácil de teclear a mano.
+          entregaCodigo: expect.stringMatching(/^[A-Z0-9]{6}$/),
         }),
       }),
     )

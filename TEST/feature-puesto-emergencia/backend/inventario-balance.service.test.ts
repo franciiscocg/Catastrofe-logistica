@@ -37,7 +37,7 @@ describe('balance de inventario disponible/necesario', () => {
     mp.$transaction.mockImplementation((callback: unknown) => (callback as (tx: unknown) => unknown)(mp))
   })
 
-  it('al aumentar disponible, primero compensa la necesidad del mismo producto', async () => {
+  it('al aumentar disponible no modifica la necesidad del mismo producto', async () => {
     allowPuestoAccess()
     const disponible = {
       id: 'disp-1',
@@ -46,38 +46,23 @@ describe('balance de inventario disponible/necesario', () => {
       tipo: 'DISPONIBLE',
       cantidad: 0,
     }
-    const necesario = {
-      id: 'nec-1',
-      puestoId: PUESTO_ID,
-      productoId: PRODUCTO.id,
-      tipo: 'NECESARIO',
-      cantidad: 10,
-      producto: PRODUCTO,
-    }
 
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(disponible)
-      .mockResolvedValueOnce(necesario)
-    mp.inventario.update
-      .mockResolvedValueOnce({ ...necesario, cantidad: 0 })
-      .mockResolvedValueOnce({ ...disponible, cantidad: 0, producto: PRODUCTO })
+    // Solo se consulta y actualiza el propio item; nunca el opuesto.
+    mp.inventario.findUnique.mockResolvedValueOnce(disponible)
+    mp.inventario.update.mockResolvedValueOnce({ ...disponible, cantidad: 10, producto: PRODUCTO })
 
     const result = await updateCantidad('disp-1', { delta: 10 }, USER_ID)
 
-    expect(result.cantidad).toBe(0)
-    expect(mp.inventario.update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'nec-1' },
-      data: { cantidad: 0 },
-      include: { producto: true },
-    })
-    expect(mp.inventario.update).toHaveBeenNthCalledWith(2, {
+    expect(result.cantidad).toBe(10)
+    expect(mp.inventario.update).toHaveBeenCalledTimes(1)
+    expect(mp.inventario.update).toHaveBeenCalledWith({
       where: { id: 'disp-1' },
-      data: { cantidad: 0 },
+      data: { cantidad: 10 },
       include: { producto: true },
     })
   })
 
-  it('si entra mas de lo necesario, deja solo el sobrante como disponible', async () => {
+  it('la cantidad disponible se actualiza integra (sin descontar necesidad)', async () => {
     allowPuestoAccess()
     const disponible = {
       id: 'disp-1',
@@ -86,31 +71,20 @@ describe('balance de inventario disponible/necesario', () => {
       tipo: 'DISPONIBLE',
       cantidad: 0,
     }
-    const necesario = {
-      id: 'nec-1',
-      puestoId: PUESTO_ID,
-      productoId: PRODUCTO.id,
-      tipo: 'NECESARIO',
-      cantidad: 10,
-      producto: PRODUCTO,
-    }
 
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(disponible)
-      .mockResolvedValueOnce(necesario)
-    mp.inventario.update
-      .mockResolvedValueOnce({ ...necesario, cantidad: 0 })
-      .mockResolvedValueOnce({ ...disponible, cantidad: 5, producto: PRODUCTO })
+    mp.inventario.findUnique.mockResolvedValueOnce(disponible)
+    mp.inventario.update.mockResolvedValueOnce({ ...disponible, cantidad: 15, producto: PRODUCTO })
 
     const result = await updateCantidad('disp-1', { delta: 15 }, USER_ID)
 
-    expect(result.cantidad).toBe(5)
-    expect(mp.inventario.update).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      data: { cantidad: 5 },
+    expect(result.cantidad).toBe(15)
+    expect(mp.inventario.update).toHaveBeenCalledTimes(1)
+    expect(mp.inventario.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { cantidad: 15 },
     }))
   })
 
-  it('al aumentar necesario, primero compensa el disponible del mismo producto', async () => {
+  it('al aumentar necesario no modifica el disponible del mismo producto', async () => {
     allowPuestoAccess()
     const necesario = {
       id: 'nec-1',
@@ -119,28 +93,17 @@ describe('balance de inventario disponible/necesario', () => {
       tipo: 'NECESARIO',
       cantidad: 0,
     }
-    const disponible = {
-      id: 'disp-1',
-      puestoId: PUESTO_ID,
-      productoId: PRODUCTO.id,
-      tipo: 'DISPONIBLE',
-      cantidad: 4,
-      producto: PRODUCTO,
-    }
 
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(necesario)
-      .mockResolvedValueOnce(disponible)
-    mp.inventario.update
-      .mockResolvedValueOnce({ ...disponible, cantidad: 0 })
-      .mockResolvedValueOnce({ ...necesario, cantidad: 6, producto: PRODUCTO })
+    mp.inventario.findUnique.mockResolvedValueOnce(necesario)
+    mp.inventario.update.mockResolvedValueOnce({ ...necesario, cantidad: 10, producto: PRODUCTO })
 
     const result = await updateCantidad('nec-1', { delta: 10 }, USER_ID)
 
-    expect(result.cantidad).toBe(6)
-    expect(mp.inventario.update).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: { id: 'disp-1' },
-      data: { cantidad: 0 },
+    expect(result.cantidad).toBe(10)
+    expect(mp.inventario.update).toHaveBeenCalledTimes(1)
+    expect(mp.inventario.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'nec-1' },
+      data: { cantidad: 10 },
     }))
   })
 })

@@ -263,13 +263,12 @@ export async function updateCantidad(itemId: string, input: UpdateCantidadInput,
 export async function confirmarQrInventario(puestoId: string, input: ConfirmarQrInput, userId: string) {
   await assertPuestoAccess(puestoId, userId)
 
-  let qr: QrOperativo | null
-  try {
-    qr = parseQrOperativo(input.codigo)
-  } catch {
-    // No es JSON válido o formato no reconocido — intentar como código plano
-    qr = null
-  }
+  // Un QR es siempre un objeto JSON ('{...}'); un código de entrega es texto
+  // plano corto. Solo tratamos como código plano lo que no aparenta ser JSON,
+  // para que los errores de validación de un QR mal formado sigan propagando.
+  const codigoTrim = input.codigo.trim()
+  const pareceQr = codigoTrim.startsWith('{')
+  const qr: QrOperativo | null = pareceQr ? parseQrOperativo(input.codigo) : null
 
   if (qr !== null && qr.puestoId !== puestoId) {
     throw appError('Este QR pertenece a otro puesto', 400)

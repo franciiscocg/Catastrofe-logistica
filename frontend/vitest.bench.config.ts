@@ -8,6 +8,13 @@ import { fileURLToPath } from 'url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  // El benchmark importa src/utils/routing.ts, que usa el alias '@' → ./src.
+  // Sin esta resolución, la carga de '@/lib/db/publicSnapshots' falla.
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './src'),
+    },
+  },
   test: {
     environment: 'node',
     include: [resolve(__dirname, 'benchmark/**/*.test.ts').replace(/\\/g, '/')],

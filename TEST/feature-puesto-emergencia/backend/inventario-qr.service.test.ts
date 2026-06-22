@@ -142,16 +142,23 @@ describe('confirmarQrInventario', () => {
     expect(mp.inventario.updateMany).not.toHaveBeenCalled()
   })
 
-  it('rechaza códigos que no son JSON legible', async () => {
+  it('trata un texto no-JSON como código de entrega y lo rechaza si no existe', async () => {
     allowPuestoAccess()
+    mp.donacion.findFirst.mockResolvedValue(null)
 
+    // El texto plano ya no es "formato inválido": se busca como código de
+    // entrega manual. Si no corresponde a ninguna donación EN_CAMINO → 404.
     await expect(confirmarQrInventario(PUESTO_ID, { codigo: 'esto-no-es-json' }, USER_ID))
       .rejects.toMatchObject({
-        statusCode: 400,
-        message: 'El QR no tiene un formato válido',
+        statusCode: 404,
+        message: 'Código no encontrado o la donación no está en camino.',
       })
     expect(mp.inventario.findMany).not.toHaveBeenCalled()
-    expect(mp.donacion.findFirst).not.toHaveBeenCalled()
+    expect(mp.donacion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ entregaCodigo: 'esto-no-es-json', puestoId: PUESTO_ID, estado: 'EN_CAMINO' }),
+      }),
+    )
   })
 
   it('rechaza códigos JSON que no son de solicitud ni de donación', async () => {

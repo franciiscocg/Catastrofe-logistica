@@ -35,34 +35,27 @@ function mockProducto() {
   mp.producto.findFirst.mockResolvedValue(PRODUCTO)
 }
 
-// ── addItem con compensacion de inventario ────────────────────────────────────
+// ── addItem: DISPONIBLE y NECESARIO son independientes ────────────────────────
 
-describe('addItem — compensacion disponible/necesario', () => {
+describe('addItem — independencia disponible/necesario', () => {
   beforeEach(() => {
     vi.resetAllMocks()
   })
 
-  it('al agregar DISPONIBLE, primero reduce la NECESIDAD del mismo producto', async () => {
+  it('al agregar DISPONIBLE crea el item integro sin tocar la NECESIDAD del producto', async () => {
     allowAccess()
     mockProducto()
 
-    const itemNecesario = {
-      id: 'nec-1',
+    // No existe DISPONIBLE previo del mismo producto.
+    mp.inventario.findUnique.mockResolvedValueOnce(null)
+    mp.inventario.create.mockResolvedValue({
+      id: 'disp-nuevo',
       puestoId: PUESTO_ID,
       productoId: PRODUCTO.id,
-      tipo: 'NECESARIO',
+      tipo: 'DISPONIBLE',
       cantidad: 10,
       producto: PRODUCTO,
-    }
-
-    // findUnique: 1a llamada busca NECESARIO (el opuesto al DISPONIBLE que se quiere agregar)
-    // 2a llamada busca si ya existe DISPONIBLE del mismo producto
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(itemNecesario)
-      .mockResolvedValueOnce(null)
-
-    // Despues de compensar la necesidad (10), el sobrante es 0 → devuelve el opuesto actualizado
-    mp.inventario.update.mockResolvedValue({ ...itemNecesario, cantidad: 0 })
+    })
 
     const result = await addItem(PUESTO_ID, {
       nombre: 'Agua embotellada',
@@ -72,42 +65,34 @@ describe('addItem — compensacion disponible/necesario', () => {
       tipo: 'DISPONIBLE',
     }, USER_ID)
 
-    // Reducio la necesidad a 0
-    expect(mp.inventario.update).toHaveBeenCalledWith(
+    // Solo consulta el inventario del MISMO tipo, nunca el opuesto.
+    expect(mp.inventario.findUnique).toHaveBeenCalledTimes(1)
+    expect(mp.inventario.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'nec-1' },
-        data: { cantidad: 0 },
+        where: { puestoId_productoId_tipo: { puestoId: PUESTO_ID, productoId: PRODUCTO.id, tipo: 'DISPONIBLE' } },
       }),
     )
-    // No creo un item DISPONIBLE porque la compensacion absorbio todo
-    expect(mp.inventario.create).not.toHaveBeenCalled()
-    expect(result.cantidad).toBe(0)
+    // No compensa ninguna necesidad: nada de update, crea el DISPONIBLE integro.
+    expect(mp.inventario.update).not.toHaveBeenCalled()
+    expect(mp.inventario.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ cantidad: 10, tipo: 'DISPONIBLE' }),
+      }),
+    )
+    expect(result.cantidad).toBe(10)
   })
 
-  it('si se aporta mas de lo necesario, crea el sobrante como DISPONIBLE', async () => {
+  it('la cantidad aportada se guarda integra como DISPONIBLE (sin descontar necesidad)', async () => {
     allowAccess()
     mockProducto()
 
-    const itemNecesario = {
-      id: 'nec-1',
-      puestoId: PUESTO_ID,
-      productoId: PRODUCTO.id,
-      tipo: 'NECESARIO',
-      cantidad: 6,
-      producto: PRODUCTO,
-    }
-
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(itemNecesario) // opuesto NECESARIO
-      .mockResolvedValueOnce(null) // no hay DISPONIBLE previo
-
-    mp.inventario.update.mockResolvedValue({ ...itemNecesario, cantidad: 0 })
+    mp.inventario.findUnique.mockResolvedValueOnce(null)
     mp.inventario.create.mockResolvedValue({
       id: 'disp-nuevo',
       puestoId: PUESTO_ID,
       productoId: PRODUCTO.id,
       tipo: 'DISPONIBLE',
-      cantidad: 4,
+      cantidad: 10,
       producto: PRODUCTO,
     })
 
@@ -115,40 +100,34 @@ describe('addItem — compensacion disponible/necesario', () => {
       nombre: 'Agua embotellada',
       categoria: 'Bebidas',
       unidad: 'litros',
-      cantidad: 10, // 6 cubren necesidad, 4 quedan como disponible
+      cantidad: 10,
       tipo: 'DISPONIBLE',
     }, USER_ID)
 
-    expect(mp.inventario.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { cantidad: 0 } }),
-    )
+    // Antes la necesidad absorbia parte; ahora entra integra como disponible.
+    expect(mp.inventario.update).not.toHaveBeenCalled()
     expect(mp.inventario.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ cantidad: 4, tipo: 'DISPONIBLE' }),
+        data: expect.objectContaining({ cantidad: 10, tipo: 'DISPONIBLE' }),
       }),
     )
   })
 
-  it('al agregar NECESARIO, primero reduce el DISPONIBLE del mismo producto', async () => {
+  it('al agregar NECESARIO crea el item integro sin tocar el DISPONIBLE del producto', async () => {
     allowAccess()
     mockProducto()
 
-    const itemDisponible = {
-      id: 'disp-1',
+    mp.inventario.findUnique.mockResolvedValueOnce(null)
+    mp.inventario.create.mockResolvedValue({
+      id: 'nec-nuevo',
       puestoId: PUESTO_ID,
       productoId: PRODUCTO.id,
-      tipo: 'DISPONIBLE',
+      tipo: 'NECESARIO',
       cantidad: 5,
       producto: PRODUCTO,
-    }
+    })
 
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(itemDisponible) // opuesto DISPONIBLE
-      .mockResolvedValueOnce(null) // no hay NECESARIO previo
-
-    mp.inventario.update.mockResolvedValue({ ...itemDisponible, cantidad: 0 })
-
-    await addItem(PUESTO_ID, {
+    const result = await addItem(PUESTO_ID, {
       nombre: 'Agua embotellada',
       categoria: 'Bebidas',
       unidad: 'litros',
@@ -156,13 +135,19 @@ describe('addItem — compensacion disponible/necesario', () => {
       tipo: 'NECESARIO',
     }, USER_ID)
 
-    expect(mp.inventario.update).toHaveBeenCalledWith(
+    expect(mp.inventario.findUnique).toHaveBeenCalledTimes(1)
+    expect(mp.inventario.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'disp-1' },
-        data: { cantidad: 0 },
+        where: { puestoId_productoId_tipo: { puestoId: PUESTO_ID, productoId: PRODUCTO.id, tipo: 'NECESARIO' } },
       }),
     )
-    expect(mp.inventario.create).not.toHaveBeenCalled()
+    expect(mp.inventario.update).not.toHaveBeenCalled()
+    expect(mp.inventario.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ cantidad: 5, tipo: 'NECESARIO' }),
+      }),
+    )
+    expect(result.cantidad).toBe(5)
   })
 
   it('crea el producto si no existe todavia en la base de datos', async () => {
@@ -206,9 +191,7 @@ describe('addItem — compensacion disponible/necesario', () => {
       cantidad: 8,
     }
 
-    mp.inventario.findUnique
-      .mockResolvedValueOnce(null) // sin opuesto NECESARIO
-      .mockResolvedValueOnce(existente) // ya hay DISPONIBLE
+    mp.inventario.findUnique.mockResolvedValueOnce(existente) // ya hay DISPONIBLE del mismo tipo
 
     mp.inventario.update.mockResolvedValue({
       ...existente,
