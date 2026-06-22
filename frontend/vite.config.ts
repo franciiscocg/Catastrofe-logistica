@@ -50,6 +50,19 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          {
+            urlPattern: /^https:\/\/(router\.project-osrm\.org|routing\.openstreetmap\.de)\//,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'routing-responses',
+              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 150,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
       },
       devOptions: {

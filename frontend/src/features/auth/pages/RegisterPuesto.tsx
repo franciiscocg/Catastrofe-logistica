@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { apiClient } from '@/lib/api/client'
+import { queueableApiRequest } from '@/lib/api/offline'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 import Map from '@/components/shared/Map'
@@ -296,14 +297,14 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
     setSubmitError('')
 
     try {
-      await apiClient.post('/api/puestos/solicitudes', {
+      await queueableApiRequest({ method: 'POST', url: '/api/puestos/solicitudes', data: {
         nombre: form.nombrePuesto.trim(),
         tipo: form.tipo,
         direccion: form.direccion.trim(),
         descripcion: form.descripcion.trim() || undefined,
         latitud: Number.parseFloat(form.latitud),
         longitud: Number.parseFloat(form.longitud),
-      })
+      } }, { entity: 'solicitud-puesto', priority: 'high' })
       onSuccess()
     } catch (err: unknown) {
       const response = (err as { response?: { data?: { error?: string } } })?.response

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { apiClient } from '@/lib/api/client'
+import { queueableApiRequest } from '@/lib/api/offline'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import Map, { type IncidenciaMarker } from '@/components/shared/Map'
 import ReadableQrCode from '@/components/shared/ReadableQrCode'
@@ -138,8 +139,6 @@ export default function NuevoFlujoDonacion({
   objetosDonables,
   userPosition: initialUserPosition,
   incidencias,
-  isOnline,
-  enqueueSync,
   onFinalizarDonacion,
   onVolverDashboard,
   initialStep,
@@ -148,8 +147,6 @@ export default function NuevoFlujoDonacion({
   objetosDonables: ObjetoDonable[]
   userPosition: [number, number] | null
   incidencias: IncidenciaMarker[]
-  isOnline: boolean
-  enqueueSync: (record: { entity: string; method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; url: string; body?: unknown; priority: 'low' | 'high' }) => Promise<void>
   onFinalizarDonacion: () => void
   onVolverDashboard: () => void
   initialStep?: 'productos' | 'cantidades' | 'rutas' | 'navegacion' | 'entregas-qr'
@@ -356,7 +353,7 @@ export default function NuevoFlujoDonacion({
     try {
       const stopDonations = createdDonations.filter((d) => d.puesto.id === currentStop.puesto.id)
       for (const donacion of stopDonations) {
-        await apiClient.patch(`/api/donaciones/${donacion.id}/estado`, { estado: 'ENTREGADA' })
+        await queueableApiRequest({ method: 'PATCH', url: `/api/donaciones/${donacion.id}/estado`, data: { estado: 'ENTREGADA' } }, { entity: 'donacion', priority: 'critical' })
       }
 
       // Update local status of these donations so state is consistent
@@ -546,41 +543,29 @@ export default function NuevoFlujoDonacion({
             comentario: 'Asignado mediante ruta óptima de voluntario.',
           }
 
-          if (isOnline) {
-            const { data } = await apiClient.post<{ donacion: Donacion }>('/api/donaciones', body)
-            // Mark as EN_CAMINO immediately so that it is active
-            await apiClient.patch<{ donacion: Donacion }>(
-              `/api/donaciones/${data.donacion.id}/estado`,
-              { estado: 'EN_CAMINO' }
-            )
-            // Call generating delivery code right away to prevent errors
-            const { data: codeData } = await apiClient.post<{ donacion: Donacion }>(
-              `/api/donaciones/${data.donacion.id}/codigo-entrega`
-            )
-            created.push(codeData.donacion)
-            initDeliveryQtys[codeData.donacion.id] = codeData.donacion.cantidad
-          } else {
-            // Offline support
-            const offlineId = `offline-${crypto.randomUUID()}`
-            const offlineDonation: Donacion = {
-              id: offlineId,
-              cantidad: prod.cantidad,
-              unidad: prod.unidad,
-              estado: 'EN_CAMINO',
-              entregaCodigo: `OFFLINE-DEL-${offlineId}`,
-              producto: prod.producto,
-              puesto: stop.puesto,
-            }
-            await enqueueSync({
-              entity: 'donacion',
-              method: 'POST',
-              url: '/api/donaciones',
-              body,
-              priority: 'high',
-            })
-            created.push(offlineDonation)
-            initDeliveryQtys[offlineId] = prod.cantidad
+          const clientId = `offline-${crypto.randomUUID()}`
+          const entregaCodigo = `OFFLINE-DEL-${clientId}`
+          const optimisticDonation: Donacion = {
+            id: clientId,
+            cantidad: prod.cantidad,
+            unidad: prod.unidad,
+            estado: 'EN_CAMINO',
+            entregaCodigo,
+            producto: prod.producto,
+            puesto: stop.puesto,
           }
+          const { data } = await queueableApiRequest<{ donacion: Donacion }>({
+            method: 'POST',
+            url: '/api/donaciones',
+            data: { ...body, clientId, estadoInicial: 'EN_CAMINO', entregaCodigo },
+          }, {
+            entity: 'donacion',
+            priority: 'high',
+            localEntityId: clientId,
+            optimisticData: { donacion: optimisticDonation },
+          })
+          created.push(data.donacion)
+          initDeliveryQtys[data.donacion.id] = data.donacion.cantidad
         }
       }
 

@@ -75,6 +75,7 @@ coverage/
 # Resultados de tests (artefactos de Playwright)
 test-results/
 playwright-report/
+*.tsbuildinfo
 
 # Tmp
 *.tmp

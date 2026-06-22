@@ -22,6 +22,21 @@ export interface PublicSnapshot {
   updatedAt: number
 }
 
+export interface ApiCacheEntry {
+  key: string
+  userId: string
+  data: unknown
+  status: number
+  updatedAt: number
+}
+
+export interface IdMapping {
+  localId: string
+  serverId: string
+  entity: string
+  updatedAt: number
+}
+
 class CatLogisticaDB extends Dexie {
   syncQueue!: Table<SyncOperation, string>
   puestos!: Table<PuestoEmergencia, string>
@@ -29,6 +44,8 @@ class CatLogisticaDB extends Dexie {
   mapTiles!: Table<MapTile, string>
   osmGraphs!: Table<OsmGraphRecord, string>
   publicSnapshots!: Table<PublicSnapshot, string>
+  apiCache!: Table<ApiCacheEntry, string>
+  idMappings!: Table<IdMapping, string>
 
   constructor() {
     super('CatLogisticaDB')
@@ -54,6 +71,16 @@ class CatLogisticaDB extends Dexie {
       mapTiles: 'key, cachedAt',
       osmGraphs: 'id, cachedAt',
       publicSnapshots: 'key, updatedAt',
+    })
+
+    this.version(5).stores({
+      syncQueue: 'id, status, priority, createdAt, nextRunAt, entity, idempotencyKey, localEntityId',
+      puestos: 'id, activo',
+      inventario: 'id, puestoId, tipo',
+      mapTiles: 'key, cachedAt',
+      publicSnapshots: 'key, updatedAt',
+      apiCache: 'key, userId, updatedAt',
+      idMappings: 'localId, entity, updatedAt',
     })
   }
 }

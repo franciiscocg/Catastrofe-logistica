@@ -154,6 +154,7 @@ export async function createDonacion(usuarioId: string, input: CreateDonacionInp
 
     return tx.donacion.create({
       data: {
+        id: input.clientId,
         voluntarioId: voluntario.id,
         puestoId: input.puestoId,
         productoId: input.productoId,
@@ -161,6 +162,9 @@ export async function createDonacion(usuarioId: string, input: CreateDonacionInp
         unidad: input.unidad,
         comentario: input.comentario,
         eta: input.eta ? new Date(input.eta) : undefined,
+        estado: input.estadoInicial,
+        entregaCodigo: input.entregaCodigo,
+        entregaCodigoGeneradoAt: input.entregaCodigo ? new Date() : undefined,
       },
       include: {
         producto: true,

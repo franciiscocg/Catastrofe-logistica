@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useAuthStore } from '@/store/auth.store'
+import { clearApiCacheForUser, readApiResponse, saveApiResponse } from '@/lib/db/apiCache'
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -66,12 +67,6 @@ async function refreshAccessToken() {
       useAuthStore.getState().setSession(data.user, data.accessToken, data.accessTokenExpiresAt)
       return data.accessToken
     })
-    .catch(async () => {
-      clearStoredRefreshToken()
-      await clearSensitiveApiCaches()
-      useAuthStore.getState().logout()
-      return null
-    })
     .finally(() => {
       refreshPromise = null
     })
@@ -80,28 +75,41 @@ async function refreshAccessToken() {
 }
 
 export async function restoreSession() {
+  const auth = useAuthStore.getState()
+  if (!navigator.onLine) {
+    auth.restoreOfflineSession()
+    return
+  }
+
   try {
     await clearSensitiveApiCaches()
-    // Sin refresh token guardado no hay sesion que restaurar: evitamos un 401
-    // innecesario y dejamos la sesion inicializada como cerrada.
-    if (!getStoredRefreshToken()) {
-      useAuthStore.getState().logout()
+    await refreshAccessToken()
+  } catch (error) {
+    if (isNetworkError(error)) {
+      auth.restoreOfflineSession()
       return
     }
-    await refreshAccessToken()
-  } catch {
-    useAuthStore.getState().logout()
+    const userId = auth.user?.id
+    if (userId) await clearApiCacheForUser(userId)
+    clearStoredRefreshToken()
+    auth.logout()
   }
 }
 
 export async function endSession() {
+  const userId = useAuthStore.getState().user?.id
   try {
     await apiClient.post('/api/auth/logout', { refreshToken: getStoredRefreshToken() })
   } finally {
     clearStoredRefreshToken()
     await clearSensitiveApiCaches()
+    if (userId) await clearApiCacheForUser(userId)
     useAuthStore.getState().logout()
   }
+}
+
+function isNetworkError(error: unknown) {
+  return axios.isAxiosError(error) && (!error.response || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED')
 }
 
 apiClient.interceptors.response.use(
@@ -111,15 +119,41 @@ apiClient.interceptors.response.use(
     const url = response.config?.url ?? ''
     const token = (response.data as { refreshToken?: string } | undefined)?.refreshToken
     if (token && url.includes('/api/auth/')) persistRefreshToken(token)
+    if (response.config.method?.toLowerCase() === 'get') {
+      const userId = useAuthStore.getState().user?.id ?? 'public'
+      void saveApiResponse(response.config, userId, response.data, response.status)
+    }
     return response
   },
   async (error) => {
     const originalRequest = error.config
+    if (originalRequest?.method?.toLowerCase() === 'get' && isNetworkError(error)) {
+      const userId = useAuthStore.getState().user?.id ?? 'public'
+      const cached = await readApiResponse(originalRequest, userId)
+      if (cached) {
+        return {
+          data: cached.data,
+          status: cached.status,
+          statusText: 'OK (offline cache)',
+          headers: { 'x-offline-cache': 'true', 'x-cache-updated-at': String(cached.updatedAt) },
+          config: originalRequest,
+          request: error.request,
+        }
+      }
+    }
     const isRefreshRequest = originalRequest?.url?.includes('/api/auth/refresh')
     const isAuthenticationRequest = originalRequest?.url?.startsWith('/api/auth/')
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthenticationRequest) {
       originalRequest._retry = true
-      const token = await refreshAccessToken()
+      let token: string | null = null
+      try {
+        token = await refreshAccessToken()
+      } catch (refreshError) {
+        if (isNetworkError(refreshError)) {
+          useAuthStore.getState().restoreOfflineSession()
+          return Promise.reject(error)
+        }
+      }
       if (token) {
         originalRequest.headers = originalRequest.headers ?? {}
         originalRequest.headers.Authorization = `Bearer ${token}`
@@ -129,6 +163,9 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401 && !isRefreshRequest) {
       await clearSensitiveApiCaches()
+      clearStoredRefreshToken()
+      const userId = useAuthStore.getState().user?.id
+      if (userId) await clearApiCacheForUser(userId)
       useAuthStore.getState().logout()
       window.location.href = '/auth/login'
     }

@@ -529,7 +529,7 @@ Para el alcance de un MVP/TFM es una decisión asumible —la cola de reintentos
 - [ ] Diseño de base de datos PostgreSQL + PostGIS
 - [ ] API básica de autenticación (registro, login, JWT, refresh tokens)
 - [ ] PWA shell con Service Workers (Workbox) y estructura de rutas por rol
-- [ ] Almacenamiento local (IndexedDB con Dexie.js, schema inicial)
+- [x] Almacenamiento local (IndexedDB con Dexie.js, schema inicial)
 - [ ] Diseño de UI/UX (al menos wireframes de flujos principales)
 
 **Mes 2: Funcionalidades Core**
@@ -541,18 +541,18 @@ Para el alcance de un MVP/TFM es una decisión asumible —la cola de reintentos
 - [ ] Escaneo de QR
 
 **Mes 3: Características Offline**
-- [ ] Cola de sincronización persistente en IndexedDB
+- [x] Cola de sincronización persistente en IndexedDB
 - [ ] Resolución de conflictos de inventario
-- [ ] Detección de conectividad y modos (normal / ahorro / offline)
+- [x] Detección de conectividad y modos (normal / ahorro / offline)
 - [ ] Compresión de imágenes en cliente (Canvas API)
-- [ ] Tiles de mapa offline (Leaflet + descarga de zona)
+- [x] Tiles de mapa visitados y rutas calculadas disponibles offline
 - [ ] Gestión de cuota de almacenamiento
 - [ ] Banner de instalación de PWA para iOS
 
 **Mes 4: Testing y Lanzamiento**
 - [ ] Tests unitarios (Vitest) — lógica de negocio crítica
 - [ ] Tests E2E (Playwright) — 5 flujos principales
-- [ ] Tests de comportamiento offline
+- [x] Tests de comportamiento offline (sesión, recarga, cola y reconciliación)
 - [ ] Optimización de rendimiento (Lighthouse PWA score)
 - [ ] Documentación de API (OpenAPI/Swagger)
 - [ ] Deploy en producción (Docker Compose en VPS)

@@ -28,6 +28,7 @@ export default defineConfig({
       '@testing-library/user-event': resolve(__dirname, 'node_modules/@testing-library/user-event'),
       '@testing-library/jest-dom': resolve(__dirname, 'node_modules/@testing-library/jest-dom'),
       '@tanstack/react-query': resolve(__dirname, 'node_modules/@tanstack/react-query'),
+      'fake-indexeddb': resolve(__dirname, 'node_modules/fake-indexeddb'),
       'react-router-dom': resolve(__dirname, 'node_modules/react-router-dom'),
       'react-dom': resolve(__dirname, 'node_modules/react-dom'),
       react: resolve(__dirname, 'node_modules/react'),

@@ -2,7 +2,7 @@
 
 Esta configuracion despliega la app con:
 
-- Render Free: frontend y backend.
+- Render Free: frontend PWA y backend en un unico servicio web.
 - Render Free: PostgreSQL.
 - Sin MinIO y sin Redis.
 
@@ -11,8 +11,7 @@ Esta configuracion despliega la app con:
 1. Sube este repositorio a GitHub.
 2. En Render, crea un Blueprint desde el repositorio.
 3. Render detectara `render.yaml` y creara:
-   - `catastrofe-logistica-backend`
-   - `catastrofe-logistica-frontend`
+   - `catastrofe-logistica`
    - `catastrofe-logistica-db`
 
 La base de datos se declara en `render.yaml`, asi que no tienes que crearla a mano
@@ -21,35 +20,28 @@ backend.
 
 ## 2. Variables del backend en Render
 
-En `catastrofe-logistica-backend`, configura:
+En `catastrofe-logistica`, configura:
 
 ```text
-FRONTEND_URL=https://catastrofe-logistica-frontend.onrender.com
-APP_PUBLIC_URL=https://catastrofe-logistica-frontend.onrender.com
-COOKIE_SAME_SITE=none
+FRONTEND_URL=https://catastrofe-logistica.onrender.com
+APP_PUBLIC_URL=https://catastrofe-logistica.onrender.com
+COOKIE_SAME_SITE=lax
 ```
 
 `JWT_SECRET`, `DATABASE_URL` y `DIRECT_URL` se generan desde el Blueprint.
 
-## 3. Variables del frontend en Render
-
-En `catastrofe-logistica-frontend`, configura:
-
-```text
-VITE_API_URL=https://catastrofe-logistica-backend.onrender.com
-```
+La PWA usa `/api` en el mismo origen. No configures `VITE_API_URL` en producción.
 
 ## 4. Orden recomendado
 
 1. Crea el Blueprint en Render.
 2. Espera a que `catastrofe-logistica-db` este disponible.
-3. Despliega el backend.
-4. Copia la URL publica del backend.
-5. Pega `VITE_API_URL` en frontend.
-6. Despliega frontend.
-7. Copia la URL publica del frontend.
-8. Pega `FRONTEND_URL` y `APP_PUBLIC_URL` en backend.
-9. Redeploy backend.
+3. Despliega el servicio web combinado.
+4. Copia su URL publica en `FRONTEND_URL` y `APP_PUBLIC_URL`.
+5. Haz redeploy del servicio.
+
+Servir PWA y API bajo el mismo origen es intencionado: evita cookies de terceros y
+permite restaurar la sesión de forma fiable antes y después de trabajar sin conexión.
 
 Si ya existian los servicios antes de anadir `catastrofe-logistica-db` al
 `render.yaml`, no basta con pulsar "Redeploy" en el backend: eso solo despliega

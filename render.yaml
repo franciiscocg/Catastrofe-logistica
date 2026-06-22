@@ -1,11 +1,10 @@
 services:
   - type: web
-    name: catastrofe-logistica-backend
+    name: catastrofe-logistica
     runtime: node
     plan: free
-    rootDir: backend
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run start:render
+    buildCommand: npm --prefix backend ci --include=dev && npm --prefix frontend ci --include=dev && npm --prefix frontend run build && npm --prefix backend run build
+    startCommand: cd backend && npm run start:render
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -13,7 +12,7 @@ services:
       - key: HOST
         value: 0.0.0.0
       - key: COOKIE_SAME_SITE
-        value: none
+        value: lax
       - key: JWT_EXPIRES_IN
         value: 15m
       - key: JWT_EXPIRES_SECONDS
@@ -33,20 +32,6 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: APP_PUBLIC_URL
-        sync: false
-
-  - type: web
-    name: catastrofe-logistica-frontend
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
         sync: false
 
 databases:

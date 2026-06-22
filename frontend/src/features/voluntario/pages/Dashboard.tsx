@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { apiClient } from '@/lib/api/client'
+import { queueableApiRequest } from '@/lib/api/offline'
 import type { PuestoEmergencia } from '@/types/puesto.types'
 import type { ItemInventario } from '@/types/inventario.types'
 import Map, { type IncidenciaMarker, type PuestoMarker } from '@/components/shared/Map'
@@ -1039,35 +1040,35 @@ export default function VoluntarioDashboard() {
   }
 
   const publicarNecesidadPuestoActivo = async (puestoId: string, item: ItemInventario, cantidad: number) => {
-    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
+    await queueableApiRequest({ method: 'POST', url: `/api/inventario/puesto/${puestoId}/items`, data: {
       nombre: item.producto.nombre,
       categoria: item.producto.categoria,
       unidad: item.producto.unidad,
       cantidad,
       tipo: 'NECESARIO',
-    })
+    } }, { entity: 'inventario', priority: 'high' })
   }
 
   const crearItemDesdeBasico = async (puestoId: string, item: ItemInventario, cantidad: number, tipo: 'DISPONIBLE' | 'NECESARIO') => {
-    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, {
+    await queueableApiRequest({ method: 'POST', url: `/api/inventario/puesto/${puestoId}/items`, data: {
       nombre: item.producto.nombre,
       categoria: item.producto.categoria,
       unidad: item.producto.unidad,
       cantidad,
       tipo,
-    })
+    } }, { entity: 'inventario', priority: 'high' })
   }
 
   const actualizarDisponiblePuestoActivo = async (item: ItemInventario, cantidadDisponible: number) => {
-    await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
+    await queueableApiRequest({ method: 'PATCH', url: `/api/inventario/items/${item.id}/cantidad`, data: {
       cantidad: Math.max(cantidadDisponible, 0),
-    })
+    } }, { entity: 'inventario', priority: 'high' })
   }
 
   const ajustarNecesidadPuestoActivo = async (item: ItemInventario, cantidadNecesaria: number) => {
-    await apiClient.patch(`/api/inventario/items/${item.id}/cantidad`, {
+    await queueableApiRequest({ method: 'PATCH', url: `/api/inventario/items/${item.id}/cantidad`, data: {
       cantidad: Math.max(cantidadNecesaria, 0),
-    })
+    } }, { entity: 'inventario', priority: 'high' })
   }
 
   const guardarDisponiblePuestoActivo = async (
@@ -1224,7 +1225,7 @@ export default function VoluntarioDashboard() {
     try {
       const deletions = [card.disponible, card.necesario]
         .filter((item): item is ItemInventario => Boolean(item && !isInventarioVirtual(item)))
-        .map((item) => apiClient.delete(`/api/inventario/items/${item.id}`))
+        .map((item) => queueableApiRequest({ method: 'DELETE', url: `/api/inventario/items/${item.id}` }, { entity: 'inventario', priority: 'high' }))
       await Promise.all(deletions)
       await cargarInventarioPuestoActivo(puestoId)
       await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
@@ -1243,7 +1244,7 @@ export default function VoluntarioDashboard() {
     const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
     if (!puestoId) return
     setInventarioPuestoError('')
-    await apiClient.post(`/api/inventario/puesto/${puestoId}/items`, input)
+    await queueableApiRequest({ method: 'POST', url: `/api/inventario/puesto/${puestoId}/items`, data: input }, { entity: 'inventario', priority: 'high' })
     await cargarInventarioPuestoActivo(puestoId)
     await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
   }
@@ -2206,8 +2207,6 @@ export default function VoluntarioDashboard() {
                     objetosDonables={objetosDonables}
                     userPosition={userPosition}
                     incidencias={incidencias as IncidenciaMarker[]}
-                    isOnline={isOnline}
-                    enqueueSync={enqueueSync}
                     onFinalizarDonacion={() => {
                       setForzarNuevoFlujoDonacion(false)
                       setRealtimeRefresh((current) => current + 1)

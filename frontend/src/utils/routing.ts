@@ -6,6 +6,7 @@ import {
   type IncidenciaRutaInput,
   type ModoTransporte,
 } from './geo'
+import { readPublicSnapshot, savePublicSnapshot } from '@/lib/db/publicSnapshots'
 
 // Re-exportamos las primitivas geometricas para no romper a los consumidores
 // (y los tests) que las importan desde '@/utils/routing'.
@@ -90,6 +91,22 @@ export function osrmUrl(modo: ModoTransporte, path: string): string {
   return `https://router.project-osrm.org/route/v1/driving/${path}?overview=full&geometries=geojson&alternatives=false`
 }
 
+async function fetchRouteData(url: string, signal?: AbortSignal): Promise<any> {
+  const key = `route:${url}`
+  try {
+    const response = await fetch(url, { signal })
+    if (!response.ok) throw new Error('Error al contactar el servidor de rutas')
+    const data = await response.json()
+    await savePublicSnapshot(key, data)
+    return data
+  } catch (error) {
+    if (signal?.aborted) throw error
+    const cached = await readPublicSnapshot<unknown | null>(key, null)
+    if (cached) return cached
+    throw error
+  }
+}
+
 async function fetchRouteCandidates(
   coordinates: [number, number][],
   incidencias: IncidenciaRutaInput[],
@@ -101,9 +118,7 @@ async function fetchRouteCandidates(
   const url = modo === 'driving'
     ? base.replace('alternatives=false', 'alternatives=true&continue_straight=false')
     : base
-  const res = await fetch(url, { signal })
-  if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
-  const data = await res.json()
+  const data = await fetchRouteData(url, signal)
   if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
 
   return data.routes.map((route: { distance: number; duration: number; geometry: { coordinates: [number, number][] } }) => {
@@ -303,9 +318,7 @@ export async function fetchRutaConPasos(
     const path = safeLeg.waypointSet.map(([lat, lng]) => `${lng},${lat}`).join(';')
     const base = osrmUrl(modo, path)
     const url = base.includes('?') ? `${base}&steps=true` : `${base}?steps=true`
-    const res = await fetch(url, { signal })
-    if (!res.ok) throw new Error('Error al contactar el servidor de rutas')
-    const data = await res.json()
+    const data = await fetchRouteData(url, signal)
     if (data.code !== 'Ok') throw new Error('No se encontró ruta disponible')
     stepLegs.push(...(data.routes[0].legs as { steps: unknown[] }[]))
   }

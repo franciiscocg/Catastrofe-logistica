@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { apiClient } from '@/lib/api/client'
+import { queueableApiRequest } from '@/lib/api/offline'
 
 type SolicitudEstado = 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'
 type PuestoEstado = 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
@@ -298,7 +299,7 @@ export default function CoordinadorDashboard() {
 
   const guardarPuesto = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
-      apiClient.patch(`/api/puestos/coordinador/${id}`, data),
+      queueableApiRequest({ method: 'PATCH', url: `/api/puestos/coordinador/${id}`, data }, { entity: 'puesto', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setEditando(null)
@@ -309,7 +310,7 @@ export default function CoordinadorDashboard() {
   })
 
   const eliminarPuesto = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/puestos/coordinador/${id}`),
+    mutationFn: (id: string) => queueableApiRequest({ method: 'DELETE', url: `/api/puestos/coordinador/${id}` }, { entity: 'puesto', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setEliminando(null)
@@ -329,7 +330,7 @@ export default function CoordinadorDashboard() {
 
   const gestionarUsuario = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { roles: string[] } }) =>
-      apiClient.patch(`/api/users/coordinador/${id}`, data),
+      queueableApiRequest({ method: 'PATCH', url: `/api/users/coordinador/${id}`, data }, { entity: 'usuario', priority: 'high' }),
     onSuccess: () => {
       setUsuarioForm(null)
       queryClient.invalidateQueries({ queryKey: ['usuarios-coordinador'] })
@@ -338,7 +339,7 @@ export default function CoordinadorDashboard() {
   })
 
   const eliminarUsuario = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/users/coordinador/${id}`),
+    mutationFn: (id: string) => queueableApiRequest({ method: 'DELETE', url: `/api/users/coordinador/${id}` }, { entity: 'usuario', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setUsuarioAEliminar(null)
@@ -349,7 +350,7 @@ export default function CoordinadorDashboard() {
   })
 
   const eliminarIncidencia = useMutation({
-    mutationFn: (id: string) => apiClient.delete(`/api/incidencias/${id}`),
+    mutationFn: (id: string) => queueableApiRequest({ method: 'DELETE', url: `/api/incidencias/${id}` }, { entity: 'incidencia', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setIncidenciaAEliminar(null)
@@ -362,7 +363,7 @@ export default function CoordinadorDashboard() {
 
   const cambiarResponsable = useMutation({
     mutationFn: ({ id, email }: { id: string; email: string }) =>
-      apiClient.patch(`/api/puestos/coordinador/${id}/responsable`, { email }),
+      queueableApiRequest({ method: 'PATCH', url: `/api/puestos/coordinador/${id}/responsable`, data: { email } }, { entity: 'puesto', priority: 'high' }),
     onSuccess: () => {
       setResponsableEmail('')
       invalidateGestion()
@@ -373,7 +374,7 @@ export default function CoordinadorDashboard() {
 
   const asignarVoluntario = useMutation({
     mutationFn: ({ id, email }: { id: string; email: string }) =>
-      apiClient.post(`/api/puestos/coordinador/${id}/voluntarios`, { email }),
+      queueableApiRequest({ method: 'POST', url: `/api/puestos/coordinador/${id}/voluntarios`, data: { email } }, { entity: 'puesto-voluntario', priority: 'high' }),
     onSuccess: () => {
       setVoluntarioEmail('')
       invalidateGestion()
@@ -383,7 +384,7 @@ export default function CoordinadorDashboard() {
   })
 
   const aceptarParticipacion = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/api/puestos/coordinador/participaciones/${id}/aceptar`, {}),
+    mutationFn: (id: string) => queueableApiRequest({ method: 'POST', url: `/api/puestos/coordinador/participaciones/${id}/aceptar`, data: {} }, { entity: 'participacion', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setDetailError('')
@@ -395,7 +396,7 @@ export default function CoordinadorDashboard() {
 
   const rechazarParticipacion = useMutation({
     mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
-      apiClient.post(`/api/puestos/coordinador/participaciones/${id}/rechazar`, { motivo }),
+      queueableApiRequest({ method: 'POST', url: `/api/puestos/coordinador/participaciones/${id}/rechazar`, data: { motivo } }, { entity: 'participacion', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setDetailError('')
@@ -408,7 +409,7 @@ export default function CoordinadorDashboard() {
   })
 
   const aceptarSolicitudPuesto = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/api/puestos/solicitudes/${id}/aceptar`, {}),
+    mutationFn: (id: string) => queueableApiRequest({ method: 'POST', url: `/api/puestos/solicitudes/${id}/aceptar`, data: {} }, { entity: 'solicitud-puesto', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       queryClient.invalidateQueries({ queryKey: ['solicitudes-puesto-coordinador'] })
@@ -419,7 +420,7 @@ export default function CoordinadorDashboard() {
 
   const rechazarSolicitudPuesto = useMutation({
     mutationFn: ({ id, motivo }: { id: string; motivo: string }) =>
-      apiClient.post(`/api/puestos/solicitudes/${id}/rechazar`, { motivo }),
+      queueableApiRequest({ method: 'POST', url: `/api/puestos/solicitudes/${id}/rechazar`, data: { motivo } }, { entity: 'solicitud-puesto', priority: 'high' }),
     onSuccess: () => {
       setActionError('')
       setRechazoSolicitudId(null)

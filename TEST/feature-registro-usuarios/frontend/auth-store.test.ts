@@ -15,7 +15,7 @@ describe('auth store persistente', () => {
     vi.resetModules()
   })
 
-  it('no escribe tokens ni datos de usuario al persistir una sesión', async () => {
+  it('persiste la identidad para acceso offline pero nunca los tokens', async () => {
     const { useAuthStore } = await import('../../../frontend/src/store/auth.store')
 
     useAuthStore.getState().login(user, 'access-token', 'puesto-1', '2030-01-01T00:00:00.000Z')
@@ -23,8 +23,18 @@ describe('auth store persistente', () => {
     const persisted = localStorage.getItem('catlogistica-auth') ?? ''
     expect(persisted).not.toContain('access-token')
     expect(persisted).not.toContain('refreshToken')
-    expect(persisted).not.toContain('maria@example.com')
+    expect(persisted).toContain('maria@example.com')
     expect(persisted).toContain('puesto-1')
+  })
+
+  it('restaura una sesión local válida cuando no hay red', async () => {
+    const { useAuthStore } = await import('../../../frontend/src/store/auth.store')
+    useAuthStore.getState().login(user, 'access-token', undefined, '2030-01-01T00:00:00.000Z')
+    useAuthStore.setState({ isAuthenticated: false, isSessionInitialized: false, accessToken: null })
+
+    expect(useAuthStore.getState().restoreOfflineSession()).toBe(true)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+    expect(useAuthStore.getState().accessToken).toBeNull()
   })
 
   it('elimina tokens guardados por versiones anteriores al hidratarse', async () => {

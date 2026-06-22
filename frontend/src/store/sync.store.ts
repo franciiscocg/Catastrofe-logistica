@@ -34,12 +34,48 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Error de sincronización'
 }
 
-function classifySyncError(error: unknown): SyncErrorKind {
+function classifySyncError(error: unknown, operation?: SyncOperation): SyncErrorKind {
   const status = getErrorStatus(error)
   if (!status) return 'retry'
+  if (status === 404 && operation?.entity === 'confirmacion-qr') return 'retry'
   if (status === 409 || status === 412) return 'conflict'
   if (status === 408 || status === 425 || status === 429 || status >= 500) return 'retry'
   return 'permanent'
+}
+
+async function resolveLocalIds<T>(value: T): Promise<T> {
+  if (typeof value === 'string') {
+    let resolved: string = value
+    const localIds = value.match(/offline-[A-Za-z0-9_-]+/g) ?? []
+    for (const localId of localIds) {
+      const mapping = await db.idMappings.get(localId)
+      if (mapping) resolved = resolved.split(localId).join(mapping.serverId)
+    }
+    return resolved as unknown as T
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((item) => resolveLocalIds(item))) as Promise<T>
+  }
+  if (value && typeof value === 'object') {
+    const entries = await Promise.all(Object.entries(value as Record<string, unknown>)
+      .map(async ([key, item]) => [key, await resolveLocalIds(item)] as const))
+    return Object.fromEntries(entries) as T
+  }
+  return value
+}
+
+function responseEntityId(data: unknown, entity?: string) {
+  if (!data || typeof data !== 'object') return null
+  const payload = data as Record<string, unknown>
+  const candidates = [entity, entity?.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()), 'donacion', 'incidencia', 'item', 'solicitud', 'asignacion']
+  for (const key of candidates) {
+    if (!key) continue
+    const value = payload[key]
+    if (value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string') {
+      return (value as { id: string }).id
+    }
+  }
+  return typeof payload.id === 'string' ? payload.id : null
 }
 
 function getRetryDelayMs(retries: number) {
@@ -114,6 +150,9 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 
     try {
       const now = Date.now()
+      const completed = await db.syncQueue.where('status').equals('synced').toArray()
+      const completedToDelete = completed.filter((op) => (op.updatedAt ?? op.createdAt) < now - 24 * 60 * 60 * 1000)
+      if (completedToDelete.length) await db.syncQueue.bulkDelete(completedToDelete.map((op) => op.id))
       const staleSyncing = await db.syncQueue.where('status').equals('syncing').toArray()
       await Promise.all(staleSyncing.map((op) => db.syncQueue.update(op.id, { status: 'pending', updatedAt: now })))
 
@@ -122,6 +161,10 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
         .sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority] || a.createdAt - b.createdAt)
 
       for (const op of pending) {
+        if (op.dependsOn?.length) {
+          const dependencies = await db.syncQueue.bulkGet(op.dependsOn)
+          if (dependencies.some((dependency) => dependency?.status !== 'synced')) continue
+        }
         try {
           const attemptAt = Date.now()
           const idempotencyKey = op.idempotencyKey ?? createIdempotencyKey()
@@ -131,16 +174,29 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
             lastAttemptAt: attemptAt,
             updatedAt: attemptAt,
           })
-          await apiClient.request({
+          const resolvedUrl = await resolveLocalIds(op.url)
+          const resolvedBody = await resolveLocalIds(op.body)
+          const response = await apiClient.request({
             method: op.method,
-            url: op.url,
-            data: op.body,
+            url: resolvedUrl,
+            data: resolvedBody,
             headers: { 'Idempotency-Key': idempotencyKey },
           })
+          if (op.localEntityId) {
+            const serverId = responseEntityId(response.data, op.entity)
+            if (serverId) {
+              await db.idMappings.put({
+                localId: op.localEntityId,
+                serverId,
+                entity: op.entity ?? 'entity',
+                updatedAt: Date.now(),
+              })
+            }
+          }
           await db.syncQueue.update(op.id, { status: 'synced', error: undefined, updatedAt: Date.now() })
         } catch (error) {
           const retries = op.retries + 1
-          const kind = classifySyncError(error)
+          const kind = classifySyncError(error, op)
           const message = getErrorMessage(error)
           const updatedAt = Date.now()
 

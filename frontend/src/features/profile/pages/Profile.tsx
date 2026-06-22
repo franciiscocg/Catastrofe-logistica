@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { apiClient } from '@/lib/api/client'
+import { queueableApiRequest } from '@/lib/api/offline'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
@@ -25,6 +26,7 @@ interface VoluntarioPerfil {
 function parseError(err: unknown, fallback: string) {
   return (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
     ?? (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+    ?? (err instanceof Error ? err.message : undefined)
     ?? fallback
 }
 
@@ -120,11 +122,14 @@ export default function Profile() {
   }, [voluntarioQuery.data])
 
   const savePersonal = useMutation({
-    mutationFn: () => apiClient.patch<{ user: User }>('/api/users/me', {
-      nombre: personal.nombre,
-      apellidos: personal.apellidos,
-      telefono: personal.telefono || null,
-    }),
+    mutationFn: () => {
+      const updatedUser = { ...user!, nombre: personal.nombre, apellidos: personal.apellidos, telefono: personal.telefono || null }
+      return queueableApiRequest<{ user: User }>({ method: 'PATCH', url: '/api/users/me', data: {
+        nombre: personal.nombre,
+        apellidos: personal.apellidos,
+        telefono: personal.telefono || null,
+      } }, { entity: 'perfil-usuario', priority: 'normal', optimisticData: { user: updatedUser } })
+    },
     onSuccess: (response) => {
       updateUser(response.data.user)
       setPersonalErrors({})
@@ -134,7 +139,7 @@ export default function Profile() {
   })
 
   const saveVoluntario = useMutation({
-    mutationFn: () => apiClient.patch<{ voluntario: VoluntarioPerfil }>('/api/voluntarios/me', {
+    mutationFn: () => queueableApiRequest<{ voluntario: VoluntarioPerfil }>({ method: 'PATCH', url: '/api/voluntarios/me', data: {
       modalidad: voluntario.modalidad,
       vehiculo: {
         disponible: voluntario.vehiculoDisponible,
@@ -142,7 +147,7 @@ export default function Profile() {
         matricula: voluntario.matricula || null,
         capacidad: voluntario.capacidad || null,
       },
-    }),
+    } }, { entity: 'perfil-voluntario', priority: 'normal', optimisticData: { voluntario: voluntarioQuery.data } }),
     onSuccess: () => {
       setVoluntarioErrors({})
       setMessage('Preferencias operativas actualizadas')
@@ -151,7 +156,10 @@ export default function Profile() {
   })
 
   const generateRecoveryCode = useMutation({
-    mutationFn: () => apiClient.post<{ recoveryCode: string }>('/api/auth/recovery-code'),
+    mutationFn: () => {
+      if (!navigator.onLine) throw new Error('Necesitas conexión para generar un código de recuperación seguro')
+      return apiClient.post<{ recoveryCode: string }>('/api/auth/recovery-code')
+    },
     onSuccess: (response) => {
       setRecoveryCode(response.data.recoveryCode)
       setMessage('Código de recuperación generado. Guarda la copia antes de salir.')

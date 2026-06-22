@@ -2,6 +2,7 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import cookie from '@fastify/cookie'
 import helmet from '@fastify/helmet'
+import fastifyStatic from '@fastify/static'
 import rateLimit from '@fastify/rate-limit'
 import jwt from '@fastify/jwt'
 import { authRouter } from './modules/auth/auth.router.js'
@@ -16,6 +17,8 @@ import { errorHandler } from './middleware/error.middleware.js'
 import { registerIdempotency } from './middleware/idempotency.middleware.js'
 import { getJwtSecret } from './lib/security.js'
 import { prisma } from './lib/prisma.js'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 
 export async function buildApp() {
   const app = Fastify({
@@ -99,6 +102,23 @@ export async function buildApp() {
       })
     }
   })
+
+  const frontendRoot = path.resolve(process.cwd(), '../frontend/dist')
+  if (process.env.NODE_ENV === 'production' && existsSync(frontendRoot)) {
+    await app.register(fastifyStatic, { root: frontendRoot, serve: false })
+    app.get('/*', async (request, reply) => {
+      const requestedPath = (request.params as { '*': string })['*']
+      const safePath = requestedPath.replace(/^\/+/, '')
+      if (safePath === 'api' || safePath.startsWith('api/')) {
+        return reply.status(404).send({ error: 'Ruta API no encontrada' })
+      }
+      const candidatePath = path.resolve(frontendRoot, safePath)
+      if (safePath && candidatePath.startsWith(`${frontendRoot}${path.sep}`) && existsSync(candidatePath)) {
+        return reply.sendFile(safePath)
+      }
+      return reply.header('Cache-Control', 'no-cache').sendFile('index.html')
+    })
+  }
 
   return app
 }

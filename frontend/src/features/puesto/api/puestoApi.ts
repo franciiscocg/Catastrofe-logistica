@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api/client'
+import { queueableApiRequest } from '@/lib/api/offline'
 
 export type PuestoId = string
 
@@ -13,16 +14,16 @@ export const puestoApi = {
   getParticipantes: <T>(puestoId: PuestoId) =>
     apiClient.get<{ participantes: T[] }>(`/api/puestos/${puestoId}/participantes`),
   decidirParticipacion: (solicitudId: string, decision: 'aceptar' | 'rechazar') =>
-    apiClient.post(`/api/puestos/participaciones/${solicitudId}/${decision}`, {}),
+    queueableApiRequest({ method: 'POST', url: `/api/puestos/participaciones/${solicitudId}/${decision}`, data: {} }, { entity: 'participacion', priority: 'high' }),
   quitarParticipante: (puestoId: PuestoId, asignacionId: string) =>
-    apiClient.delete(`/api/puestos/${puestoId}/participantes/${asignacionId}`),
+    queueableApiRequest({ method: 'DELETE', url: `/api/puestos/${puestoId}/participantes/${asignacionId}` }, { entity: 'participacion', priority: 'high' }),
   crearItem: (
     puestoId: PuestoId,
     payload: { nombre: string; categoria: string; unidad: string; cantidad: number; tipo: 'DISPONIBLE' | 'NECESARIO' },
-  ) => apiClient.post(`/api/inventario/puesto/${puestoId}/items`, payload),
+  ) => queueableApiRequest({ method: 'POST', url: `/api/inventario/puesto/${puestoId}/items`, data: payload }, { entity: 'inventario', priority: 'high' }),
   ajustarCantidad: (itemId: string, delta: number) =>
-    apiClient.patch(`/api/inventario/items/${itemId}/cantidad`, { delta }),
-  eliminarItem: (itemId: string) => apiClient.delete(`/api/inventario/items/${itemId}`),
+    queueableApiRequest({ method: 'PATCH', url: `/api/inventario/items/${itemId}/cantidad`, data: { delta } }, { entity: 'inventario', priority: 'high' }),
+  eliminarItem: (itemId: string) => queueableApiRequest({ method: 'DELETE', url: `/api/inventario/items/${itemId}` }, { entity: 'inventario', priority: 'high' }),
   confirmarQr: (puestoId: PuestoId, codigo: string, cantidadOverride?: number) =>
-    apiClient.post(`/api/inventario/puesto/${puestoId}/confirmar-qr`, { codigo, cantidadOverride }),
+    queueableApiRequest({ method: 'POST', url: `/api/inventario/puesto/${puestoId}/confirmar-qr`, data: { codigo, cantidadOverride } }, { entity: 'confirmacion-qr', priority: 'critical' }),
 }

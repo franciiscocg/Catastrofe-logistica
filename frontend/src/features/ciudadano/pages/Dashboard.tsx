@@ -955,7 +955,33 @@ export default function CiudadanoDashboard() {
     setComentarioLoading(true)
     setComentarioError(null)
 
+    const queueOfflineComment = async () => {
+      await enqueueSync({
+        entity: 'comentario-incidencia',
+        method: 'POST',
+        url: `/api/incidencias/${comentarioIncidencia.id}/comentarios`,
+        body: { estado: comentarioEstado, comentario },
+        priority: 'high',
+      })
+      const localComment = {
+        id: `offline-${crypto.randomUUID()}`,
+        estado: comentarioEstado,
+        comentario,
+        createdAt: new Date().toISOString(),
+      }
+      setIncidencias((previous) => previous.map((item) => item.id === comentarioIncidencia.id
+        ? { ...item, estado: comentarioEstado, comentarios: [localComment, ...(item.comentarios ?? [])] }
+        : item))
+      setComentarioIncidencia(null)
+      setComentarioTexto('')
+      setFeedbackMessage('Actualización guardada offline y pendiente de sincronizar.')
+    }
+
     try {
+      if (!navigator.onLine) {
+        await queueOfflineComment()
+        return
+      }
       const { data } = await apiClient.post(`/api/incidencias/${comentarioIncidencia.id}/comentarios`, {
         estado: comentarioEstado,
         comentario,
@@ -998,7 +1024,8 @@ export default function CiudadanoDashboard() {
       )
     } catch (error: unknown) {
       const response = (error as { response?: { data?: { error?: string; message?: string } } })?.response
-      setComentarioError(response?.data?.error ?? response?.data?.message ?? 'No se pudo guardar el comentario.')
+      if (!response) await queueOfflineComment()
+      else setComentarioError(response.data?.error ?? response.data?.message ?? 'No se pudo guardar el comentario.')
     } finally {
       setComentarioLoading(false)
     }

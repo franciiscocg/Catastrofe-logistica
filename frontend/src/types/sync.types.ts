@@ -17,4 +17,6 @@ export interface SyncOperation {
   nextRunAt?: number
   error?: string
   conflict?: unknown
+  localEntityId?: string
+  dependsOn?: string[]
 }
