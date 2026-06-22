@@ -39,12 +39,10 @@ export async function buildApp() {
         // El frontend se sirve desde este mismo proceso en produccion. Mantener
         // una lista explicita permite los recursos del mapa sin relajar la CSP
         // para el resto de proveedores externos.
-        imgSrc: ["'self'", 'data:', 'blob:', 'https://tile.openstreetmap.org'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
         connectSrc: [
           "'self'",
-          'https://nominatim.openstreetmap.org',
-          'https://router.project-osrm.org',
-          'https://routing.openstreetmap.de',
+          'https:',
           'ws:',
           'wss:',
         ],

@@ -3,8 +3,20 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+const buildId = process.env.RENDER_GIT_COMMIT ?? process.env.GITHUB_SHA ?? 'local'
+
 export default defineConfig({
   plugins: [
+    {
+      name: 'inject-build-id',
+      transformIndexHtml: {
+        order: 'pre',
+        handler: (html) => html.replace(
+          '<head>',
+          `<head>\n    <meta name="app-build" content="${buildId}">`,
+        ),
+      },
+    },
     react(),
     VitePWA({
       registerType: 'autoUpdate',
