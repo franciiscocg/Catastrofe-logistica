@@ -15,18 +15,32 @@ export function useConnectivity() {
   const loadPendingCount = useSyncStore((s) => s.loadPendingCount)
 
   useEffect(() => {
+    const updateModeFromNavigator = () => {
+      setMode(navigator.onLine ? 'online' : 'offline')
+    }
+    const handleNetworkStatus = (event: Event) => {
+      const status = (event as CustomEvent<ConnectivityMode>).detail
+      if (status === 'offline') setMode('offline')
+      if (status === 'online' && navigator.onLine) setMode('online')
+    }
     const handleOnline = () => {
       setMode('online')
       flush()
     }
     const handleOffline = () => setMode('offline')
 
+    updateModeFromNavigator()
     loadPendingCount()
     if (navigator.onLine) flush()
 
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
+    window.addEventListener('focus', updateModeFromNavigator)
+    window.addEventListener('pageshow', updateModeFromNavigator)
+    window.addEventListener('catlogistica:network-status', handleNetworkStatus)
+    document.addEventListener('visibilitychange', updateModeFromNavigator)
     const retryInterval = window.setInterval(() => {
+      updateModeFromNavigator()
       if (navigator.onLine) flush()
     }, 15000)
 
@@ -42,6 +56,10 @@ export function useConnectivity() {
       return () => {
         window.removeEventListener('online', handleOnline)
         window.removeEventListener('offline', handleOffline)
+        window.removeEventListener('focus', updateModeFromNavigator)
+        window.removeEventListener('pageshow', updateModeFromNavigator)
+        window.removeEventListener('catlogistica:network-status', handleNetworkStatus)
+        document.removeEventListener('visibilitychange', updateModeFromNavigator)
         window.clearInterval(retryInterval)
         connection.removeEventListener('change', checkSpeed)
       }
@@ -50,6 +68,10 @@ export function useConnectivity() {
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('focus', updateModeFromNavigator)
+      window.removeEventListener('pageshow', updateModeFromNavigator)
+      window.removeEventListener('catlogistica:network-status', handleNetworkStatus)
+      document.removeEventListener('visibilitychange', updateModeFromNavigator)
       window.clearInterval(retryInterval)
     }
   }, [flush, loadPendingCount])

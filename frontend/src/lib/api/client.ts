@@ -55,6 +55,11 @@ interface SessionResponse {
   refreshToken?: string
 }
 
+function publishNetworkStatus(status: 'online' | 'offline') {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('catlogistica:network-status', { detail: status }))
+}
+
 export async function clearSensitiveApiCaches() {
   if (!('caches' in globalThis)) return
 
@@ -76,8 +81,16 @@ async function refreshAccessToken() {
 
 export async function restoreSession() {
   const auth = useAuthStore.getState()
-  if (!navigator.onLine) {
+  const hasRecoverableSession = Boolean(
+    auth.user && auth.offlineSessionExpiresAt && auth.offlineSessionExpiresAt > Date.now(),
+  )
+
+  if (hasRecoverableSession) {
     auth.restoreOfflineSession()
+  }
+
+  if (!navigator.onLine) {
+    if (!hasRecoverableSession) auth.restoreOfflineSession()
     return
   }
 
@@ -86,7 +99,7 @@ export async function restoreSession() {
     await refreshAccessToken()
   } catch (error) {
     if (isNetworkError(error)) {
-      auth.restoreOfflineSession()
+      if (!hasRecoverableSession) auth.restoreOfflineSession()
       return
     }
     const userId = auth.user?.id
@@ -114,6 +127,7 @@ function isNetworkError(error: unknown) {
 
 apiClient.interceptors.response.use(
   (response) => {
+    if (navigator.onLine) publishNetworkStatus('online')
     // Punto unico de captura: si una respuesta de /api/auth/* trae refreshToken,
     // lo guardamos (login, register, registro-puesto y refresh).
     const url = response.config?.url ?? ''
@@ -127,6 +141,7 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config
+    if (isNetworkError(error)) publishNetworkStatus('offline')
     if (originalRequest?.method?.toLowerCase() === 'get' && isNetworkError(error)) {
       const userId = useAuthStore.getState().user?.id ?? 'public'
       const cached = await readApiResponse(originalRequest, userId)

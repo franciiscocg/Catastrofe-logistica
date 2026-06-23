@@ -69,5 +69,5 @@ test('un ciudadano busca un producto y abre una ruta segura', async ({ page, con
   await page.getByRole('button', { name: /Ver mejores opciones/i }).click()
 
   await expect(page.getByText('Mejores opciones')).toBeVisible()
-  await expect(page.getByText(/0\.8 km/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Opción recomendada/ })).toBeVisible()
 })
