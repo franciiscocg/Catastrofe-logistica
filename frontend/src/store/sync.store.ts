@@ -3,6 +3,7 @@ import type { AxiosError } from 'axios'
 import type { SyncOperation, SyncPriority } from '@/types/sync.types'
 import { db } from '@/lib/db'
 import { apiClient } from '@/lib/api/client'
+import { translateErrorMessage } from '@/utils/errors'
 
 const priorityRank: Record<SyncPriority, number> = {
   critical: 0,
@@ -29,9 +30,9 @@ function getErrorMessage(error: unknown) {
   const payload = getErrorPayload(error)
   if (payload && typeof payload === 'object') {
     const message = (payload as { error?: string; message?: string }).error ?? (payload as { error?: string; message?: string }).message
-    if (message) return message
+    if (message) return translateErrorMessage(message, 'Error de sincronización')
   }
-  return error instanceof Error ? error.message : 'Error de sincronización'
+  return error instanceof Error ? translateErrorMessage(error.message, 'Error de sincronización') : 'Error de sincronización'
 }
 
 function classifySyncError(error: unknown, operation?: SyncOperation): SyncErrorKind {

@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { ROLE_ROUTES, type User } from '@/types/auth.types'
+import { getApiErrorMessage } from '@/utils/errors'
 
 interface VehiculoPerfil {
   disponible: boolean
@@ -24,10 +25,7 @@ interface VoluntarioPerfil {
 }
 
 function parseError(err: unknown, fallback: string) {
-  return (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
-    ?? (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-    ?? (err instanceof Error ? err.message : undefined)
-    ?? fallback
+  return getApiErrorMessage(err, fallback)
 }
 
 function validateNameField(value: string, label: string) {

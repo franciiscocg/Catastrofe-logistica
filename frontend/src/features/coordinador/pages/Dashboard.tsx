@@ -4,6 +4,7 @@ import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import { apiClient } from '@/lib/api/client'
 import { queueableApiRequest } from '@/lib/api/offline'
+import { getApiErrorMessage } from '@/utils/errors'
 
 type SolicitudEstado = 'PENDIENTE' | 'ACEPTADA' | 'RECHAZADA'
 type PuestoEstado = 'PENDIENTE' | 'APROBADO' | 'RECHAZADO'
@@ -195,9 +196,7 @@ function puestoToForm(puesto: PuestoCoordinador): PuestoForm {
 }
 
 function parseApiError(err: unknown, fallback: string) {
-  return (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
-    ?? (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-    ?? fallback
+  return getApiErrorMessage(err, fallback)
 }
 
 function formatTipoPuesto(tipo: string) {

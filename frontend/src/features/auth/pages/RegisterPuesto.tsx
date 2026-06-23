@@ -7,6 +7,7 @@ import { queueableApiRequest } from '@/lib/api/offline'
 import { useAuthStore } from '@/store/auth.store'
 import Button from '@/components/ui/Button'
 import Map from '@/components/shared/Map'
+import { getApiErrorMessage } from '@/utils/errors'
 
 interface SolicitudPuesto {
   id: string
@@ -307,8 +308,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       } }, { entity: 'solicitud-puesto', priority: 'high' })
       onSuccess()
     } catch (err: unknown) {
-      const response = (err as { response?: { data?: { error?: string } } })?.response
-      setSubmitError(response?.data?.error ?? 'Error al enviar la solicitud. Inténtalo de nuevo.')
+      setSubmitError(getApiErrorMessage(err, 'Error al enviar la solicitud. Inténtalo de nuevo.'))
     } finally {
       setLoading(false)
     }

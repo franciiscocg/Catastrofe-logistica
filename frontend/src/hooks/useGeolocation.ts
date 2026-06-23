@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { translateErrorMessage } from '@/utils/errors'
 
 export interface GeoPosition {
   lat: number
@@ -135,7 +136,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
       ...prev,
       error: err.code === err.PERMISSION_DENIED
         ? (isIOSWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicación está bloqueada en el navegador')
-        : err.message,
+        : translateErrorMessage(err.message, 'No se pudo obtener tu ubicación. Inténtalo de nuevo.'),
       loading: false,
       permissionState: err.code === err.PERMISSION_DENIED ? 'denied' : prev.permissionState,
     }))
@@ -321,7 +322,7 @@ function useStandaloneGeolocation(watch = false): GeolocationContextValue {
       ...prev,
       error: err.code === err.PERMISSION_DENIED
         ? (isIOSWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicación está bloqueada en el navegador')
-        : err.message,
+        : translateErrorMessage(err.message, 'No se pudo obtener tu ubicación. Inténtalo de nuevo.'),
       loading: false,
       permissionState: err.code === err.PERMISSION_DENIED ? 'denied' : prev.permissionState,
     }))

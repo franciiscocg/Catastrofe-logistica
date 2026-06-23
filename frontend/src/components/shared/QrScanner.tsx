@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Camera, CameraOff, Keyboard, Loader2, RotateCcw, X } from 'lucide-react'
 import { Html5Qrcode, Html5QrcodeSupportedFormats, type CameraDevice } from 'html5-qrcode'
+import { translateErrorMessage } from '@/utils/errors'
 
 interface QrScannerProps {
   onResult: (result: string) => void
@@ -190,7 +191,7 @@ export default function QrScanner({ onResult, onClose }: QrScannerProps) {
         if (cancelled) return
         const message = lastError instanceof Error ? lastError.message : String(lastError)
         const name = lastError instanceof Error ? lastError.name : ''
-        setErrorDetail(`${name}: ${message}`.replace(/^:\s*/, ''))
+        setErrorDetail(translateErrorMessage(`${name}: ${message}`.replace(/^:\s*/, ''), 'No se pudo abrir la cámara.'))
         const lower = message.toLowerCase()
         const blocked = lower.includes('permission') || lower.includes('notallowed') || lower.includes('denied')
         setStatus(blocked || showSecureWarning ? 'blocked' : 'error')

@@ -10,6 +10,7 @@ import { Notice, RouteSafetyPanel } from '@/features/voluntario/components/Dashb
 import { fetchRutaMultiParada, fetchRutaConPasos } from '@/utils/routing'
 import { parsearStepsOsrm, formatearDistanciaNav, calcularBearing, distanciaAlStep, ROTACION_ICONO, type StepNavegacion } from '@/utils/navegacion'
 import { haversineKm } from '@/utils/haversine'
+import { getApiErrorMessage } from '@/utils/errors'
 
 // Emojis for categories
 const CATEGORIA_EMOJI: Record<string, string> = {
@@ -516,7 +517,7 @@ export default function NuevoFlujoDonacion({
       setSelectedRouteIdx(0)
       setStep('rutas')
     } catch (err) {
-      setRouteError(err instanceof Error ? err.message : 'Error al diseñar la ruta.')
+      setRouteError(getApiErrorMessage(err, 'No se pudo diseñar la ruta.'))
     } finally {
       setLoadingRoutes(false)
     }

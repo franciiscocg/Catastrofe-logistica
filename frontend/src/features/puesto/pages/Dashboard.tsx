@@ -12,6 +12,7 @@ import { puestoApi } from '../api/puestoApi'
 import EntregasPanel from '../components/EntregasPanel'
 import PuestoSummaryHeader from '../components/PuestoSummaryHeader'
 import PuestoToolbar from '../components/PuestoToolbar'
+import { getApiErrorMessage, translateErrorMessage } from '@/utils/errors'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -359,8 +360,7 @@ function AddItemSheet({
       onAdded()
       onClose()
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Error al añadir el producto')
+      setError(getApiErrorMessage(err, 'Error al añadir el producto'))
     } finally {
       setLoading(false)
     }
@@ -716,8 +716,7 @@ function WorkersSheet({
       qc.invalidateQueries({ queryKey: ['inventario', puestoId] })
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setActionError(msg ?? 'No se pudo actualizar la solicitud')
+      setActionError(getApiErrorMessage(err, 'No se pudo actualizar la solicitud'))
     },
   })
 
@@ -729,8 +728,7 @@ function WorkersSheet({
       qc.invalidateQueries({ queryKey: ['participantes-puesto', puestoId] })
     },
     onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setActionError(msg ?? 'No se pudo quitar el voluntario')
+      setActionError(getApiErrorMessage(err, 'No se pudo quitar el voluntario'))
     },
   })
 
@@ -1049,11 +1047,7 @@ function SolicitudPuestoForm() {
       qc.invalidateQueries({ queryKey: ['mi-solicitud-puesto'] })
     },
     onError: (err: unknown) => {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'No se pudo enviar la solicitud')
+      setError(getApiErrorMessage(err, 'No se pudo enviar la solicitud'))
     },
   })
 
@@ -1357,7 +1351,7 @@ export default function PuestoDashboard() {
       const data = (err as { response?: { data?: { error?: string; details?: Array<{ message?: string }> } } }).response?.data
       const detail = data?.details?.[0]?.message
       const message = data?.error && data.error !== 'Bad Request' ? data.error : detail
-      setQrError(message ?? 'No se pudo confirmar el QR. Revisa la conexión e inténtalo de nuevo.')
+      setQrError(translateErrorMessage(message, 'No se pudo confirmar el QR. Revisa la conexión e inténtalo de nuevo.'))
     } finally {
       setQrConfirmando(false)
     }

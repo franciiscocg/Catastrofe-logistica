@@ -20,6 +20,7 @@ import {
 import { apiClient } from '@/lib/api/client'
 import { readPublicSnapshot, savePublicSnapshot } from '@/lib/db/publicSnapshots'
 import { useSyncStore } from '@/store/sync.store'
+import { getApiErrorMessage, translateErrorMessage } from '@/utils/errors'
 import { fetchRutaEvitandoIncidencias as fetchRutaSegura, fetchRutaMultiParada, fetchRutaConPasos, type ModoTransporte } from '@/utils/routing'
 import {
   parsearStepsOsrm,
@@ -643,7 +644,7 @@ export default function CiudadanoDashboard() {
       anunciosRef.current = new Set()
       setVista('navegacion')
     } catch (error) {
-      setRouteError(error instanceof Error ? error.message : 'No se pudo iniciar la navegación guiada')
+      setRouteError(getApiErrorMessage(error, 'No se pudo iniciar la navegación guiada.'))
     } finally {
       setNavLoading(false)
     }
@@ -774,7 +775,7 @@ export default function CiudadanoDashboard() {
         await queueOfflineReport()
       } else {
         setPendingDuplicate(null)
-        const apiError = response?.data?.error ?? response?.data?.message
+        const apiError = translateErrorMessage(response?.data?.error ?? response?.data?.message, 'No se pudo guardar la incidencia.')
         setReportError(apiError ?? 'No se pudo enviar el reporte. Inténtalo de nuevo.')
       }
     } finally {
@@ -1025,7 +1026,7 @@ export default function CiudadanoDashboard() {
     } catch (error: unknown) {
       const response = (error as { response?: { data?: { error?: string; message?: string } } })?.response
       if (!response) await queueOfflineComment()
-      else setComentarioError(response.data?.error ?? response.data?.message ?? 'No se pudo guardar el comentario.')
+      else setComentarioError(translateErrorMessage(response.data?.error ?? response.data?.message, 'No se pudo guardar el comentario.'))
     } finally {
       setComentarioLoading(false)
     }

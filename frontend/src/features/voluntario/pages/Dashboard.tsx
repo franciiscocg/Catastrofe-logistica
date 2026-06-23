@@ -992,7 +992,7 @@ export default function VoluntarioDashboard() {
       )
       setRutaActiva({ puesto, donacionId, ...resultado })
     } catch (error) {
-      setRutaError(error instanceof Error ? error.message : 'No se pudo calcular la ruta.')
+      setRutaError(getApiErrorMessage(error, 'No se pudo calcular la ruta.'))
       setRutaErrorDonacionId(donacionId ?? puesto.id)
     } finally {
       setRutaLoading(false)
@@ -1173,7 +1173,7 @@ export default function VoluntarioDashboard() {
       await cargarInventarioPuestoActivo(puestoId)
       await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
     } catch (err: unknown) {
-      setInventarioPuestoError(err instanceof Error ? err.message : 'No se pudo actualizar la cantidad.')
+      setInventarioPuestoError(getApiErrorMessage(err, 'No se pudo actualizar la cantidad.'))
       throw err
     }
   }
@@ -1209,7 +1209,7 @@ export default function VoluntarioDashboard() {
       await cargarInventarioPuestoActivo(puestoId)
       await queryClient.invalidateQueries({ queryKey: ['inventario-ciudadano-busqueda'] })
     } catch (err: unknown) {
-      setInventarioPuestoError(err instanceof Error ? err.message : 'No se pudo ajustar el inventario.')
+      setInventarioPuestoError(getApiErrorMessage(err, 'No se pudo ajustar el inventario.'))
       throw err
     }
   }
@@ -1341,7 +1341,7 @@ export default function VoluntarioDashboard() {
         incidenciasCercanas,
       })
     } catch (error) {
-      setErrorDonacion(error instanceof Error ? error.message : 'No se pudo calcular la ruta de entrega.')
+      setErrorDonacion(getApiErrorMessage(error, 'No se pudo calcular la ruta de entrega.'))
     } finally {
       setRutaDonacionLoading(false)
     }
@@ -1395,7 +1395,7 @@ export default function VoluntarioDashboard() {
         incidenciasCercanas,
       })
     } catch (error) {
-      setErrorDonacion(error instanceof Error ? error.message : 'No se pudo calcular la ruta completa de entrega.')
+      setErrorDonacion(getApiErrorMessage(error, 'No se pudo calcular la ruta completa de entrega.'))
     } finally {
       setRutaDonacionLoading(false)
     }

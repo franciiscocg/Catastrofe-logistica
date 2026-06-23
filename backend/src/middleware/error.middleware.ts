@@ -16,15 +16,48 @@ function getPrismaErrorMessage(error: FastifyError) {
   return null
 }
 
+function translateValidationMessage(message: string) {
+  const text = message.trim()
+  if (!text) return 'El valor no es válido.'
+  if (/^required$/i.test(text)) return 'Este campo es obligatorio.'
+  if (/invalid email/i.test(text)) return 'El email no tiene un formato válido.'
+  if (/invalid enum value/i.test(text)) return 'El valor seleccionado no es válido.'
+  if (/expected .*received undefined/i.test(text)) return 'Este campo es obligatorio.'
+  if (/expected string/i.test(text)) return 'Debe ser un texto válido.'
+  if (/expected number/i.test(text)) return 'Debe ser un número válido.'
+  if (/expected boolean/i.test(text)) return 'Debe ser verdadero o falso.'
+  if (/expected array/i.test(text)) return 'Debe ser una lista válida.'
+  if (/string must contain at least/i.test(text)) return 'El texto no tiene la longitud mínima requerida.'
+  if (/string must contain at most/i.test(text)) return 'El texto supera la longitud máxima permitida.'
+  if (/number must be greater than/i.test(text)) return 'El número debe ser mayor.'
+  if (/number must be less than/i.test(text)) return 'El número debe ser menor.'
+  if (/unrecognized key/i.test(text)) return 'La petición incluye campos no permitidos.'
+  return text
+}
+
+function translateHttpErrorMessage(message: string, statusCode?: number) {
+  const text = message.trim()
+  if (!text) return 'No se pudo completar la operación.'
+  if (/^bad request$/i.test(text)) return 'La petición no es válida. Revisa los datos e inténtalo de nuevo.'
+  if (/^unauthorized$/i.test(text)) return 'Tu sesión ha caducado. Inicia sesión de nuevo.'
+  if (/^forbidden$/i.test(text)) return 'No tienes permiso para realizar esta acción.'
+  if (/^not found$/i.test(text)) return 'No se encontró el recurso solicitado.'
+  if (/payload too large/i.test(text)) return 'El contenido enviado es demasiado grande.'
+  if (/unsupported media type/i.test(text)) return 'El formato de la petición no es compatible.'
+  if (/request timeout/i.test(text)) return 'La petición ha tardado demasiado. Inténtalo de nuevo.'
+  if (/invalid json/i.test(text)) return 'El cuerpo de la petición no contiene JSON válido.'
+  return text
+}
+
 function getValidationDetails(error: FastifyError) {
   try {
     const issues = JSON.parse(error.message) as Array<{ path: (string | number)[]; message: string }>
     return issues.map((issue) => ({
       field: issue.path.join('.'),
-      message: issue.message,
+      message: translateValidationMessage(issue.message),
     }))
   } catch {
-    return [{ field: 'general', message: error.message }]
+    return [{ field: 'general', message: translateValidationMessage(error.message) }]
   }
 }
 
@@ -51,7 +84,7 @@ export function errorHandler(
   }
 
   if (error.statusCode && error.statusCode < 500) {
-    return reply.status(error.statusCode).send({ error: error.message })
+    return reply.status(error.statusCode).send({ error: translateHttpErrorMessage(error.message, error.statusCode) })
   }
 
   request.log.error(error)

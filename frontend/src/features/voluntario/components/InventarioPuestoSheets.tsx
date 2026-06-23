@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
 import type { ItemInventario } from '@/types/inventario.types'
+import { getApiErrorMessage } from '@/utils/errors'
 import { Notice } from './DashboardUi'
 import { SUGERENCIAS_INVENTARIO_PUESTO, normalizeInventarioProductoNombre, type InventarioPuestoCard, type OperacionInventarioPuesto } from './inventarioPuesto'
 
@@ -258,7 +259,7 @@ export function OperacionInventarioPuestoSheet({
         const message = err && typeof err === 'object' && 'response' in err
           ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
           : undefined
-        setError(message?.error ?? message?.message ?? (err instanceof Error ? err.message : 'No se pudo ajustar el inventario.'))
+        setError(getApiErrorMessage(err, message?.error ?? message?.message ?? 'No se pudo ajustar el inventario.'))
       } finally {
         setLoading(false)
       }
@@ -284,7 +285,7 @@ export function OperacionInventarioPuestoSheet({
       const message = err && typeof err === 'object' && 'response' in err
         ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
         : undefined
-      setError(message?.error ?? message?.message ?? (err instanceof Error ? err.message : 'No se pudo actualizar el inventario.'))
+      setError(getApiErrorMessage(err, message?.error ?? message?.message ?? 'No se pudo actualizar el inventario.'))
     } finally {
       setLoading(false)
     }
