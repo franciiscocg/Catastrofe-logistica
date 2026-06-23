@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useConnectivity } from '@/hooks/useConnectivity'
 import { useSyncStore } from '@/store/sync.store'
+import { translateErrorMessage } from '@/utils/errors'
 
 export default function ConnectivityBanner() {
   const [expanded, setExpanded] = useState(false)
@@ -55,7 +56,7 @@ export default function ConnectivityBanner() {
                     {op.method} {op.url}
                   </p>
                   <p className="truncate text-xs text-rose-700">
-                    {op.error ?? 'No se pudo sincronizar la operación'}
+                    {translateErrorMessage(op.error, 'No se pudo sincronizar la operación.')}
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 gap-2">

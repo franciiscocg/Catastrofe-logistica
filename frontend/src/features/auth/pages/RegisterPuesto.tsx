@@ -54,7 +54,7 @@ const INITIAL_FORM: PuestoForm = {
 function validate(f: PuestoForm): Record<string, string> {
   const errors: Record<string, string> = {}
   if (!f.nombrePuesto.trim()) errors.nombrePuesto = 'El nombre del puesto es obligatorio'
-  if (!f.tipo) errors.tipo = 'Selecciona el tipo de instalacion'
+  if (!f.tipo) errors.tipo = 'Selecciona el tipo de instalación'
   if (!f.direccion.trim()) errors.direccion = 'La dirección es obligatoria'
 
   const lat = Number.parseFloat(f.latitud)
@@ -322,7 +322,7 @@ function FormularioPuesto({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div>
-        <Label required>Tipo de instalacion</Label>
+        <Label required>Tipo de instalación</Label>
         <select
           value={form.tipo}
           onChange={set('tipo')}

@@ -234,7 +234,7 @@ export const useSyncStore = create<SyncStore>((set, get) => ({
 
       set({ lastSyncAt: Date.now() })
     } catch (e) {
-      set({ syncError: e instanceof Error ? e.message : 'Error de sincronización' })
+      set({ syncError: translateErrorMessage(e instanceof Error ? e.message : undefined, 'Error de sincronización') })
     } finally {
       set({ isSyncing: false })
       await get().loadPendingCount()

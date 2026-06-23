@@ -1,6 +1,9 @@
 const TECHNICAL_ERROR_TRANSLATIONS: Array<[RegExp, string]> = [
   [/^network error$/i, 'No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.'],
   [/failed to fetch|load failed|fetch failed/i, 'No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.'],
+  [/typeerror|domexception/i, 'Se produjo un error inesperado en la aplicación. Inténtalo de nuevo.'],
+  [/notallowederror|permission denied/i, 'No se pudo completar la acción porque falta un permiso del navegador. Revisa los permisos e inténtalo de nuevo.'],
+  [/notfounderror|not readable|notreadableerror/i, 'No se pudo acceder al recurso solicitado. Revisa los permisos del navegador e inténtalo de nuevo.'],
   [/econnaborted|timeout|timed out/i, 'La petición ha tardado demasiado. Inténtalo de nuevo en unos segundos.'],
   [/err_network|econnrefused|enotfound|socket hang up/i, 'No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.'],
   [/^bad request$/i, 'La petición no es válida. Revisa los datos e inténtalo de nuevo.'],

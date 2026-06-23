@@ -81,10 +81,7 @@ export function AddInventarioPuestoSheet({
       })
       onClose()
     } catch (err: unknown) {
-      const message = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
-        : undefined
-      setError(message?.error ?? message?.message ?? 'No se pudo anadir el producto.')
+      setError(getApiErrorMessage(err, 'No se pudo añadir el producto.'))
     } finally {
       setLoading(false)
     }
@@ -96,7 +93,7 @@ export function AddInventarioPuestoSheet({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase text-cyan-700">Inventario del puesto</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">Anadir producto</h2>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">Añadir producto</h2>
           </div>
           <button
             type="button"
@@ -109,7 +106,7 @@ export function AddInventarioPuestoSheet({
         </div>
 
         <div className="mt-4">
-          <p className="mb-2 text-xs font-medium text-slate-500">Sugerencias rapidas</p>
+          <p className="mb-2 text-xs font-medium text-slate-500">Sugerencias rápidas</p>
           <div className="flex flex-wrap gap-2">
             {sugerencias.slice(0, 8).map((item) => (
               <button

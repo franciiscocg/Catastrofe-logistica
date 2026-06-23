@@ -209,10 +209,10 @@ function formatPuestoCoordinador(puesto: {
 function validateSolicitudPuesto(body: Partial<SolicitudPuestoInput>) {
   if (!body.nombre?.trim()) throw badRequest('El nombre del puesto es obligatorio')
   if (!body.direccion?.trim()) throw badRequest('La dirección del puesto es obligatoria')
-  if (!body.tipo?.trim()) throw badRequest('El tipo de instalacion es obligatorio')
+  if (!body.tipo?.trim()) throw badRequest('El tipo de instalación es obligatorio')
   if (body.nombre.trim().length > 100) throw badRequest('El nombre del puesto no puede superar 100 caracteres')
   if (body.direccion.trim().length > 180) throw badRequest('La dirección del puesto no puede superar 180 caracteres')
-  if (body.tipo.trim().length > 60) throw badRequest('El tipo de instalacion no puede superar 60 caracteres')
+  if (body.tipo.trim().length > 60) throw badRequest('El tipo de instalación no puede superar 60 caracteres')
   if (body.descripcion && body.descripcion.trim().length > 500) {
     throw badRequest('La descripción no puede superar 500 caracteres')
   }
@@ -265,7 +265,7 @@ function validatePuestoUpdate(body: PuestoUpdateInput) {
     data.direccion = body.direccion.trim()
   }
   if (body.tipo !== undefined) {
-    if (!body.tipo.trim()) throw badRequest('El tipo de instalacion es obligatorio')
+    if (!body.tipo.trim()) throw badRequest('El tipo de instalación es obligatorio')
     data.tipo = body.tipo.trim()
   }
   if (body.descripcion !== undefined) {

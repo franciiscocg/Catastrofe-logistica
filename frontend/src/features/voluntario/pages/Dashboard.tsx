@@ -574,7 +574,7 @@ export default function VoluntarioDashboard() {
           setMensajeDonacion('Donación cerrada por el puesto.')
         }
       } catch {
-        // La pantalla seguira mostrando el QR; se reintenta en la siguiente comprobacion.
+        // La pantalla seguirá mostrando el QR; se reintenta en la siguiente comprobación.
       }
     }
 
@@ -1218,7 +1218,7 @@ export default function VoluntarioDashboard() {
     if (card.isBasico) return
     const puestoId = actividadManualActiva?.tipo === 'puesto' ? actividadManualActiva.id : ''
     if (!puestoId) return
-    const confirmed = window.confirm(`Eliminar ${card.producto.nombre} del inventario?`)
+    const confirmed = window.confirm(`¿Eliminar ${card.producto.nombre} del inventario?`)
     if (!confirmed) return
 
     setInventarioPuestoError('')
@@ -1305,7 +1305,7 @@ export default function VoluntarioDashboard() {
 
     if (!userPosition) {
       requestGeo()
-      setErrorDonacion('Comparte tu ubicacion para calcular la ruta de entrega.')
+      setErrorDonacion('Comparte tu ubicación para calcular la ruta de entrega.')
       return
     }
 
@@ -1423,7 +1423,7 @@ export default function VoluntarioDashboard() {
           throw new Error(`Introduce una cantidad válida para ${necesidad.item.producto.nombre}.`)
         }
         if (parsedCantidad > cantidadMaxima) {
-          throw new Error(`No puedes comprometer mas de ${cantidadMaxima} ${necesidad.item.producto.unidad} de ${necesidad.item.producto.nombre}.`)
+          throw new Error(`No puedes comprometer más de ${cantidadMaxima} ${necesidad.item.producto.unidad} de ${necesidad.item.producto.nombre}.`)
         }
 
         const body = {
@@ -1466,7 +1466,7 @@ export default function VoluntarioDashboard() {
       setVistaDonacion('mis-donaciones')
       setMensajeDonacion(isOnline
         ? 'Donaciones registradas correctamente. La ruta queda organizada por puestos.'
-        : 'Sin conexion: donaciones guardadas y pendientes de sincronizar.')
+        : 'Sin conexión: donaciones guardadas y pendientes de sincronizar.')
     } catch (err: unknown) {
       setErrorDonacion(getApiErrorMessage(err, 'No se pudieron registrar las donaciones.'))
     } finally {
@@ -1500,7 +1500,7 @@ export default function VoluntarioDashboard() {
 
     const cantidadMaxima = selectedNeed.cantidadPendiente ?? selectedNeed.item.cantidad
     if (parsedCantidad > cantidadMaxima) {
-      setCantidadError(`No puedes comprometer mas de ${cantidadMaxima} ${selectedNeed.item.producto.unidad}.`)
+      setCantidadError(`No puedes comprometer más de ${cantidadMaxima} ${selectedNeed.item.producto.unidad}.`)
       return
     }
 
@@ -1534,7 +1534,7 @@ export default function VoluntarioDashboard() {
         })
 
         setMisDonaciones((current) => [donacionOffline, ...current])
-        setMensajeDonacion('Sin conexion: donacion guardada y pendiente de sincronizar.')
+        setMensajeDonacion('Sin conexión: donación guardada y pendiente de sincronizar.')
         setVistaDonacion('mis-donaciones')
         setCantidad('')
         setComentarioDonacion('')
@@ -1976,7 +1976,7 @@ export default function VoluntarioDashboard() {
                       Escanear QR
                     </Button>
                     <Button type="button" size="sm" onClick={() => setShowAddInventarioPuesto(true)}>
-                      + Anadir
+                      + Añadir
                     </Button>
                   </div>
                 </div>
@@ -2122,7 +2122,7 @@ export default function VoluntarioDashboard() {
             {rutaError && rutaErrorDonacionId === actividadRutaId && (
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
                 <p>{rutaError}</p>
-                {rutaError.includes('ubicacion') && (
+                {rutaError.toLowerCase().includes('ubicaci') && (
                   <Button
                     type="button"
                     size="sm"
@@ -2540,7 +2540,7 @@ export default function VoluntarioDashboard() {
                     {rutaError && (
                       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                         <p>{rutaError}</p>
-                        {rutaError.includes('ubicacion') && (
+                        {rutaError.toLowerCase().includes('ubicaci') && (
                           <Button
                             type="button"
                             size="sm"
@@ -2548,7 +2548,7 @@ export default function VoluntarioDashboard() {
                             className="mt-2"
                             onClick={requestGeo}
                           >
-                            Compartir ubicacion
+                            Compartir ubicación
                           </Button>
                         )}
                       </div>
@@ -2694,7 +2694,7 @@ export default function VoluntarioDashboard() {
                               {rutaError && rutaErrorDonacionId === `incidencia:${incidencia.id}` && (
                                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
                                   <p>{rutaError}</p>
-                                  {rutaError.includes('ubicacion') && (
+                                  {rutaError.toLowerCase().includes('ubicaci') && (
                                     <Button
                                       type="button"
                                       size="sm"
@@ -2884,7 +2884,7 @@ export default function VoluntarioDashboard() {
                               {rutaError && rutaErrorDonacionId === `puesto:${puesto.id}` && (
                                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
                                   <p>{rutaError}</p>
-                                  {rutaError.includes('ubicacion') && (
+                                  {rutaError.toLowerCase().includes('ubicaci') && (
                                     <Button
                                       type="button"
                                       size="sm"

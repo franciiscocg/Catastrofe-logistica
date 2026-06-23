@@ -1021,7 +1021,7 @@ function SolicitudPuestoForm() {
       const longitud = parseFloat(form.longitud)
       if (!form.nombre.trim()) throw new Error('El nombre del puesto es obligatorio')
       if (!form.direccion.trim()) throw new Error('La dirección es obligatoria')
-      if (!form.tipo.trim()) throw new Error('Indica el tipo de instalacion')
+      if (!form.tipo.trim()) throw new Error('Indica el tipo de instalación')
       if (Number.isNaN(latitud) || latitud < -90 || latitud > 90) throw new Error('Latitud inválida')
       if (Number.isNaN(longitud) || longitud < -180 || longitud > 180) throw new Error('Longitud inválida')
 
@@ -1116,7 +1116,7 @@ function SolicitudPuestoForm() {
           <input value={form.direccion} onChange={set('direccion')} className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de instalacion</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de instalación</label>
           <input value={form.tipo} onChange={set('tipo')} placeholder="Colegio, pabellon, almacen..." className="w-full rounded-lg border border-gray-300 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
         </div>
         <div className="grid grid-cols-2 gap-2">

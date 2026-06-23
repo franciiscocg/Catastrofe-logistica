@@ -97,7 +97,7 @@ function savePosition(position: GeoPosition) {
   try {
     sessionStorage.setItem(GEOLOCATION_STORAGE_KEY, JSON.stringify(position))
   } catch {
-    // La ubicacion en memoria sigue funcionando aunque el navegador bloquee sessionStorage.
+    // La ubicación en memoria sigue funcionando aunque el navegador bloquee sessionStorage.
   }
 }
 

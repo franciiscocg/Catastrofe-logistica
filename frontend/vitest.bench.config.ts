@@ -21,9 +21,4 @@ export default defineConfig({
     testTimeout: 180_000,
     hookTimeout: 180_000,
   },
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
-  },
 })

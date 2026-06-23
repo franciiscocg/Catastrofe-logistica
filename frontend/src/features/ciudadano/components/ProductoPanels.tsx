@@ -203,7 +203,7 @@ export function SelectorProductosSheet({
                           <span className={`flex h-8 min-w-24 items-center justify-center rounded-md px-3 text-xs font-semibold ${
                             selected ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-950 text-white'
                           }`}>
-                            {selected ? 'Añadido' : 'Anadir'}
+                            {selected ? 'Añadido' : 'Añadir'}
                           </span>
                         </div>
                       </button>

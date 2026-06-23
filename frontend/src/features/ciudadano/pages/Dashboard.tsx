@@ -55,7 +55,7 @@ const CATEGORIAS_INCIDENCIA: Array<{
 }> = [
   {
     value: 'inundacion',
-    label: 'Agua o inundacion',
+    label: 'Agua o inundación',
     equipment: ['Cubo', 'Guantes impermeables', 'Botas de agua', 'Chaleco reflectante'],
   },
   {
@@ -579,7 +579,7 @@ export default function CiudadanoDashboard() {
       } else if (aborted && routeAbortReasonRef.current === 'timeout') {
         setRouteError('La búsqueda de ruta ha tardado demasiado. Inténtalo de nuevo.')
       } else {
-        setRouteError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
+        setRouteError(getApiErrorMessage(e, 'No se pudo calcular la ruta.'))
       }
     } finally {
       if (routeAbortControllerRef.current === controller) routeAbortControllerRef.current = null
@@ -850,7 +850,7 @@ export default function CiudadanoDashboard() {
       setRutaProductosPoints(resultado.points)
       setRutaProductosInfo({ distanciaKm: resultado.distanciaKm, duracionMin: resultado.duracionMin, incidenciasCercanas: resultado.incidenciasCercanas })
     } catch (e) {
-      setRutaProductosError(e instanceof Error ? e.message : 'No se pudo calcular la ruta')
+      setRutaProductosError(getApiErrorMessage(e, 'No se pudo calcular la ruta.'))
     } finally {
       setRutaProductosLoading(false)
     }
@@ -909,7 +909,7 @@ export default function CiudadanoDashboard() {
         DoE.requestPermission().catch(() => undefined)
       }
     } catch (e) {
-      setRutaProductosError(e instanceof Error ? e.message : 'No se pudo iniciar la navegación')
+      setRutaProductosError(getApiErrorMessage(e, 'No se pudo iniciar la navegación.'))
     } finally {
       setNavLoading(false)
     }

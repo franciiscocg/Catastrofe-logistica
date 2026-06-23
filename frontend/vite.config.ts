@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 const buildId = process.env.RENDER_GIT_COMMIT ?? process.env.GITHUB_SHA ?? 'local'
+const allowedHosts = process.env.VITE_ALLOWED_HOSTS
+  ? process.env.VITE_ALLOWED_HOSTS.split(',').map((host) => host.trim()).filter(Boolean)
+  : ['localhost', '127.0.0.1']
 
 export default defineConfig({
   plugins: [
@@ -95,7 +98,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    allowedHosts: true,
+    allowedHosts,
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
