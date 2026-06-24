@@ -8,6 +8,7 @@ type QueueOptions = {
   priority?: SyncPriority
   localEntityId?: string
   optimisticData?: unknown
+  idempotencyKey?: string
 }
 
 function isNetworkFailure(error: unknown) {
@@ -23,14 +24,17 @@ export async function queueableApiRequest<T = unknown>(
     return apiClient.request<T>(config)
   }
 
-  const execute = () => {
-    if (method === 'POST') return apiClient.post<T>(config.url!, config.data)
-    if (method === 'PUT') return apiClient.put<T>(config.url!, config.data)
-    if (method === 'PATCH') return apiClient.patch<T>(config.url!, config.data)
-    return config.data === undefined
-      ? apiClient.delete<T>(config.url!)
-      : apiClient.delete<T>(config.url!, { data: config.data })
-  }
+  const idempotencyKey = options.idempotencyKey ?? `offline-${crypto.randomUUID()}`
+  const execute = () => apiClient.request<T>({
+    ...config,
+    method,
+    url: config.url,
+    data: config.data,
+    headers: {
+      ...config.headers,
+      'Idempotency-Key': idempotencyKey,
+    },
+  })
 
   if (navigator.onLine) {
     try {
@@ -47,6 +51,7 @@ export async function queueableApiRequest<T = unknown>(
     body: config.data,
     priority: options.priority ?? 'normal',
     localEntityId: options.localEntityId,
+    idempotencyKey,
   })
 
   return {

@@ -63,6 +63,12 @@ vi.mock('../../../frontend/src/lib/api/client', () => ({
     get: mockApiGet,
     post: mockApiPost,
     patch: mockApiPatch,
+    request: vi.fn((config: { method?: string; url?: string; data?: unknown }) => {
+      const method = config.method?.toUpperCase()
+      if (method === 'POST') return mockApiPost(config.url, config.data)
+      if (method === 'PATCH') return mockApiPatch(config.url, config.data)
+      return mockApiGet(config.url)
+    }),
   },
 }))
 

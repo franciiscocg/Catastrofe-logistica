@@ -430,6 +430,10 @@ export async function confirmarQrInventario(puestoId: string, input: ConfirmarQr
 
     const cantidadAConfirmar = input.cantidadOverride ?? qr.cantidad
 
+    if (cantidadAConfirmar > donacion.cantidad) {
+      throw appError(`La cantidad confirmada no puede superar la donación registrada (${donacion.cantidad} ${donacion.unidad})`, 400)
+    }
+
     if (donacion.cantidad !== cantidadAConfirmar) {
       await tx.donacion.update({
         where: { id: donacion.id },

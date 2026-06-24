@@ -10,12 +10,14 @@ vi.mock('../../../backend/src/lib/prisma.js', () => {
     donacion: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       aggregate: vi.fn(),
       groupBy: vi.fn(),
     },
-    inventario: { findMany: vi.fn(), findFirst: vi.fn() },
+    inventario: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   }
@@ -29,6 +31,7 @@ import {
   createDonacion,
   listMisDonaciones,
   updateDonacionEstado,
+  updateDonacionCantidad,
   generarCodigoEntrega,
 } from '../../../backend/src/modules/donaciones/donaciones.service.js'
 
@@ -276,15 +279,49 @@ describe('updateDonacionEstado', () => {
 
   it('actualiza el estado de la donación propia exitosamente', async () => {
     mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
-    mp.donacion.findFirst.mockResolvedValue({ id: DONACION_ID, estado: 'PENDIENTE', puestoId: PUESTO_ID })
-    mp.donacion.update.mockResolvedValue({ id: DONACION_ID, estado: 'EN_CAMINO', producto: productoBase, puesto: puestoBase })
+    mp.donacion.findFirst.mockResolvedValue({
+      id: DONACION_ID,
+      estado: 'PENDIENTE',
+      puestoId: PUESTO_ID,
+      productoId: PRODUCTO_ID,
+      cantidad: 3,
+      unidad: 'litros',
+      producto: productoBase,
+      puesto: puestoBase,
+    })
+    mp.donacion.updateMany.mockResolvedValue({ count: 1 })
+    mp.donacion.findUniqueOrThrow.mockResolvedValue({ id: DONACION_ID, estado: 'EN_CAMINO', producto: productoBase, puesto: puestoBase })
 
     const result = await updateDonacionEstado(USUARIO_ID, DONACION_ID, 'EN_CAMINO')
 
     expect(result.estado).toBe('EN_CAMINO')
-    expect(mp.donacion.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: DONACION_ID }, data: { estado: 'EN_CAMINO' } }),
+    expect(mp.donacion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: DONACION_ID, estado: 'PENDIENTE' }, data: { estado: 'EN_CAMINO' } }),
     )
+    expect(mp.donacion.findUniqueOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: DONACION_ID } }),
+    )
+  })
+
+  it('no vuelve a compensar inventario si la donación ya estaba entregada', async () => {
+    mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
+    mp.donacion.findFirst.mockResolvedValue({
+      id: DONACION_ID,
+      estado: 'ENTREGADA',
+      puestoId: PUESTO_ID,
+      productoId: PRODUCTO_ID,
+      cantidad: 3,
+      unidad: 'litros',
+      producto: productoBase,
+      puesto: puestoBase,
+    })
+
+    const result = await updateDonacionEstado(USUARIO_ID, DONACION_ID, 'ENTREGADA')
+
+    expect(result.estado).toBe('ENTREGADA')
+    expect(mp.$transaction).not.toHaveBeenCalled()
+    expect(mp.inventario.findUnique).not.toHaveBeenCalled()
+    expect(mp.donacion.update).not.toHaveBeenCalled()
   })
 
   it('lanza 404 si la donación no pertenece al voluntario', async () => {
@@ -293,6 +330,38 @@ describe('updateDonacionEstado', () => {
 
     await expect(updateDonacionEstado(USUARIO_ID, DONACION_ID, 'CANCELADA')).rejects.toMatchObject({
       statusCode: 404,
+    })
+    expect(mp.donacion.update).not.toHaveBeenCalled()
+  })
+})
+
+describe('updateDonacionCantidad', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mp.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback(mp))
+  })
+
+  it('rechaza aumentar una donación por encima de la necesidad pendiente', async () => {
+    mp.voluntario.findUnique.mockResolvedValue({ id: VOLUNTARIO_ID })
+    mp.donacion.findFirst.mockResolvedValue({
+      id: DONACION_ID,
+      estado: 'EN_CAMINO',
+      puestoId: PUESTO_ID,
+      productoId: PRODUCTO_ID,
+      cantidad: 4,
+    })
+    mp.inventario.findUnique.mockResolvedValue({
+      id: 'nec-1',
+      puestoId: PUESTO_ID,
+      productoId: PRODUCTO_ID,
+      tipo: 'NECESARIO',
+      cantidad: 10,
+      producto: productoBase,
+    })
+    mp.donacion.aggregate.mockResolvedValue({ _sum: { cantidad: 7 } })
+
+    await expect(updateDonacionCantidad(USUARIO_ID, DONACION_ID, 5)).rejects.toMatchObject({
+      statusCode: 400,
     })
     expect(mp.donacion.update).not.toHaveBeenCalled()
   })

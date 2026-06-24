@@ -149,6 +149,19 @@ describe('confirmarQrInventario — entrega de donación (DE)', () => {
     )
   })
 
+  it('rechaza confirmar una cantidad mayor que la donación registrada', async () => {
+    allowPuestoAccess()
+    mp.donacion.findFirst.mockResolvedValue(donacionEnCamino({ cantidad: 5 }))
+
+    await expect(
+      confirmarQrInventario(PUESTO_ID, { codigo: codigoDECompacto(), cantidadOverride: 6 }, USER_ID),
+    ).rejects.toMatchObject({ statusCode: 400 })
+
+    expect(mp.donacion.updateMany).not.toHaveBeenCalled()
+    expect(mp.inventario.update).not.toHaveBeenCalled()
+    expect(mp.inventario.create).not.toHaveBeenCalled()
+  })
+
   it('crea directamente el item DISPONIBLE si no hay necesidad previa', async () => {
     allowPuestoAccess()
     mp.donacion.findFirst.mockResolvedValue(donacionEnCamino())

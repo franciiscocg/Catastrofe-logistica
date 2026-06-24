@@ -20,6 +20,13 @@ vi.mock('../../../frontend/src/lib/api/client', () => ({
     post: mockApiPost,
     patch: mockApiPatch,
     delete: mockApiDelete,
+    request: vi.fn((config: { method?: string; url?: string; data?: unknown }) => {
+      const method = config.method?.toUpperCase()
+      if (method === 'POST') return mockApiPost(config.url, config.data)
+      if (method === 'PATCH') return mockApiPatch(config.url, config.data)
+      if (method === 'DELETE') return mockApiDelete(config.url)
+      return mockApiGet(config.url)
+    }),
   },
 }))
 

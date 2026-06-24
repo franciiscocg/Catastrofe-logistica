@@ -37,6 +37,15 @@ function assertEstadoTransition(actual: EstadoDonacion, siguiente: EstadoDonacio
   }
 }
 
+function assertCantidadNoSuperaPendiente(cantidad: number, necesidad: { cantidad: number; producto: { unidad: string } } | null, comprometidaOtros: number) {
+  if (!necesidad) throw notFound('Necesidad no encontrada para este puesto')
+
+  const cantidadPendiente = Math.max(necesidad.cantidad - comprometidaOtros, 0)
+  if (cantidad > cantidadPendiente) {
+    throw badRequest(`La cantidad supera lo pendiente. Quedan ${cantidadPendiente} ${necesidad.producto.unidad}`)
+  }
+}
+
 async function getVoluntarioByUsuario(usuarioId: string) {
   const voluntario = await prisma.voluntario.findUnique({
     where: { usuarioId },
@@ -210,23 +219,29 @@ export async function updateDonacionEstado(usuarioId: string, donacionId: string
 
   const donacion = await prisma.donacion.findFirst({
     where: { id: donacionId, voluntarioId: voluntario.id },
-    select: {
-      id: true,
-      estado: true,
-      puestoId: true,
-      productoId: true,
-      cantidad: true,
-      unidad: true,
+    include: {
+      producto: true,
+      puesto: {
+        select: puestoDonacionSelect,
+      },
     },
   })
 
   if (!donacion) throw notFound('Donación no encontrada')
   assertEstadoTransition(donacion.estado, estado)
+  if (donacion.estado === estado) return donacion
 
   const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.donacion.update({
-      where: { id: donacionId },
+    const claimed = await tx.donacion.updateMany({
+      where: { id: donacionId, estado: donacion.estado },
       data: { estado },
+    })
+    if (claimed.count !== 1) {
+      throw badRequest('La donación ha cambiado de estado. Actualiza la vista antes de continuar.')
+    }
+
+    const result = await tx.donacion.findUniqueOrThrow({
+      where: { id: donacionId },
       include: {
         producto: true,
         puesto: { select: puestoDonacionSelect },
@@ -404,7 +419,7 @@ export async function updateDonacionCantidad(usuarioId: string, donacionId: stri
 
   const donacion = await prisma.donacion.findFirst({
     where: { id: donacionId, voluntarioId: voluntario.id },
-    select: { id: true, estado: true, puestoId: true, cantidad: true },
+    select: { id: true, estado: true, puestoId: true, productoId: true, cantidad: true },
   })
 
   if (!donacion) throw notFound('Donación no encontrada')
@@ -412,7 +427,28 @@ export async function updateDonacionCantidad(usuarioId: string, donacionId: stri
     throw badRequest('Solo se puede modificar la cantidad de donaciones pendientes o en camino')
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const updated = await runSerializableTransaction(async (tx) => {
+    const necesidad = await tx.inventario.findUnique({
+      where: {
+        puestoId_productoId_tipo: {
+          puestoId: donacion.puestoId,
+          productoId: donacion.productoId,
+          tipo: 'NECESARIO',
+        },
+      },
+      include: { producto: true },
+    })
+    const comprometidaOtros = await tx.donacion.aggregate({
+      where: {
+        id: { not: donacion.id },
+        puestoId: donacion.puestoId,
+        productoId: donacion.productoId,
+        estado: { in: ['PENDIENTE', 'EN_CAMINO'] },
+      },
+      _sum: { cantidad: true },
+    })
+    assertCantidadNoSuperaPendiente(cantidad, necesidad, comprometidaOtros._sum.cantidad ?? 0)
+
     const result = await tx.donacion.update({
       where: { id: donacionId },
       data: { cantidad },
