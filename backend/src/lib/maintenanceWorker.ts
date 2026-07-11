@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js'
+import { withDistributedLock } from './distributedLock.js'
 
 const INTERVAL_MS = 60 * 60 * 1000
 let timer: ReturnType<typeof setInterval> | null = null
@@ -15,7 +16,9 @@ async function tick() {
   if (running) return
   running = true
   try {
-    const deleted = await cleanupExpiredRecords()
+    const execution = await withDistributedLock('worker:maintenance', 5 * 60 * 1000, cleanupExpiredRecords)
+    if (!execution.acquired) return
+    const deleted = execution.value ?? 0
     if (deleted > 0) console.log(`[maintenance] Eliminados ${deleted} registros de idempotencia caducados`)
   } catch (error) {
     console.error('[maintenance] Error limpiando registros caducados:', error)
