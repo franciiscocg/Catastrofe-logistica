@@ -6,7 +6,7 @@ startChainWorker()
 
 async function shutdown(signal: string) {
   console.log(`[chainWorker] Recibida ${signal}; cerrando`)
-  stopChainWorker()
+  await stopChainWorker()
   if (redis.status !== 'end') await redis.quit()
   await prisma.$disconnect()
   process.exit(0)

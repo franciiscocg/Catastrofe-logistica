@@ -6,7 +6,7 @@ startMaintenanceWorker()
 
 async function shutdown(signal: string) {
   console.log(`[maintenanceWorker] Recibida ${signal}; cerrando`)
-  stopMaintenanceWorker()
+  await stopMaintenanceWorker()
   if (redis.status !== 'end') await redis.quit()
   await prisma.$disconnect()
   process.exit(0)
