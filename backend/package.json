@@ -13,6 +13,7 @@
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "tsx scripts/integration-smoke.ts",
     "test:watch": "vitest",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0"
   },

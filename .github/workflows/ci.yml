@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  migration-check:
-    name: Migraciones desde una base vacía
+  integration-check:
+    name: Integración PostgreSQL y Redis
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -30,9 +30,20 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/catlogistica_test
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/catlogistica_test
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +64,10 @@ jobs:
       - name: Verificar que el esquema está sincronizado
         working-directory: backend
         run: npx prisma migrate status
+
+      - name: Smoke real de registro, login y Redis
+        working-directory: backend
+        run: npm run test:integration
 
   unit-tests:
     name: Tests unitarios (backend + frontend)
