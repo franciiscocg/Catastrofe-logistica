@@ -16,7 +16,7 @@ import { auditRouter } from './modules/audit/audit.router.js'
 import { errorHandler } from './middleware/error.middleware.js'
 import { registerIdempotency } from './middleware/idempotency.middleware.js'
 import { getJwtSecret } from './lib/security.js'
-import { prisma } from './lib/prisma.js'
+import { checkReadiness } from './lib/readiness.js'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { env } from './config/env.js'
@@ -90,27 +90,8 @@ export async function buildApp() {
 
   // Readiness: solo devuelve 200 cuando la base de datos está disponible.
   app.get('/ready', async (_request, reply) => {
-    const startedAt = Date.now()
-    try {
-      await prisma.$queryRaw`SELECT 1`
-      const pendingChainEvents = await prisma.pendingChainEvent.count({
-        where: { intentos: { lt: 5 } },
-      })
-      return reply.send({
-        status: 'ready',
-        database: 'ok',
-        pendingChainEvents,
-        responseTimeMs: Date.now() - startedAt,
-        timestamp: new Date().toISOString(),
-      })
-    } catch {
-      return reply.status(503).send({
-        status: 'not_ready',
-        database: 'unavailable',
-        responseTimeMs: Date.now() - startedAt,
-        timestamp: new Date().toISOString(),
-      })
-    }
+    const output = await checkReadiness()
+    return reply.status(output.ready ? 200 : 503).send(output.body)
   })
 
   const frontendRoot = path.resolve(process.cwd(), '../frontend/dist')
