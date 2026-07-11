@@ -26,4 +26,23 @@ describe('bloqueo distribuido', () => {
       .rejects.toThrow('fallo')
     expect(client.eval).toHaveBeenCalledOnce()
   })
+
+  it('renueva el TTL mientras la operación continúa activa', async () => {
+    vi.useFakeTimers()
+    const client = { set: vi.fn().mockResolvedValue('OK'), eval: vi.fn().mockResolvedValue(1) }
+    let finish!: () => void
+    const operation = new Promise<void>((resolve) => { finish = resolve })
+    const execution = withDistributedLock('worker:slow', 3_000, () => operation, client as never)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(client.eval).toHaveBeenCalledWith(
+      expect.stringContaining('pexpire'),
+      1,
+      'worker:slow',
+      expect.any(String),
+      3_000,
+    )
+    finish()
+    await execution
+    vi.useRealTimers()
+  })
 })
