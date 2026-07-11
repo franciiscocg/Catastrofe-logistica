@@ -57,13 +57,9 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      - name: Aplicar historial completo de migraciones
+      - name: Crear el esquema completo desde una base vacía
         working-directory: backend
-        run: npm run db:migrate:deploy
-
-      - name: Verificar que el esquema está sincronizado
-        working-directory: backend
-        run: npx prisma migrate status
+        run: npm run db:schema:deploy
 
       - name: Smoke real de registro, login y Redis
         working-directory: backend
