@@ -33,6 +33,52 @@ services:
         sync: false
       - key: APP_PUBLIC_URL
         sync: false
+      - key: REDIS_URL
+        sync: false
+
+  - type: worker
+    name: catastrofe-logistica-chain-worker
+    runtime: node
+    plan: starter
+    buildCommand: npm --prefix backend ci --include=dev && npm --prefix backend run build
+    startCommand: cd backend && npm run start:worker:chain
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+
+  - type: worker
+    name: catastrofe-logistica-maintenance-worker
+    runtime: node
+    plan: starter
+    buildCommand: npm --prefix backend ci --include=dev && npm --prefix backend run build
+    startCommand: cd backend && npm run start:worker:maintenance
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
+      - key: DIRECT_URL
+        fromDatabase:
+          name: catastrofe-logistica-db
+          property: connectionString
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
 
 databases:
   - name: catastrofe-logistica-db
