@@ -98,6 +98,10 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      - name: Lint backend
+        working-directory: backend
+        run: npm run lint
+
       - name: Build backend
         working-directory: backend
         run: npm run build

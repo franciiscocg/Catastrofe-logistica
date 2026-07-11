@@ -35,7 +35,7 @@ function translateValidationMessage(message: string) {
   return text
 }
 
-function translateHttpErrorMessage(message: string, statusCode?: number) {
+function translateHttpErrorMessage(message: string) {
   const text = message.trim()
   if (!text) return 'No se pudo completar la operación.'
   if (/^bad request$/i.test(text)) return 'La petición no es válida. Revisa los datos e inténtalo de nuevo.'
@@ -84,7 +84,7 @@ export function errorHandler(
   }
 
   if (error.statusCode && error.statusCode < 500) {
-    return reply.status(error.statusCode).send({ error: translateHttpErrorMessage(error.message, error.statusCode) })
+    return reply.status(error.statusCode).send({ error: translateHttpErrorMessage(error.message) })
   }
 
   request.log.error(error)
