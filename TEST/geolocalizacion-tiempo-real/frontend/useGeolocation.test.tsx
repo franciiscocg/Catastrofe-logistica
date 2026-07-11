@@ -135,6 +135,63 @@ describe('GeolocationProvider — solicita y mantiene la ubicación', () => {
   })
 })
 
+describe('GeolocationProvider — compatibilidad con Safari', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15',
+      configurable: true,
+    })
+    Object.defineProperty(navigator, 'vendor', { value: 'Apple Computer, Inc.', configurable: true })
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: 0, configurable: true })
+    Object.defineProperty(navigator, 'permissions', { value: undefined, configurable: true })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 Chrome/124.0 Safari/537.36', configurable: true })
+    Object.defineProperty(navigator, 'vendor', { value: 'Google Inc.', configurable: true })
+  })
+
+  it('no solicita ubicación automáticamente antes de una acción del usuario', async () => {
+    const geo = createGeoMock()
+    Object.defineProperty(navigator, 'geolocation', { value: geo, configurable: true })
+    const { result } = renderHook(() => useGeolocation(), { wrapper })
+    await act(async () => {})
+    expect(geo.watchPosition).not.toHaveBeenCalled()
+    expect(geo.getCurrentPosition).not.toHaveBeenCalled()
+    expect(result.current.permissionState).toBe('prompt')
+  })
+
+  it('empieza con precisión relajada al pulsar Activar ubicación', () => {
+    const geo = createGeoMock()
+    Object.defineProperty(navigator, 'geolocation', { value: geo, configurable: true })
+    const { result } = renderHook(() => useGeolocation(), { wrapper })
+    act(() => result.current.request())
+    expect(geo.getCurrentPosition).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ enableHighAccuracy: false, maximumAge: 60000 }),
+    )
+    expect(geo.watchPosition).toHaveBeenCalledOnce()
+  })
+
+  it('reintenta con alta precisión si Safari no obtiene la posición aproximada', () => {
+    const getCurrentPosition = vi.fn()
+      .mockImplementationOnce((_success: GeoSuccessCb, error: GeoErrorCb) => error(buildGeoError(3)))
+      .mockImplementationOnce((success: GeoSuccessCb) => success(MOCK_RAW_POS))
+    const geo = { watchPosition: vi.fn(() => 42), clearWatch: vi.fn(), getCurrentPosition }
+    Object.defineProperty(navigator, 'geolocation', { value: geo, configurable: true })
+    const { result } = renderHook(() => useGeolocation(), { wrapper })
+    act(() => result.current.request())
+    expect(getCurrentPosition).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ enableHighAccuracy: true }),
+    )
+  })
+})
+
 // ── Suite 2: Persistencia de sesión ──────────────────────────────────────────
 
 describe('Persistencia de ubicación durante la sesión', () => {

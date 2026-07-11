@@ -58,9 +58,12 @@ function isSecureGeolocationOrigin() {
   return window.isSecureContext || isLocalhost()
 }
 
-function isIOSWebKit() {
+function isSafariWebKit() {
   const ua = navigator.userAgent
-  return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1)
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1)
+  const isOtherBrowser = /CriOS|Chrome|Chromium|Edg|OPR|FxiOS|Firefox|SamsungBrowser/i.test(ua)
+  const isMacSafari = !isOtherBrowser && /Safari/i.test(ua) && navigator.vendor.includes('Apple')
+  return isIOS || isMacSafari
 }
 
 function parseStoredPosition(): GeoPosition | null {
@@ -135,7 +138,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({
       ...prev,
       error: err.code === err.PERMISSION_DENIED
-        ? (isIOSWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicación está bloqueada en el navegador')
+        ? (isSafariWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicación está bloqueada en el navegador')
         : translateErrorMessage(err.message, 'No se pudo obtener tu ubicación. Inténtalo de nuevo.'),
       loading: false,
       permissionState: err.code === err.PERMISSION_DENIED ? 'denied' : prev.permissionState,
@@ -143,16 +146,18 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const getCurrentPosition = useCallback((onCurrentPosition: PositionCallback) => {
+    const firstOptions = isSafariWebKit() ? RELAXED_ACCURACY_OPTIONS : HIGH_ACCURACY_OPTIONS
+    const fallbackOptions = isSafariWebKit() ? HIGH_ACCURACY_OPTIONS : RELAXED_ACCURACY_OPTIONS
     navigator.geolocation.getCurrentPosition(
       onCurrentPosition,
       (err) => {
         if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-          navigator.geolocation.getCurrentPosition(onCurrentPosition, onError, RELAXED_ACCURACY_OPTIONS)
+          navigator.geolocation.getCurrentPosition(onCurrentPosition, onError, fallbackOptions)
           return
         }
         onError(err)
       },
-      HIGH_ACCURACY_OPTIONS,
+      firstOptions,
     )
   }, [onError])
 
@@ -219,7 +224,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (isIOSWebKit() && !positionRef.current) {
+    if (isSafariWebKit() && !positionRef.current) {
       setState((prev) => ({
         ...prev,
         error: prev.error ?? GEOLOCATION_ERROR_PROMPT,
@@ -241,7 +246,7 @@ export function GeolocationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isSecureGeolocationOrigin()) return
 
-    if (isIOSWebKit()) {
+    if (isSafariWebKit()) {
       return
     }
 
@@ -321,7 +326,7 @@ function useStandaloneGeolocation(watch = false): GeolocationContextValue {
     setState((prev) => ({
       ...prev,
       error: err.code === err.PERMISSION_DENIED
-        ? (isIOSWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicación está bloqueada en el navegador')
+        ? (isSafariWebKit() ? GEOLOCATION_ERROR_DENIED : 'La ubicación está bloqueada en el navegador')
         : translateErrorMessage(err.message, 'No se pudo obtener tu ubicación. Inténtalo de nuevo.'),
       loading: false,
       permissionState: err.code === err.PERMISSION_DENIED ? 'denied' : prev.permissionState,
@@ -353,16 +358,18 @@ function useStandaloneGeolocation(watch = false): GeolocationContextValue {
       loading: true,
       permissionState: prev.permissionState === 'denied' ? null : prev.permissionState,
     }))
+    const firstOptions = isSafariWebKit() ? RELAXED_ACCURACY_OPTIONS : HIGH_ACCURACY_OPTIONS
+    const fallbackOptions = isSafariWebKit() ? HIGH_ACCURACY_OPTIONS : RELAXED_ACCURACY_OPTIONS
     navigator.geolocation.getCurrentPosition(
       onSuccess,
       (err) => {
         if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-          navigator.geolocation.getCurrentPosition(onSuccess, onError, RELAXED_ACCURACY_OPTIONS)
+          navigator.geolocation.getCurrentPosition(onSuccess, onError, fallbackOptions)
           return
         }
         onError(err)
       },
-      HIGH_ACCURACY_OPTIONS,
+      firstOptions,
     )
   }, [onSuccess, onError])
 

@@ -58,8 +58,10 @@ export default function LocationPermissionBanner() {
     description = deniedInstructions()
   } else {
     title = 'Ubicación desactivada'
-    description =
-      'Activa el permiso de ubicación para ordenar puestos por cercanía, calcular rutas y registrar incidencias con tu posición actual.'
+    const { isIOS, isMacSafari } = detectBrowser()
+    description = isIOS || isMacSafari
+      ? 'Safari necesita que pulses el botón para solicitar la ubicación. La primera posición puede ser aproximada y se mejorará mientras usas la app.'
+      : 'Activa el permiso de ubicación para ordenar puestos por cercanía, calcular rutas y registrar incidencias con tu posición actual.'
   }
 
   return (
