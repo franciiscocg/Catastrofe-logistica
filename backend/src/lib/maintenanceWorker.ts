@@ -27,7 +27,6 @@ async function tick() {
 export function startMaintenanceWorker() {
   if (timer) return
   timer = setInterval(tick, INTERVAL_MS)
-  timer.unref?.()
   void tick()
 }
 

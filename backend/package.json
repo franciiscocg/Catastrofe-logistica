@@ -6,6 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
+    "start:worker:chain": "node dist/worker-chain.js",
+    "start:worker:maintenance": "node dist/worker-maintenance.js",
     "start:render": "prisma migrate deploy && node dist/index.js",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
