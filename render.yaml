@@ -34,7 +34,10 @@ services:
       - key: APP_PUBLIC_URL
         sync: false
       - key: REDIS_URL
-        sync: false
+        fromService:
+          type: keyvalue
+          name: catastrofe-logistica-redis
+          property: connectionString
 
   - type: worker
     name: catastrofe-logistica-chain-worker
@@ -54,7 +57,10 @@ services:
           name: catastrofe-logistica-db
           property: connectionString
       - key: REDIS_URL
-        sync: false
+        fromService:
+          type: keyvalue
+          name: catastrofe-logistica-redis
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
 
@@ -76,9 +82,20 @@ services:
           name: catastrofe-logistica-db
           property: connectionString
       - key: REDIS_URL
-        sync: false
+        fromService:
+          type: keyvalue
+          name: catastrofe-logistica-redis
+          property: connectionString
       - key: JWT_SECRET
         generateValue: true
+
+  - type: keyvalue
+    name: catastrofe-logistica-redis
+    plan: free
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: off
 
 databases:
   - name: catastrofe-logistica-db
