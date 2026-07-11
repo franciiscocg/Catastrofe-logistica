@@ -38,36 +38,7 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Prisma
-backend/prisma/migrations/*
-!backend/prisma/migrations/20240101000000_init/
-!backend/prisma/migrations/20240101000000_init/migration.sql
-!backend/prisma/migrations/20260502120000_add_puesto_asignaciones/
-!backend/prisma/migrations/20260502120000_add_puesto_asignaciones/migration.sql
-!backend/prisma/migrations/20260502211500_add_volunteer_delivery_codes_and_incident_assignments/
-!backend/prisma/migrations/20260502211500_add_volunteer_delivery_codes_and_incident_assignments/migration.sql
-!backend/prisma/migrations/20260506182000_add_solicitudes_puesto/
-!backend/prisma/migrations/20260506182000_add_solicitudes_puesto/migration.sql
-!backend/prisma/migrations/20260509191000_add_solicitudes_participacion_puesto/
-!backend/prisma/migrations/20260509191000_add_solicitudes_participacion_puesto/migration.sql
-!backend/prisma/migrations/20260509193000_add_puesto_trabajadores/
-!backend/prisma/migrations/20260509193000_add_puesto_trabajadores/migration.sql
-!backend/prisma/migrations/20260510180000_add_estado_puesto/
-!backend/prisma/migrations/20260510180000_add_estado_puesto/migration.sql
-!backend/prisma/migrations/20260510103000_add_incidencia_title_category/
-!backend/prisma/migrations/20260510103000_add_incidencia_title_category/migration.sql
-!backend/prisma/migrations/20260522133000_make_catastrofe_optional/
-!backend/prisma/migrations/20260522133000_make_catastrofe_optional/migration.sql
-!backend/prisma/migrations/20260522143000_remove_catastrofes_flow/
-!backend/prisma/migrations/20260522143000_remove_catastrofes_flow/migration.sql
-!backend/prisma/migrations/20260522150000_add_idempotency_records/
-!backend/prisma/migrations/20260522150000_add_idempotency_records/migration.sql
-!backend/prisma/migrations/20260523102000_harden_auth_sessions/
-!backend/prisma/migrations/20260523102000_harden_auth_sessions/migration.sql
-!backend/prisma/migrations/20260526164000_add_qr_consumptions/
-!backend/prisma/migrations/20260526164000_add_qr_consumptions/migration.sql
-!backend/prisma/migrations/20260621183000_add_recovery_code/
-!backend/prisma/migrations/20260621183000_add_recovery_code/migration.sql
+# Las migraciones de Prisma forman parte del código y deben versionarse siempre.
 
 # Coverage
 coverage/
