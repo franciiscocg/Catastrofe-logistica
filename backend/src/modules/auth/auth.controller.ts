@@ -14,15 +14,16 @@ import {
   rotateRefreshToken,
 } from './auth.service.js'
 import { ACCESS_TOKEN_EXPIRES_IN, ACCESS_TOKEN_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS } from '../../lib/security.js'
+import { env } from '../../config/env.js'
 
 const REFRESH_COOKIE_NAME = 'catlogistica_refresh'
 const REFRESH_COOKIE_PATH = '/api/auth'
-const COOKIE_SAME_SITE = (process.env.COOKIE_SAME_SITE ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax')) as 'lax' | 'strict' | 'none'
+const COOKIE_SAME_SITE = env.COOKIE_SAME_SITE ?? (env.NODE_ENV === 'production' ? 'none' : 'lax')
 
 function refreshCookieOptions() {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.NODE_ENV === 'production',
     sameSite: COOKIE_SAME_SITE,
     path: REFRESH_COOKIE_PATH,
     maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,

@@ -1,11 +1,10 @@
-import 'dotenv/config'
 import { buildApp } from './app.js'
 import { initRealtime } from './lib/realtime.js'
 import { startChainWorker } from './lib/chainWorker.js'
 import { startMaintenanceWorker } from './lib/maintenanceWorker.js'
+import { env } from './config/env.js'
 
-const PORT = parseInt(process.env.PORT ?? '3000', 10)
-const HOST = process.env.HOST ?? '0.0.0.0'
+const { PORT, HOST } = env
 
 async function main() {
   const app = await buildApp()

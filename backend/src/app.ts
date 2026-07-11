@@ -19,10 +19,11 @@ import { getJwtSecret } from './lib/security.js'
 import { prisma } from './lib/prisma.js'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { env } from './config/env.js'
 
 export async function buildApp() {
   const app = Fastify({
-    logger: process.env.NODE_ENV !== 'test',
+    logger: env.NODE_ENV !== 'test',
   })
 
   app.setErrorHandler(errorHandler)
@@ -49,17 +50,17 @@ export async function buildApp() {
         scriptSrc: ["'self'"],
         scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
+        upgradeInsecureRequests: env.NODE_ENV === 'production' ? [] : null,
       },
     },
   })
   await app.register(cors, {
-    origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    origin: env.FRONTEND_URL,
     credentials: true,
   })
   await app.register(cookie)
   await app.register(rateLimit, {
-    max: process.env.NODE_ENV === 'production' ? 100 : 5000,
+    max: env.NODE_ENV === 'production' ? 100 : 5000,
     timeWindow: '1 minute',
   })
 
@@ -113,7 +114,7 @@ export async function buildApp() {
   })
 
   const frontendRoot = path.resolve(process.cwd(), '../frontend/dist')
-  if (process.env.NODE_ENV === 'production' && existsSync(frontendRoot)) {
+  if (env.NODE_ENV === 'production' && existsSync(frontendRoot)) {
     await app.register(fastifyStatic, { root: frontendRoot, serve: false })
     app.get('/*', async (request, reply) => {
       const requestedPath = (request.params as { '*': string })['*']

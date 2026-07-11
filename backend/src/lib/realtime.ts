@@ -1,4 +1,5 @@
 import type { Server as HttpServer } from 'node:http'
+import { env } from '../config/env.js'
 import { Server } from 'socket.io'
 import { prisma } from './prisma.js'
 
@@ -64,7 +65,7 @@ export function initRealtime(
 ) {
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+      origin: env.FRONTEND_URL,
       credentials: true,
     },
   })
