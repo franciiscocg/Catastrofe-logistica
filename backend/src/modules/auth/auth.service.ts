@@ -170,7 +170,9 @@ export async function requestPasswordReset({ email, dni, recoveryCode, password 
   await prisma.$transaction([
     prisma.usuario.update({
       where: { id: user.id },
-      data: { password: hashed },
+      // El código es un secreto de un solo uso. Invalidarlo en la misma
+      // transacción evita que pueda reutilizarse después de recuperar la cuenta.
+      data: { password: hashed, recoveryCodeHash: null },
     }),
     prisma.refreshToken.updateMany({
       where: { usuarioId: user.id, revokedAt: null },

@@ -151,6 +151,7 @@ describe('auth.service', () => {
       where: { id: 'user-1' },
       data: expect.objectContaining({
         password: expect.any(String),
+        recoveryCodeHash: null,
       }),
     })
     expect(mp.usuario.update.mock.calls[0][0].data.password).not.toBe('NuevaPassword123')
