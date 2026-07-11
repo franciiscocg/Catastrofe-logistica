@@ -55,13 +55,21 @@ export async function registerIdempotency(app: FastifyInstance) {
     const expiresAt = new Date(Date.now() + RETENTION_MS)
     request.idempotencyKey = key
 
-    const existing = await prisma.idempotencyRecord.findUnique({ where: { key } })
+    let existing = await prisma.idempotencyRecord.findUnique({ where: { key } })
     if (!existing) {
-      await prisma.idempotencyRecord.create({
-        data: { key, method, url, bodyHash, expiresAt },
-      })
-      request.idempotencyRecordCreated = true
-      return
+      try {
+        await prisma.idempotencyRecord.create({
+          data: { key, method, url, bodyHash, expiresAt },
+        })
+        request.idempotencyRecordCreated = true
+        return
+      } catch (error) {
+        // Otra petición pudo crear la misma clave entre findUnique y create.
+        // Recuperamos el registro ganador y aplicamos las reglas normales.
+        if ((error as { code?: string }).code !== 'P2002') throw error
+        existing = await prisma.idempotencyRecord.findUnique({ where: { key } })
+        if (!existing) throw error
+      }
     }
 
     if (existing.method !== method || existing.url !== url || existing.bodyHash !== bodyHash) {

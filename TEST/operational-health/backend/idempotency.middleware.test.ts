@@ -1,4 +1,5 @@
 import Fastify from 'fastify'
+import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const records = vi.hoisted(() => ({
@@ -78,6 +79,29 @@ describe('middleware de idempotencia', () => {
     const response = await app.inject({ method: 'POST', url: '/resource', headers: { 'idempotency-key': 'operation-3' } })
     expect(response.statusCode).toBe(400)
     expect(records.deleteMany).toHaveBeenCalledWith({ where: { key: 'operation-3', status: 'PENDING' } })
+    await app.close()
+  })
+
+  it('devuelve conflicto en vez de 500 si otra petición crea la clave simultáneamente', async () => {
+    records.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        method: 'POST',
+        url: '/resource',
+        bodyHash: createHash('sha256').update('null').digest('hex'),
+        status: 'PENDING',
+      })
+    records.create.mockRejectedValue(Object.assign(new Error('unique constraint'), { code: 'P2002' }))
+    const app = await createApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/resource',
+      headers: { 'idempotency-key': 'concurrent-operation' },
+    })
+
+    expect(response.statusCode).toBe(409)
+    expect(response.json()).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
     await app.close()
   })
 })
