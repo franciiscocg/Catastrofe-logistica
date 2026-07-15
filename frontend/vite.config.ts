@@ -25,8 +25,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'icons/*.svg'],
       manifest: {
-        name: 'Catástrofe Logística',
-        short_name: 'CatLogística',
+        name: '¡Gracias a ti!',
+        short_name: 'Gracias a ti',
         description: 'Coordinación de ayuda humanitaria en situaciones de emergencia',
         theme_color: '#1e40af',
         background_color: '#ffffff',

@@ -1,6 +1,7 @@
-# Catástrofe-logística
+# ¡Gracias a ti!
 
 **Plataforma integral para la gestión logística de ayuda humanitaria en situaciones de emergencia.**
+El nombre reconoce a quienes hacen que todo funcione: los voluntarios y las personas que deciden ayudar. La aplicación existe para que cualquiera que quiera colaborar pueda hacerlo de la forma más fácil y coordinada posible.
 Este sistema conecta a todos los actores involucrados (Ciudadanos, Voluntarios, Puestos de Ayuda y Coordinadores) para maximizar la eficiencia y transparencia de la ayuda.
 
 ---

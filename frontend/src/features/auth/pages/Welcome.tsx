@@ -24,7 +24,7 @@ export default function Welcome() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-blue-600 text-white text-4xl mb-5 shadow-lg">
             🆘
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Catástrofe Logística</h1>
+          <h1 className="text-3xl font-bold text-gray-900">¡Gracias a ti!</h1>
           <p className="mt-2 text-gray-500 text-sm leading-relaxed">
             Coordinación de ayuda humanitaria en emergencias
           </p>

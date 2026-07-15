@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  // El flujo de capturas tiene su propio config (playwright.screenshot.config.ts)
+  // y sobrescribe fotos-ui/, así que no debe correr dentro del smoke.
+  testIgnore: 'screenshot-flow.spec.ts',
   fullyParallel: false,
   workers: 1,
   retries: 1,
