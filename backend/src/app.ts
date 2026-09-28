@@ -29,6 +29,10 @@ export async function buildApp() {
 
   // Seguridad
   await app.register(helmet, {
+    // Los proveedores de teselas web (incluido OpenStreetMap) necesitan un
+    // Referer de origen para identificar la aplicacion que hace la peticion.
+    // El valor por defecto de Helmet (`no-referrer`) provoca su bloqueo.
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],

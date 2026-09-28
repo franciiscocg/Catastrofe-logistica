@@ -45,9 +45,12 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
-            handler: 'CacheFirst',
+            // Consultar la red primero evita conservar durante semanas la
+            // imagen de bloqueo que OSM devuelve como respuesta opaca.
+            handler: 'NetworkFirst',
             options: {
-              cacheName: 'osm-tiles',
+              cacheName: 'osm-tiles-v2',
+              networkTimeoutSeconds: 5,
               expiration: {
                 maxEntries: 2000,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
